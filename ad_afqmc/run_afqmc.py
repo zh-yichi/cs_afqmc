@@ -5,6 +5,16 @@ from functools import partial
 import numpy as np
 
 from ad_afqmc import config
+from ad_afqmc import pyscf_interface
+import struct
+import time
+from typing import Any, Optional, Sequence, Tuple, Union
+
+import h5py
+import jax.numpy as jnp
+import numpy as np
+import scipy
+from pyscf import __config__, ao2mo, df, dft, lib, mcscf, scf
 
 print = partial(print, flush=True)
 
@@ -56,3 +66,143 @@ def run_afqmc_fp(options=None, script=None, mpi_prefix=None, nproc=None):
     )
     # ene_err = np.loadtxt('ene_err.txt')
     # return ene_err[0], ene_err[1]
+
+def run_afqmc_lno_mf(mf, vmc_root = None,integrals=None, mpi_prefix = None,norb_act = None,nelec_act=None, mo_coeff = None, norb_frozen = [], nproc = None, chol_cut = 1e-5, seed = None, dt = 0.005, steps_per_block = 50, nwalk_per_proc = 5, nblocks = 1000, ortho_steps = 20, burn_in = 50, cholesky_threshold = 0.5e-3, weight_cap = None, write_one_rdm = False, run_dir = None, scratch_dir = None,orbitalE=-2,eris=None,chol_vecs=None,right=None,maxError=1e-4,prjlo=None):
+#def run_afqmc_lno_mf(mf,options=None,script=None, mpi_prefix=None, nproc=None):
+    print("#\n# Preparing AFQMC calculation")
+    options = {'n_eql': 3,
+             'n_ene_blocks': 25,
+             'n_sr_blocks': 10,
+             'n_blocks': nblocks,
+             'n_walkers': nwalk_per_proc,
+             'seed': 98,
+             'walker_type': 'rhf',
+             'trial': 'rhf',
+             'dt':dt,
+             'ad_mode':None,
+             'orbE':orbitalE,
+             'prjlo':prjlo,
+             'maxError':maxError,
+             }
+    import pickle
+    with open('options.bin', 'wb') as f:
+        pickle.dump(options, f)
+
+    mol = mf.mol
+    # choose the orbital basis
+    if mo_coeff is None:
+        if isinstance(mf, scf.uhf.UHF):
+            mo_coeff = mf.mo_coeff[0]
+        elif isinstance(mf, scf.rhf.RHF):
+            mo_coeff = mf.mo_coeff
+        else:
+            raise Exception("# Invalid mean field object!")
+
+    # calculate cholesky integrals
+    print("# Calculating Cholesky integrals")
+    h1e, chol, nelec, enuc, nbasis, nchol = [ None ] * 6
+    if integrals is not None:
+      enuc = integrals['h0']
+      h1e = integrals['h1']
+      eri = integrals['h2']
+      nelec = mol.nelec
+      nbasis = h1e.shape[-1]
+      norb = nbasis
+      eri = ao2mo.restore(4, eri, norb)
+      chol0 = pyscf_interface.modified_cholesky(eri, chol_cut)
+      nchol = chol0.shape[0]
+      chol = np.zeros((nchol, norb, norb))
+      for i in range(nchol):
+          for m in range(norb):
+              for n in range(m + 1):
+                  triind = m * (m + 1) // 2 + n
+                  chol[i, m, n] = chol0[i, triind]
+                  chol[i, n, m] = chol0[i, triind]
+
+    else:
+      h1e, chol, nelec, enuc = pyscf_interface.generate_integrals(mol, mf.get_hcore(), mo_coeff, chol_cut)
+      nbasis = h1e.shape[-1]
+      nelec = mol.nelec
+
+      mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
+      mc.frozen = norb_frozen
+      nelec = mc.nelecas
+      mc.mo_coeff = mo_coeff
+      h1e, enuc = mc.get_h1eff()
+#     import pdb;pdb.set_trace()
+      nbasis = mo_coeff.shape[-1]
+      act = [i for i in range(nbasis) if i not in norb_frozen]
+      e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
+      chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
+
+    print("# Finished calculating Cholesky integrals\n")
+
+    nbasis = h1e.shape[-1]
+    print('# Size of the correlation space:')
+    print(f'# Number of electrons: {nelec}')
+    print(f'# Number of basis functions: {nbasis}')
+    print(f'# Number of Cholesky vectors: {chol.shape[0]}\n')
+    chol = chol.reshape((-1, nbasis, nbasis))
+    v0 = 0.5 * np.einsum('nik,njk->ij', chol, chol, optimize='optimal')
+    h1e_mod = h1e - v0
+    chol = chol.reshape((chol.shape[0], -1))
+
+    # write mo coefficients
+    trial_coeffs = np.empty((2, nbasis, nbasis))
+    overlap = mf.get_ovlp(mol)
+    if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
+        hf_type = "uhf"
+        uhfCoeffs = np.empty((nbasis, 2 * nbasis))
+        if isinstance(mf, scf.uhf.UHF):
+            q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[0][:, norb_frozen:]))
+            uhfCoeffs[:, :nbasis] = q
+            q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[1][:, norb_frozen:]))
+            uhfCoeffs[:, nbasis:] = q
+        else:
+            q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[:, norb_frozen:]))
+            uhfCoeffs[:, :nbasis] = q
+            uhfCoeffs[:, nbasis:] = q
+
+        trial_coeffs[0] = uhfCoeffs[:, :nbasis]
+        trial_coeffs[1] = uhfCoeffs[:, nbasis:]
+        #np.savetxt("uhf.txt", uhfCoeffs)
+        np.savez('mo_coeff.npz', mo_coeff=trial_coeffs)
+
+    elif isinstance(mf, scf.rhf.RHF):
+        hf_type = "rhf"
+        #q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[:, norb_frozen:]))
+        q = np.eye(mol.nao- len(norb_frozen))
+        trial_coeffs[0] = q
+        trial_coeffs[1] = q
+        np.savez("mo_coeff.npz",mo_coeff=trial_coeffs)
+
+    pyscf_interface.write_dqmc(h1e, h1e_mod, chol, sum(nelec), nbasis, enuc, ms=mol.spin, filename='FCIDUMP_chol', mo_coeffs = trial_coeffs)
+    #path = os.path.abspath(__file__)
+    #dir_path = os.path.dirname(path)
+    #script = f"{dir_path}/mpi_jax.py"
+    #os.system(f'python {script} > afqmc.out')    
+    os.system('python /home/yichi/research/ad_afqmc/ad_afqmc/lno/afqmc/mpi_jax.py>afqmc.out') #change this path to your /lno/afqmc/mpi_jax.py
+    target_line_prefix = "orbE energy: "
+    with open('afqmc.out', "r") as file:
+        for line in file:
+    	    if line.startswith(target_line_prefix):
+                line = line[len(target_line_prefix):].strip()
+                values = line.split()
+                value1 = float(values[0])
+                value2 = values[2]
+                try:
+                    value2 = float(value2)
+                except ValueError:
+                    pass  # Leave it as string if conversion fails
+                break
+    
+    input_file = "afqmc.out"
+    with open(input_file, "r") as infile:
+        found_header = False
+        for line in infile:
+            if found_header:
+                print(line.strip())
+            elif line.strip().startswith("# Number of large deviations:"):
+                found_header = True
+
+    return value1,value2

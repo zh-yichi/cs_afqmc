@@ -1,0 +1,116 @@
+
+
+******** <class 'pyscf.df.df_jk.density_fit.<locals>.DensityFitting'> ********
+method = DensityFitting-RHF
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /rc_scratch/joku8258/nip/tmppyrompx3
+max_memory 4000 MB (current use 68 MB)
+Set gradient conv threshold to 3.16228e-05
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 4000
+_cderi_to_save = /rc_scratch/joku8258/nip/tmpq91s3e8w
+Default auxbasis heavy-aug-cc-pvdz-jkfit is used for C 6-31+G(d)
+Default auxbasis heavy-aug-cc-pvdz-jkfit is used for H 6-31+G(d)
+init E= -232.402077994554
+  HOMO = -0.2511980723826  LUMO = 0.0353584951114655
+cycle= 1 E= -230.647671179247  delta_E= 1.75  |g|= 0.394  |ddm|= 8.69
+  HOMO = -0.354884669640658  LUMO = 0.0814232336969642
+cycle= 2 E= -230.705631293857  delta_E= -0.058  |g|= 0.102  |ddm|= 3.01
+  HOMO = -0.329330022587625  LUMO = 0.0853873297656277
+cycle= 3 E= -230.709799754359  delta_E= -0.00417  |g|= 0.0246  |ddm|= 1.48
+  HOMO = -0.337857536187381  LUMO = 0.0846598848194367
+cycle= 4 E= -230.709990274963  delta_E= -0.000191  |g|= 0.0054  |ddm|= 0.0412
+  HOMO = -0.336833030412788  LUMO = 0.0846349319859579
+cycle= 5 E= -230.710001825183  delta_E= -1.16e-05  |g|= 0.001  |ddm|= 0.0335
+  HOMO = -0.336540575003159  LUMO = 0.0846270886355974
+cycle= 6 E= -230.710002679971  delta_E= -8.55e-07  |g|= 0.000187  |ddm|= 0.00431
+  HOMO = -0.336533712207104  LUMO = 0.0846192528533382
+cycle= 7 E= -230.710002707675  delta_E= -2.77e-08  |g|= 1.55e-05  |ddm|= 0.000845
+  HOMO = -0.336536229834252  LUMO = 0.0846183645437172
+cycle= 8 E= -230.710002707788  delta_E= -1.13e-10  |g|= 1.75e-06  |ddm|= 0.00018
+  HOMO = -0.336536191677472  LUMO = 0.0846184022132459
+Extra cycle  E= -230.710002707789  delta_E= -5.68e-13  |g|= 5.65e-07  |ddm|= 2.11e-05
+converged SCF energy = -230.710002707789
+
+******** <class 'pyscf.mp.dfmp2.DFMP2'> ********
+nocc = 19, nmo = 118
+frozen orbitals 2
+max_memory 4000 MB (current use 193 MB)
+E(DFMP2) = -231.472333448761  E_corr = -0.762330740971881
+
+******** <class 'pyscf.cc.dfccsd.RCCSD'> ********
+CC2 = 0
+CCSD nocc = 19, nmo = 118
+frozen orbitals 2
+max_cycle = 50
+direct = 0
+conv_tol = 1e-07
+conv_tol_normt = 1e-05
+diis_space = 6
+diis_start_cycle = 0
+diis_start_energy_diff = 1e+09
+max_memory 4000 MB (current use 342 MB)
+Init t2, MP2 energy = -231.472333466882  E_corr(MP2) -0.762330759093332
+    CPU time for init mp2      1.54 sec, wall time      0.06 sec
+Init E_corr(CCSD) = -0.762330759093429
+cycle = 1  E_corr(CCSD) = -0.770655003019898  dE = -0.00832424393  norm(t1,t2) = 0.0744464
+    CPU time for CCSD iter     86.49 sec, wall time      3.87 sec
+cycle = 2  E_corr(CCSD) = -0.794020471546558  dE = -0.0233654685  norm(t1,t2) = 0.0254514
+    CPU time for CCSD iter     79.43 sec, wall time      3.44 sec
+cycle = 3  E_corr(CCSD) = -0.795948905896388  dE = -0.00192843435  norm(t1,t2) = 0.0108406
+    CPU time for CCSD iter     76.68 sec, wall time      3.34 sec
+cycle = 4  E_corr(CCSD) = -0.799328472128175  dE = -0.00337956623  norm(t1,t2) = 0.00527763
+    CPU time for CCSD iter     79.97 sec, wall time      3.51 sec
+cycle = 5  E_corr(CCSD) = -0.799219434052785  dE = 0.000109038075  norm(t1,t2) = 0.00123195
+    CPU time for CCSD iter     76.94 sec, wall time      3.38 sec
+cycle = 6  E_corr(CCSD) = -0.799093584713165  dE = 0.00012584934  norm(t1,t2) = 0.000297929
+    CPU time for CCSD iter     80.16 sec, wall time      3.72 sec
+cycle = 7  E_corr(CCSD) = -0.799105053344763  dE = -1.14686316e-05  norm(t1,t2) = 7.70969e-05
+    CPU time for CCSD iter     79.03 sec, wall time      3.67 sec
+cycle = 8  E_corr(CCSD) = -0.79910854037253  dE = -3.48702777e-06  norm(t1,t2) = 1.91401e-05
+    CPU time for CCSD iter     80.05 sec, wall time      3.53 sec
+cycle = 9  E_corr(CCSD) = -0.799107722611464  dE = 8.17761066e-07  norm(t1,t2) = 7.26487e-06
+    CPU time for CCSD iter     78.34 sec, wall time      3.50 sec
+cycle = 10  E_corr(CCSD) = -0.799107623838341  dE = 9.87731226e-08  norm(t1,t2) = 1.96332e-06
+    CPU time for CCSD iter     80.64 sec, wall time      3.70 sec
+    CPU time for CCSD    797.73 sec, wall time     35.66 sec
+RCCSD converged
+E(RCCSD) = -231.5091103316271  E_corr = -0.7991076238383412
+CCSD(T) correction = -0.0356473918700451
+
+******** <class '__main__.LNOCCSD'> ********
+nocc = 19, nmo = 118
+frozen orbitals 2
+max_memory 4000 MB (current use 770 MB)
+thresh_occ = 1.000000e-03
+thresh_vir = 1.000000e-03
+force_outcore_ao2mo = True
+no_type = ie
+Constructing LOs
+lo_type = pm
+LOs span exactly the occupied space.
+Using single-LO fragment
+nfrag = 19  nlo = 19
+frag_atmlist = None
+frag_lolist = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15], [16], [17], [18]]
+frag_wghtlist = [1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+frag_nonvlist = None
+    CPU time for LO and fragment       42.29 sec, wall time      4.48 sec
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+ao2mo est mem= 18.77 MB  avail mem= 3221.77 MB
+Lov is saved to /rc_scratch/joku8258/nip/tmppkbwxmes
+    CPU time for transforming DF-MP2 integrals      0.27 sec, wall time      0.01 sec
+    CPU time for Integral xform         2.04 sec, wall time      0.07 sec
+    CPU time for make pno               0.73 sec, wall time      0.03 sec
+    impsol:  1 LOs  1/120 MOs  1 occ  0 vir

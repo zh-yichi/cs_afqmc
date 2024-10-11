@@ -1,0 +1,421 @@
+
+
+******** <class 'pyscf.df.df_jk.density_fit.<locals>.DensityFitting'> ********
+method = DensityFitting-RHF
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /home/jokurian/local_softwares/lno_forwork/lno/afqmc/example/ad_test/tmpujg6kmj8
+max_memory 4000 MB (current use 185 MB)
+Set gradient conv threshold to 3.16228e-05
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 4000
+_cderi_to_save = /home/jokurian/local_softwares/lno_forwork/lno/afqmc/example/ad_test/tmpq6ae1545
+Default auxbasis cc-pvdz-jkfit is used for O cc-pvdz
+Default auxbasis cc-pvdz-jkfit is used for H cc-pvdz
+init E= -151.748572442519
+  HOMO = -0.477084982132793  LUMO = 0.0790848106374115
+cycle= 1 E= -151.992406725414  delta_E= -0.244  |g|= 0.602  |ddm|= 1.84
+  HOMO = -0.375259607279107  LUMO = 0.162231585691661
+cycle= 2 E= -152.047011302177  delta_E= -0.0546  |g|= 0.297  |ddm|= 0.498
+  HOMO = -0.466000890702986  LUMO = 0.158356222091913
+cycle= 3 E= -152.062114880311  delta_E= -0.0151  |g|= 0.0351  |ddm|= 0.174
+  HOMO = -0.460536947199492  LUMO = 0.16384492493574
+cycle= 4 E= -152.062462354951  delta_E= -0.000347  |g|= 0.00783  |ddm|= 0.0277
+  HOMO = -0.461754462599916  LUMO = 0.163908866434882
+cycle= 5 E= -152.062489308386  delta_E= -2.7e-05  |g|= 0.00166  |ddm|= 0.00961
+  HOMO = -0.462428741042139  LUMO = 0.163907919114148
+cycle= 6 E= -152.062490524641  delta_E= -1.22e-06  |g|= 0.000671  |ddm|= 0.00222
+  HOMO = -0.462356695421611  LUMO = 0.163875679587637
+cycle= 7 E= -152.062490640305  delta_E= -1.16e-07  |g|= 0.000122  |ddm|= 0.000603
+  HOMO = -0.462398559388316  LUMO = 0.163879754396218
+cycle= 8 E= -152.062490646836  delta_E= -6.53e-09  |g|= 1.22e-05  |ddm|= 0.000193
+  HOMO = -0.462398134373047  LUMO = 0.16387991074381
+cycle= 9 E= -152.062490646921  delta_E= -8.45e-11  |g|= 3.44e-06  |ddm|= 1.98e-05
+  HOMO = -0.462397748711212  LUMO = 0.163880117674851
+Extra cycle  E= -152.062490646928  delta_E= -7.22e-12  |g|= 1.53e-06  |ddm|= 4.78e-06
+converged SCF energy = -152.062490646928
+
+******** <class 'pyscf.mp.dfmp2.DFMP2'> ********
+nocc = 8, nmo = 46
+frozen orbitals 2
+max_memory 4000 MB (current use 215 MB)
+E(DFMP2) = -152.468589636006  E_corr = -0.406098989078228
+E(SCS-DFMP2) = -152.460587825961  E_corr = -0.398097179032793
+E_corr(same-spin) = -0.102948009070476
+E_corr(oppo-spin) = -0.303150980007751
+
+******** <class 'pyscf.cc.dfccsd.RCCSD'> ********
+CC2 = 0
+CCSD nocc = 8, nmo = 46
+frozen orbitals 2
+max_cycle = 50
+direct = 0
+conv_tol = 1e-07
+conv_tol_normt = 1e-05
+diis_space = 6
+diis_start_cycle = 0
+diis_start_energy_diff = 1e+09
+max_memory 4000 MB (current use 235 MB)
+Init t2, MP2 energy = -152.468589629065  E_corr(MP2) -0.406098982137062
+    CPU time for init mp2      0.02 sec, wall time      0.00 sec
+Init E_corr(CCSD) = -0.406098982138173
+cycle = 1  E_corr(CCSD) = -0.415660239925307  dE = -0.00956125779  norm(t1,t2) = 0.0318377
+    CPU time for CCSD iter      2.43 sec, wall time      0.15 sec
+cycle = 2  E_corr(CCSD) = -0.422308201267409  dE = -0.00664796134  norm(t1,t2) = 0.0104712
+    CPU time for CCSD iter      2.13 sec, wall time      0.13 sec
+cycle = 3  E_corr(CCSD) = -0.424221801988067  dE = -0.00191360072  norm(t1,t2) = 0.00410778
+    CPU time for CCSD iter      3.20 sec, wall time      0.20 sec
+cycle = 4  E_corr(CCSD) = -0.424651131906815  dE = -0.000429329919  norm(t1,t2) = 0.000990324
+    CPU time for CCSD iter      4.00 sec, wall time      0.25 sec
+cycle = 5  E_corr(CCSD) = -0.424630568596615  dE = 2.05633102e-05  norm(t1,t2) = 0.000272472
+    CPU time for CCSD iter      2.96 sec, wall time      0.19 sec
+cycle = 6  E_corr(CCSD) = -0.424618588698841  dE = 1.19798978e-05  norm(t1,t2) = 8.56129e-05
+    CPU time for CCSD iter      3.35 sec, wall time      0.21 sec
+cycle = 7  E_corr(CCSD) = -0.424618593792578  dE = -5.0937371e-09  norm(t1,t2) = 3.72879e-05
+    CPU time for CCSD iter      2.81 sec, wall time      0.18 sec
+cycle = 8  E_corr(CCSD) = -0.424619919086086  dE = -1.32529351e-06  norm(t1,t2) = 1.29161e-05
+    CPU time for CCSD iter      3.97 sec, wall time      0.25 sec
+cycle = 9  E_corr(CCSD) = -0.424619434100278  dE = 4.84985808e-07  norm(t1,t2) = 4.44844e-06
+    CPU time for CCSD iter      2.99 sec, wall time      0.19 sec
+cycle = 10  E_corr(CCSD) = -0.424619403280189  dE = 3.08200884e-08  norm(t1,t2) = 1.47198e-06
+    CPU time for CCSD iter      2.95 sec, wall time      0.18 sec
+    CPU time for CCSD     30.78 sec, wall time      1.93 sec
+RCCSD converged
+E(RCCSD) = -152.4871100502083  E_corr = -0.4246194032801893
+CCSD(T) correction = -0.00643879054657219
+
+******** <class 'lno.afqmc.afqmc.LNOAFQMC'> ********
+nocc = 8, nmo = 46
+frozen orbitals 2
+max_memory 4000 MB (current use 270 MB)
+thresh_occ = 1.000000e-03
+thresh_vir = 1.000000e-04
+force_outcore_ao2mo = True
+no_type = ie
+Constructing LOs
+lo_type = pm
+LOs span exactly the occupied space.
+Using single-LO fragment
+nfrag = 8  nlo = 8
+frag_atmlist = None
+frag_lolist = [[0], [1], [2], [3], [4], [5], [6], [7]]
+frag_wghtlist = [1. 1. 1. 1. 1. 1. 1. 1.]
+frag_nonvlist = None
+    CPU time for LO and fragment       10.64 sec, wall time      0.67 sec
+ao2mo est mem= 1.08 MB  avail mem= 3725.40 MB
+Lov is saved to /home/jokurian/local_softwares/lno_forwork/lno/afqmc/example/ad_test/tmp_4un7k81
+    CPU time for transforming DF-MP2 integrals      0.02 sec, wall time      0.00 sec
+    CPU time for Integral xform         0.08 sec, wall time      0.00 sec
+    CPU time for make pno               0.04 sec, wall time      0.00 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 13
+Number of Cholesky vectors: 91
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                3.27 sec, wall time     76.23 sec
+    CPU time for Fragment 1             3.31 sec, wall time     76.23 sec
+Fragment 1  E_corr(MP2) = -0.03920495418807387  E_corr(AFQMC) = -0.0425  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.55 sec, wall time      0.03 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 14
+Number of Cholesky vectors: 104
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.71 sec, wall time     91.76 sec
+    CPU time for Fragment 2             5.41 sec, wall time     91.81 sec
+Fragment 2  E_corr(MP2) = -0.047165545342453034  E_corr(AFQMC) = -0.0513  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.56 sec, wall time      0.03 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 17
+Number of Cholesky vectors: 143
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                6.28 sec, wall time    149.53 sec
+    CPU time for Fragment 3             6.86 sec, wall time    149.57 sec
+Fragment 3  E_corr(MP2) = -0.056745345235551664  E_corr(AFQMC) = -0.0609  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.45 sec, wall time      0.03 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 15
+Number of Cholesky vectors: 117
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                5.65 sec, wall time    107.17 sec
+    CPU time for Fragment 4             6.13 sec, wall time    107.20 sec
+Fragment 4  E_corr(MP2) = -0.0490757173796234  E_corr(AFQMC) = -0.0532  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.60 sec, wall time      0.04 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 13
+Number of Cholesky vectors: 91
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.74 sec, wall time     74.25 sec
+    CPU time for Fragment 5             5.36 sec, wall time     74.28 sec
+Fragment 5  E_corr(MP2) = -0.04727691743699257  E_corr(AFQMC) = -0.0491  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.59 sec, wall time      0.04 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 13
+Number of Cholesky vectors: 89
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.36 sec, wall time     73.46 sec
+    CPU time for Fragment 6             5.14 sec, wall time     73.50 sec
+Fragment 6  E_corr(MP2) = -0.042891184663725754  E_corr(AFQMC) = -0.0450581864048722  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.05 sec, wall time      0.00 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 13
+Number of Cholesky vectors: 91
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.23 sec, wall time     73.91 sec
+    CPU time for Fragment 7             4.30 sec, wall time     73.92 sec
+Fragment 7  E_corr(MP2) = -0.04775837506819648  E_corr(AFQMC) = -0.0498559083355875  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.67 sec, wall time      0.04 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 13
+Number of Cholesky vectors: 89
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                6.87 sec, wall time     74.46 sec
+    CPU time for Fragment 8             7.57 sec, wall time     74.51 sec
+Fragment 8  E_corr(MP2) = -0.05173363957329385  E_corr(AFQMC) = -0.0532  E_corr(CCSD(T)) = 0
+    CPU time for LNOAFQMC              44.18 sec, wall time    721.02 sec
+E(LNO-AFQMC) = -152.467604741669  E_corr = -0.40511409474046
+thresh = 1e-04  E_corr(AFQMC)     = -0.4051140947, 36.6628480142  rel(wrt CCSD) =   0.00%  diff =  0.0000000000
+                E_corr(AFQMC+PT2) = -0.4293614049  rel = 101.12%  diff = -0.0047420017
+
+******** <class 'lno.afqmc.afqmc.LNOAFQMC'> ********
+nocc = 8, nmo = 46
+frozen orbitals 2
+max_memory 4000 MB (current use 301 MB)
+thresh_occ = 1.000000e-04
+thresh_vir = 1.000000e-05
+force_outcore_ao2mo = True
+no_type = ie
+Constructing LOs
+lo_type = pm
+LOs span exactly the occupied space.
+Using single-LO fragment
+nfrag = 8  nlo = 8
+frag_atmlist = None
+frag_lolist = [[0], [1], [2], [3], [4], [5], [6], [7]]
+frag_wghtlist = [1. 1. 1. 1. 1. 1. 1. 1.]
+frag_nonvlist = None
+    CPU time for LO and fragment       32.77 sec, wall time      2.06 sec
+ao2mo est mem= 1.08 MB  avail mem= 3698.43 MB
+Lov is saved to /home/jokurian/local_softwares/lno_forwork/lno/afqmc/example/ad_test/tmpjtxtkv01
+    CPU time for transforming DF-MP2 integrals      0.07 sec, wall time      0.00 sec
+    CPU time for Integral xform         0.46 sec, wall time      0.03 sec
+    CPU time for make pno               0.36 sec, wall time      0.02 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 21
+Number of Cholesky vectors: 185
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                5.77 sec, wall time    241.69 sec
+    CPU time for Fragment 1             6.13 sec, wall time    241.71 sec
+Fragment 1  E_corr(MP2) = -0.0437887842303789  E_corr(AFQMC) = -0.0481  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.43 sec, wall time      0.03 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 22
+Number of Cholesky vectors: 202
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                6.39 sec, wall time    278.15 sec
+    CPU time for Fragment 2             6.85 sec, wall time    278.18 sec
+Fragment 2  E_corr(MP2) = -0.05015515137139132  E_corr(AFQMC) = -0.0542  E_corr(CCSD(T)) = 0
+    CPU time for make pno               1.07 sec, wall time      0.07 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 22
+Number of Cholesky vectors: 200
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                6.00 sec, wall time    279.40 sec
+    CPU time for Fragment 3             7.10 sec, wall time    279.47 sec
+Fragment 3  E_corr(MP2) = -0.05928308141219468  E_corr(AFQMC) = -0.0633  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.73 sec, wall time      0.05 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 20
+Number of Cholesky vectors: 172
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.54 sec, wall time    209.48 sec
+    CPU time for Fragment 4             5.30 sec, wall time    209.53 sec
+Fragment 4  E_corr(MP2) = -0.05133200673705631  E_corr(AFQMC) = -0.0559434068655809  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.05 sec, wall time      0.00 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 20
+Number of Cholesky vectors: 175
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                5.14 sec, wall time    219.99 sec
+    CPU time for Fragment 5             5.21 sec, wall time    219.99 sec
+Fragment 5  E_corr(MP2) = -0.04942230088906928  E_corr(AFQMC) = -0.0516  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.05 sec, wall time      0.00 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 21
+Number of Cholesky vectors: 184
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.65 sec, wall time    256.73 sec
+    CPU time for Fragment 6             4.72 sec, wall time    256.73 sec
+Fragment 6  E_corr(MP2) = -0.045207983326828564  E_corr(AFQMC) = -0.0479  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.66 sec, wall time      0.04 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (5, 5)
+Number of basis functions: 26
+Number of Cholesky vectors: 238
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.82 sec, wall time    541.05 sec
+    CPU time for Fragment 7             5.54 sec, wall time    541.10 sec
+Fragment 7  E_corr(MP2) = -0.05043546622488555  E_corr(AFQMC) = -0.0528  E_corr(CCSD(T)) = 0
+    CPU time for make pno               0.36 sec, wall time      0.02 sec
+Solving impurity problem
+DQMC root:  /projects/joku8258/software/VMC_forwork/VMC/
+
+Preparing AFQMC calculation
+Calculating Cholesky integrals
+Finished calculating Cholesky integrals
+
+Size of the correlation space:
+Number of electrons: (4, 4)
+Number of basis functions: 19
+Number of Cholesky vectors: 166
+
+Starting AFQMC / MF calculation
+    CPU time for imp sol                4.89 sec, wall time    212.80 sec
+    CPU time for Fragment 8             5.31 sec, wall time    212.83 sec
+Fragment 8  E_corr(MP2) = -0.053624144429786774  E_corr(AFQMC) = -0.0557248468861703  E_corr(CCSD(T)) = 0
+    CPU time for LNOAFQMC              46.66 sec, wall time   2239.58 sec
+E(LNO-AFQMC) = -152.49205890068  E_corr = -0.429568253751751
+thresh = 1e-05  E_corr(AFQMC)     = -0.4295682538, 36.6628480142  rel(wrt CCSD) =   0.00%  diff =  0.0000000000
+                E_corr(AFQMC+PT2) = -0.4324183242  rel = 101.84%  diff = -0.0077989209

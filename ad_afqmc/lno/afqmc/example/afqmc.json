@@ -1,0 +1,23 @@
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 926443,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}

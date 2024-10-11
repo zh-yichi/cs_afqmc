@@ -78,6 +78,10 @@ def _prep_afqmc(options=None):
     options["ene0"] = options.get("ene0", 0.0)
     options["free_projection"] = options.get("free_projection", False)
     options["n_batch"] = options.get("n_batch", 1)
+    options["LNO"] = options.get("LNO",False)
+    options['prjlo'] = options.get('prjlo',None)
+    options["orbE"] = options.get("orbE",0)
+    options['maxError'] = options.get('maxError',1e-3)
 
     try:
         with h5py.File("observable.h5", "r") as fh5:
@@ -97,6 +101,7 @@ def _prep_afqmc(options=None):
     ham_data["ene0"] = options["ene0"]
 
     wave_data = {}
+    wave_data["prjlo"] = options["prjlo"]
     mo_coeff = jnp.array(np.load("mo_coeff.npz")["mo_coeff"])
     wave_data["rdm1"] = jnp.array(
         [
@@ -227,12 +232,17 @@ if __name__ == "__main__":
     e_afqmc, err_afqmc = 0.0, 0.0
     if options["free_projection"]:
         driver.fp_afqmc(
-            ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
+        ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
         )
     else:
-        e_afqmc, err_afqmc = driver.afqmc(
-            ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
+        if options["LNO"]:
+            e_afqmc, err_afqmc = driver.LNOafqmc(
+            ham_data, ham, prop, trial, wave_data, sampler, observable, options
         )
+        else:
+            e_afqmc, err_afqmc = driver.afqmc(
+            ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
+            )
     comm.Barrier()
     end = time.time()
     if rank == 0:

@@ -1,0 +1,721 @@
+Number of cores: 28
+
+Number of cores: 28
+
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+INPUT FILE:
+{
+  "system": {
+    "integrals": "FCIDUMP_chol"
+  },
+  "wavefunction": {
+    "left": "rhf",
+    "right": "rhf"
+  },
+  "sampling": {
+    "seed": 79552,
+    "phaseless": true,
+    "dt": 0.005,
+    "nsteps": 50,
+    "nwalk": 10,
+    "stochasticIter": 250,
+    "choleskyThreshold": 0.0005,
+    "orthoSteps": 20,
+    "orbitalE": 3,
+    "maxError": 0.00035355339059327376,
+    "burnIter": 50
+  },
+  "print": {}
+}
+   Iter        Mean energy          Stochastic error       Walltime
+     0      -1.520625078e+02                -              8.35e-01 
+75
+    75      -1.522623425e+02        9.388606336e-04        -6.082378079e-02        3.404433862e-04        5.00e+01 
+100
+   100      -1.522627027e+02        6.119459515e-04        -6.102813472e-02        2.316794362e-04        6.55e+01 
+125
+   125      -1.522618511e+02        5.028327742e-04        -6.073780589e-02        1.749742725e-04        8.11e+01 
+150
+   150      -1.522621309e+02        4.361782094e-04        -6.080210922e-02        1.529934731e-04        9.65e+01 
+175
+   175      -1.522617480e+02        3.837575350e-04        -6.067123478e-02        1.345891861e-04        1.12e+02 
+200
+   200      -1.522618187e+02        3.359494911e-04        -6.073011272e-02        1.207987222e-04        1.27e+02 
+225
+   225      -1.522617115e+02        3.237251715e-04        -6.071244128e-02        1.141257328e-04        1.43e+02 
+
+Mean energy: -1.52261595e+02
+Block size    # of blocks        Mean                Error
+     1            200       -1.52261595e+02       2.980030e-04
+     2            100       -1.52261595e+02       3.134343e-04
+     5             40       -1.52261595e+02       3.201707e-04
+    10             20       -1.52261595e+02       3.523162e-04
+    20             10       -1.52261595e+02       3.741811e-04
+    50              4       -1.52261595e+02       4.523353e-04
+    70              2       -1.52261726e+02       4.591022e-04
+Stocahstic error estimate: 3.201707e-04
+
+
+Mean energy: -6.06876356e-02
+Block size    # of blocks        Mean                Error
+     1            200       -6.06876356e-02       1.058848e-04
+     2            100       -6.06876356e-02       1.090324e-04
+     5             40       -6.06876356e-02       1.047552e-04
+    10             20       -6.06876356e-02       1.241338e-04
+    20             10       -6.06876356e-02       1.103532e-04
+    50              4       -6.06876356e-02       1.311934e-04
+    70              2       -6.06991062e-02       1.432376e-04
+Stocahstic error estimate: 1.090324e-04
+
+AFQMC energy: -152.2616 +/- 0.0003
+
+orbE energy: -0.0607 +/- 0.0001
+
+ph_afqmc_jax walltime: 157.89297080039978

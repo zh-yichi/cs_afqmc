@@ -1,0 +1,173 @@
+
+
+******** <class 'pyscf.df.df_jk.density_fit.<locals>.DensityFitting'> ********
+method = DensityFitting-RHF
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /scratch/summit/joku8258/cbd/tmpdgs2t7p9
+max_memory 4000 MB (current use 71 MB)
+Set gradient conv threshold to 3.16228e-05
+******** <class 'pyscf.df.df.DF'> ********
+auxbasis = None
+max_memory = 4000
+_cderi_to_save = /scratch/summit/joku8258/cbd/tmpd1nojkig
+Default auxbasis cc-pvdz-jkfit is used for O cc-pvdz
+Default auxbasis cc-pvdz-jkfit is used for H cc-pvdz
+init E= -151.748572442519
+  HOMO = -0.477084982132794  LUMO = 0.0790848106374069
+cycle= 1 E= -151.992406725414  delta_E= -0.244  |g|= 0.602  |ddm|= 1.84
+  HOMO = -0.375259607279102  LUMO = 0.162231585691656
+cycle= 2 E= -152.047011302178  delta_E= -0.0546  |g|= 0.297  |ddm|= 0.498
+  HOMO = -0.467295468503355  LUMO = 0.158296548371244
+cycle= 3 E= -152.062085600472  delta_E= -0.0151  |g|= 0.0377  |ddm|= 0.177
+  HOMO = -0.460496487070284  LUMO = 0.163702889467542
+cycle= 4 E= -152.062458994367  delta_E= -0.000373  |g|= 0.00824  |ddm|= 0.0277
+  HOMO = -0.461922852179615  LUMO = 0.163908238114268
+cycle= 5 E= -152.062489578684  delta_E= -3.06e-05  |g|= 0.00151  |ddm|= 0.0108
+  HOMO = -0.462472139233179  LUMO = 0.163902398442801
+cycle= 6 E= -152.062490525436  delta_E= -9.47e-07  |g|= 0.000679  |ddm|= 0.00198
+  HOMO = -0.462365929066466  LUMO = 0.163873144450533
+cycle= 7 E= -152.062490640663  delta_E= -1.15e-07  |g|= 0.000116  |ddm|= 0.000588
+  HOMO = -0.462398758253762  LUMO = 0.163879991649433
+cycle= 8 E= -152.062490646854  delta_E= -6.19e-09  |g|= 1.06e-05  |ddm|= 0.000191
+  HOMO = -0.462398105193129  LUMO = 0.163879975798101
+cycle= 9 E= -152.062490646921  delta_E= -6.75e-11  |g|= 3.39e-06  |ddm|= 1.79e-05
+  HOMO = -0.46239791738309  LUMO = 0.163880104626947
+Extra cycle  E= -152.062490646928  delta_E= -6.68e-12  |g|= 1.53e-06  |ddm|= 4.9e-06
+converged SCF energy = -152.062490646928
+
+******** <class 'pyscf.mp.dfmp2.DFMP2'> ********
+nocc = 8, nmo = 46
+frozen orbitals 2
+max_memory 4000 MB (current use 95 MB)
+E(DFMP2) = -152.468589630778  E_corr = -0.406098983849807
+
+******** <class 'pyscf.cc.dfccsd.RCCSD'> ********
+CC2 = 0
+CCSD nocc = 8, nmo = 46
+frozen orbitals 2
+max_cycle = 50
+direct = 0
+conv_tol = 1e-07
+conv_tol_normt = 1e-05
+diis_space = 6
+diis_start_cycle = 0
+diis_start_energy_diff = 1e+09
+max_memory 4000 MB (current use 108 MB)
+Init t2, MP2 energy = -152.468589637594  E_corr(MP2) -0.406098990666062
+    CPU time for init mp2      0.00 sec, wall time      0.00 sec
+Init E_corr(CCSD) = -0.406098990667145
+cycle = 1  E_corr(CCSD) = -0.415660240743878  dE = -0.00956125008  norm(t1,t2) = 0.0318377
+    CPU time for CCSD iter      0.31 sec, wall time      0.31 sec
+cycle = 2  E_corr(CCSD) = -0.422308202405191  dE = -0.00664796166  norm(t1,t2) = 0.0104712
+    CPU time for CCSD iter      0.32 sec, wall time      0.32 sec
+cycle = 3  E_corr(CCSD) = -0.424221803096713  dE = -0.00191360069  norm(t1,t2) = 0.00410778
+    CPU time for CCSD iter      0.32 sec, wall time      0.33 sec
+cycle = 4  E_corr(CCSD) = -0.424651132554169  dE = -0.000429329457  norm(t1,t2) = 0.000990323
+    CPU time for CCSD iter      0.33 sec, wall time      0.33 sec
+cycle = 5  E_corr(CCSD) = -0.424630569287512  dE = 2.05632667e-05  norm(t1,t2) = 0.000272472
+    CPU time for CCSD iter      0.33 sec, wall time      0.33 sec
+cycle = 6  E_corr(CCSD) = -0.424618589358144  dE = 1.19799294e-05  norm(t1,t2) = 8.56129e-05
+    CPU time for CCSD iter      0.32 sec, wall time      0.33 sec
+cycle = 7  E_corr(CCSD) = -0.424618594448202  dE = -5.09005782e-09  norm(t1,t2) = 3.72879e-05
+    CPU time for CCSD iter      0.33 sec, wall time      0.33 sec
+cycle = 8  E_corr(CCSD) = -0.424619919746233  dE = -1.32529803e-06  norm(t1,t2) = 1.29161e-05
+    CPU time for CCSD iter      0.32 sec, wall time      0.32 sec
+cycle = 9  E_corr(CCSD) = -0.424619434759315  dE = 4.84986918e-07  norm(t1,t2) = 4.44845e-06
+    CPU time for CCSD iter      0.33 sec, wall time      0.33 sec
+cycle = 10  E_corr(CCSD) = -0.424619403939307  dE = 3.08200079e-08  norm(t1,t2) = 1.47199e-06
+    CPU time for CCSD iter      0.32 sec, wall time      0.32 sec
+    CPU time for CCSD      3.22 sec, wall time      3.25 sec
+RCCSD converged
+E(RCCSD) = -152.4871100508675  E_corr = -0.4246194039393067
+CCSD(T) correction = -0.00643879006916963
+
+******** <class '__main__.LNOCCSD'> ********
+nocc = 8, nmo = 46
+frozen orbitals 2
+max_memory 4000 MB (current use 133 MB)
+thresh_occ = 1.000000e-03
+thresh_vir = 1.000000e-04
+force_outcore_ao2mo = True
+no_type = ie
+Constructing LOs
+lo_type = ibo
+ Iterative localization: IB/P4/2x2, 7 iter; Final gradient 7.19e-10
+LOs span occupied space plus some virtual space.
+Using single-LO fragment
+nfrag = 10  nlo = 10
+frag_atmlist = None
+frag_lolist = [[0], [1], [2], [3], [4], [5], [6], [7], [8], [9]]
+frag_wghtlist = [1. 1. 1. 1. 1. 1. 1. 1. 1. 1.]
+frag_nonvlist = None
+    CPU time for LO and fragment        0.21 sec, wall time      0.52 sec
+ao2mo est mem= 1.08 MB  avail mem= 3859.18 MB
+Lov is saved to /scratch/summit/joku8258/cbd/tmptj_xyi7e
+    CPU time for transforming DF-MP2 integrals      0.00 sec, wall time      0.00 sec
+    CPU time for Integral xform         0.01 sec, wall time      0.02 sec
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  13/48 MOs  4 occ  9 vir
+    CPU time for imp sol                0.14 sec, wall time      0.20 sec
+    CPU time for Fragment 1             0.15 sec, wall time      0.20 sec
+Fragment 1  E_corr(MP2) = -0.00123611856362591  E_corr(CCSD) = -0.001305530620282  E_corr(CCSD(T)) = -3.31748974384527e-06
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  13/48 MOs  4 occ  9 vir
+    CPU time for imp sol                0.14 sec, wall time      0.15 sec
+    CPU time for Fragment 2             0.14 sec, wall time      0.16 sec
+Fragment 2  E_corr(MP2) = -0.000712196349622456  E_corr(CCSD) = -0.000763523420122639  E_corr(CCSD(T)) = -2.64857474528236e-06
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  15/48 MOs  4 occ  11 vir
+    CPU time for imp sol                0.18 sec, wall time      0.20 sec
+    CPU time for Fragment 3             0.18 sec, wall time      0.20 sec
+Fragment 3  E_corr(MP2) = -0.0487920596994337  E_corr(CCSD) = -0.0521547485970822  E_corr(CCSD(T)) = -0.000584768451251233
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  13/48 MOs  4 occ  9 vir
+    CPU time for imp sol                0.13 sec, wall time      0.15 sec
+    CPU time for Fragment 4             0.14 sec, wall time      0.16 sec
+Fragment 4  E_corr(MP2) = -0.0429775655767545  E_corr(CCSD) = -0.0449673727377647  E_corr(CCSD(T)) = -0.000133072066018113
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  15/48 MOs  4 occ  11 vir
+    CPU time for imp sol                0.18 sec, wall time      0.21 sec
+    CPU time for Fragment 5             0.18 sec, wall time      0.21 sec
+Fragment 5  E_corr(MP2) = -0.0487920597004342  E_corr(CCSD) = -0.0521547485977702  E_corr(CCSD(T)) = -0.000584768451111031
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  15/48 MOs  4 occ  11 vir
+    CPU time for imp sol                0.18 sec, wall time      0.21 sec
+    CPU time for Fragment 6             0.19 sec, wall time      0.21 sec
+Fragment 6  E_corr(MP2) = -0.0486003891808663  E_corr(CCSD) = -0.052097298744214  E_corr(CCSD(T)) = -0.000596919742334974
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  13/48 MOs  4 occ  9 vir
+    CPU time for imp sol                0.15 sec, wall time      0.17 sec
+    CPU time for Fragment 7             0.15 sec, wall time      0.17 sec
+Fragment 7  E_corr(MP2) = -0.0467697465679885  E_corr(CCSD) = -0.048365012195538  E_corr(CCSD(T)) = -0.000104710950528208
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  14/48 MOs  4 occ  10 vir
+    CPU time for imp sol                0.16 sec, wall time      0.18 sec
+    CPU time for Fragment 8             0.16 sec, wall time      0.18 sec
+Fragment 8  E_corr(MP2) = -0.0467438875437883  E_corr(CCSD) = -0.0501116362601662  E_corr(CCSD(T)) = -0.00045598927471389
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  13/48 MOs  4 occ  9 vir
+    CPU time for imp sol                0.13 sec, wall time      0.16 sec
+    CPU time for Fragment 9             0.14 sec, wall time      0.16 sec
+Fragment 9  E_corr(MP2) = -0.0477742946273571  E_corr(CCSD) = -0.0493102122559549  E_corr(CCSD(T)) = -0.000134908867935432
+    CPU time for make pno               0.00 sec, wall time      0.00 sec
+    impsol:  1 LOs  13/48 MOs  4 occ  9 vir
+    CPU time for imp sol                0.14 sec, wall time      0.16 sec
+    CPU time for Fragment 10            0.14 sec, wall time      0.17 sec
+Fragment 10  E_corr(MP2) = -0.0517338217553709  E_corr(CCSD) = -0.0531410055981027  E_corr(CCSD(T)) = -8.7224477129029e-05
+    CPU time for LNOCCSD                1.58 sec, wall time      1.84 sec
+E(LNOMP2) = -152.446622786493  E_corr = -0.384132139565242
+E(LNOCCSD) = -152.466861735955  E_corr = -0.404371089026998
+E(LNOCCSD_T) = -152.065178975274  E_corr = -0.00268832834551104
+thresh = 1e-04  E_corr(CCSD)     = -0.4043710890  rel =  95.23%  diff =  0.0202483149
+                E_corr(CCSD+PT2) = -0.4263379333  rel = 100.40%  diff = -0.0017185294
+                E_corr(CCSD_T)   = -0.0026883283  rel =  41.75%  diff =  0.0037504617
