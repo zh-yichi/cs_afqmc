@@ -79,6 +79,8 @@ def _prep_afqmc(options=None):
     options["free_projection"] = options.get("free_projection", False)
     options["n_batch"] = options.get("n_batch", 1)
     options["LNO"] = options.get("LNO",False)
+    if options["LNO"]:
+        print("Using Local Natural Orbital Approximation")
     options['prjlo'] = options.get('prjlo',None)
     options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
@@ -237,7 +239,7 @@ if __name__ == "__main__":
     else:
         if options["LNO"]:
             e_afqmc, err_afqmc = driver.LNOafqmc(
-            ham_data, ham, prop, trial, wave_data, sampler, observable, options
+            ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
         )
         else:
             e_afqmc, err_afqmc = driver.afqmc(

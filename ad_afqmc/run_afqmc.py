@@ -67,11 +67,11 @@ def run_afqmc_fp(options=None, script=None, mpi_prefix=None, nproc=None):
     # ene_err = np.loadtxt('ene_err.txt')
     # return ene_err[0], ene_err[1]
 
-def run_afqmc_lno_mf(mf, vmc_root = None,integrals=None, mpi_prefix = None,norb_act = None,nelec_act=None, mo_coeff = None, norb_frozen = [], nproc = None, chol_cut = 1e-5, seed = None, dt = 0.005, steps_per_block = 50, nwalk_per_proc = 5, nblocks = 1000, ortho_steps = 20, burn_in = 50, cholesky_threshold = 0.5e-3, weight_cap = None, write_one_rdm = False, run_dir = None, scratch_dir = None,orbitalE=-2,eris=None,chol_vecs=None,right=None,maxError=1e-4,prjlo=None):
+def run_afqmc_lno_mf(mf, script=None, vmc_root = None,integrals=None, mpi_prefix = None,norb_act = None,nelec_act=None, mo_coeff = None, norb_frozen = [], nproc = None, chol_cut = 1e-5, seed = None, dt = 0.005, steps_per_block = 50, nwalk_per_proc = 5, nblocks = 1000, ortho_steps = 20, burn_in = 50, cholesky_threshold = 0.5e-3, weight_cap = None, write_one_rdm = False, run_dir = None, scratch_dir = None,orbitalE=-2,eris=None,chol_vecs=None,right=None,maxError=1e-4,prjlo=None):
 #def run_afqmc_lno_mf(mf,options=None,script=None, mpi_prefix=None, nproc=None):
     print("#\n# Preparing AFQMC calculation")
     options = {'n_eql': 3,
-             'n_ene_blocks': 25,
+             'n_ene_blocks': 1,
              'n_sr_blocks': 10,
              'n_blocks': nblocks,
              'n_walkers': nwalk_per_proc,
@@ -83,6 +83,7 @@ def run_afqmc_lno_mf(mf, vmc_root = None,integrals=None, mpi_prefix = None,norb_
              'orbE':orbitalE,
              'prjlo':prjlo,
              'maxError':maxError,
+             'LNO':True,
              }
     import pickle
     with open('options.bin', 'wb') as f:
@@ -177,11 +178,23 @@ def run_afqmc_lno_mf(mf, vmc_root = None,integrals=None, mpi_prefix = None,norb_
         np.savez("mo_coeff.npz",mo_coeff=trial_coeffs)
 
     pyscf_interface.write_dqmc(h1e, h1e_mod, chol, sum(nelec), nbasis, enuc, ms=mol.spin, filename='FCIDUMP_chol', mo_coeffs = trial_coeffs)
-    #path = os.path.abspath(__file__)
-    #dir_path = os.path.dirname(path)
-    #script = f"{dir_path}/mpi_jax.py"
-    #os.system(f'python {script} > afqmc.out')    
-    os.system('python /home/yichi/research/ad_afqmc/ad_afqmc/lno/afqmc/mpi_jax.py>afqmc.out') #change this path to your /lno/afqmc/mpi_jax.py
+    if script is None:
+        path = os.path.abspath(__file__)
+        dir_path = os.path.dirname(path)
+        script = f"{dir_path}/mpi_jax.py"
+    use_gpu = config.afqmc_config["use_gpu"]
+    gpu_flag = "--use_gpu" if use_gpu else ""
+    if mpi_prefix is None:
+        if use_gpu:
+            mpi_prefix = ""
+        else:
+            mpi_prefix = "mpirun "
+    if nproc is not None:
+        mpi_prefix += f"-np {nproc} "
+    os.system(
+        f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} > afqmc.out"
+    )
+    #os.system('python /home/yichi/research/ad_afqmc/ad_afqmc/mpi_jax.py>afqmc.out') #change this path to your /lno/afqmc/mpi_jax.py
     target_line_prefix = "orbE energy: "
     with open('afqmc.out', "r") as file:
         for line in file:

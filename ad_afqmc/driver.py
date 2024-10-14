@@ -571,19 +571,18 @@ def LNOafqmc(
     sampler: sampling.sampler,
     observable,
     options: dict,
+    MPI,
     init_walkers: Optional[Sequence] = None,
 ):
     init = time.time()
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
     seed = options["seed"]
     neql = options["n_eql"]
-    truncate = -1; bl = -1
-    maxError = options['maxError']
+    #truncate = -1; bl = -1
+    #maxError = options['maxError']
     orbE = options['orbE']
-    #comm = MPI.COMM_WORLD
-    #size = comm.Get_size()
-    #rank = comm.Get_rank()
-    rank = 0
-    size = 1
 
     if observable is not None:
         observable_op = jnp.array(observable[0])
@@ -632,14 +631,14 @@ def LNOafqmc(
         trial_rdm2 = trial_rdm2.reshape(ham.norb**2, ham.norb**2)
         trial_rdm2 = jnp.array(trial_rdm2)
 
-    # comm.Barrier()
+    comm.Barrier()
     init_time = time.time() - init
     if rank == 0:
         print("# Equilibration sweeps:")
         print("#   Iter        Block energy      Walltime")
         n = 0
         print(f"# {n:5d}      {prop_data['e_estimate']:.9e}     {init_time:.2e} ")
-    # comm.Barrier()
+    comm.Barrier()
 
     sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 
@@ -680,17 +679,17 @@ def LNOafqmc(
             0.9 * prop_data["e_estimate"] + 0.1 * block_energy_n[0]
         )
 
-        # comm.Barrier()
+        comm.Barrier()
         if rank == 0:
             print(
                 f"# {n:5d}      {block_energy_n[0]:.9e}     {time.time() - init:.2e} ",
                 flush=True,
             )
-        # comm.Barrier()
+        comm.Barrier()
 
     local_large_deviations = np.array(0)
 
-    # comm.Barrier()
+    comm.Barrier()
     init_time = time.time() - init
     if rank == 0:
         print("#\n# Sampling sweeps:")
@@ -700,7 +699,7 @@ def LNOafqmc(
             print(
                 "#  Iter        Mean energy          Stochastic error       Mean observable       Walltime"
             )
-    # comm.Barrier()
+    comm.Barrier()
 
     global_block_weights = None
     global_block_energies = None
@@ -833,18 +832,18 @@ def LNOafqmc(
             elif options["ad_mode"] == "2rdm":
                 gather_rdm2s = np.zeros((size, *(rdm_2_op.shape)), dtype="float32")
 
-        # comm.Gather(block_weight_n, gather_weights, root=0)
-        # comm.Gather(block_energy_n, gather_energies, root=0)
-        # comm.Gather(block_observable_n, gather_observables, root=0)
+        comm.Gather(block_weight_n, gather_weights, root=0)
+        comm.Gather(block_energy_n, gather_energies, root=0)
+        comm.Gather(block_observable_n, gather_observables, root=0)
         gather_weights = block_weight_n
         gather_energies = block_energy_n
         gather_orbE = block_orbE_n
         gather_observables = block_observable_n
         if options["ad_mode"] == "reverse":
-            # comm.Gather(block_rdm1_n, gather_rdm1s, root=0)
+            comm.Gather(block_rdm1_n, gather_rdm1s, root=0)
             gather_rdm1s = block_rdm1_n
         elif options["ad_mode"] == "2rdm":
-            # comm.Gather(block_rdm2_n, gather_rdm2s, root=0)
+            comm.Gather(block_rdm2_n, gather_rdm2s, root=0)
             gather_rdm2s = block_rdm2_n
         block_energy_n = 0.0
         if rank == 0:
@@ -878,7 +877,7 @@ def LNOafqmc(
         prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * block_energy_n
 
         if n % (max(sampler.n_blocks // 10, 1)) == 0:
-            # comm.Barrier()
+            comm.Barrier()
             if rank == 0:
                 e_afqmc, energy_error = stat_utils.blocking_analysis(
                     global_block_weights[: (n + 1) * size],
@@ -927,21 +926,21 @@ def LNOafqmc(
                         )
                     ).T,
                 )
-            # comm.Barrier()
+            comm.Barrier()
 
     global_large_deviations = np.array(0)
-    # comm.Reduce(
-    #     [local_large_deviations, MPI.INT],
-    #     [global_large_deviations, MPI.INT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
+    comm.Reduce(
+        [local_large_deviations, MPI.INT],
+        [global_large_deviations, MPI.INT],
+        op=MPI.SUM,
+        root=0,
+    )
     global_large_deviations = local_large_deviations
-    # comm.Barrier()
+    comm.Barrier()
     if rank == 0:
         print(f"#\n# Number of large deviations: {global_large_deviations}", flush=True)
 
-    # comm.Barrier()
+    comm.Barrier()
     e_afqmc, e_err_afqmc = None, None
     if rank == 0:
         orbE_afqmc , err_orbE = stat_utils.blocking_analysis(global_block_weights, global_block_orbE, neql=0, printQ=True)
@@ -1067,8 +1066,8 @@ def LNOafqmc(
                     rdm2=2 * avg_rdm2.reshape(ham.norb, ham.norb, ham.norb, ham.norb),
                 )
 
-    # comm.Barrier()
-    # e_afqmc = comm.bcast(e_afqmc, root=0)
-    # e_err_afqmc = comm.bcast(e_err_afqmc, root=0)
-    # comm.Barrier()
+    comm.Barrier()
+    e_afqmc = comm.bcast(e_afqmc, root=0)
+    e_err_afqmc = comm.bcast(e_err_afqmc, root=0)
+    comm.Barrier()
     return e_afqmc, e_err_afqmc
