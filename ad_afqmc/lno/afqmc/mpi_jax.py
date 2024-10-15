@@ -1,31 +1,63 @@
 import os
-
+import platform
+import socket
 # os.environ["XLA_FLAGS"] = (
 #     "--xla_force_host_platform_device_count=1 --xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 # )
 # os.environ["JAX_PLATFORM_NAME"] = "cpu"
-os.environ["JAX_ENABLE_X64"] = "True"
-
 from jax import config
-config.update("jax_enable_x64", True)
 # config.update("jax_platform_name", "cpu")
-
 import pickle
 import time
-
 import h5py
 import numpy as np
 from jax import numpy as jnp
 # from mpi4py import MPI
-
 from ad_afqmc import driver, hamiltonian, propagation, sampling, wavefunctions
 
-# comm = MPI.COMM_WORLD
-# size = comm.Get_size()
-# rank = comm.Get_rank()
+use_gpu = True
 
-rank = 0
-size = 1
+if use_gpu:
+    os.environ["JAX_ENABLE_X64"] = "True"
+    config.update("jax_enable_x64", True)
+    config.update("jax_platform_name", "gpu")
+    os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"
+    os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+    hostname = socket.gethostname()
+    system_type = platform.system()
+    machine_type = platform.machine()
+    processor = platform.processor()
+    print(f"# Hostname: {hostname}")
+    print(f"# System Type: {system_type}")
+    print(f"# Machine Type: {machine_type}")
+    print(f"# Processor: {processor}")
+    uname_info = platform.uname()
+    print("# Using GPU.")
+    print(f"# System: {uname_info.system}")
+    print(f"# Node Name: {uname_info.node}")
+    print(f"# Release: {uname_info.release}")
+    print(f"# Version: {uname_info.version}")
+    print(f"# Machine: {uname_info.machine}")
+    print(f"# Processor: {uname_info.processor}")
+    rank = 0
+    size = 1
+
+else:
+    from mpi4py import MPI
+    os.environ["JAX_PLATFORM_NAME"] = "cpu"
+    os.environ["XLA_FLAGS"] = ("--xla_force_host_platform_device_count=1 --xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1")
+    print("# Using CPU.")
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+    hostname = socket.gethostname()
+    system_type = platform.system()
+    machine_type = platform.machine()
+    processor = platform.processor()
+    print(f"# Hostname: {hostname}")
+    print(f"# System Type: {system_type}")
+    print(f"# Machine Type: {machine_type}")
+    print(f"# Processor: {processor}")
 
 def _prep_afqmc(options=None):
     if rank == 0:
@@ -36,6 +68,12 @@ def _prep_afqmc(options=None):
         h0 = jnp.array(fh5.get("energy_core"))
         h1 = jnp.array(fh5.get("hcore")).reshape(nmo, nmo)
         chol = jnp.array(fh5.get("chol")).reshape(-1, nmo, nmo)
+
+    assert type(ms) is np.int64
+    assert type(nelec) is np.int64
+    assert type(nmo) is np.int64
+    assert type(nchol) is np.int64
+    ms, nelec, nmo, nchol = int(ms), int(nelec), int(nmo), int(nchol)
 
     nelec_sp = ((nelec + abs(ms)) // 2, (nelec - abs(ms)) // 2)
 
@@ -67,12 +105,16 @@ def _prep_afqmc(options=None):
     options['prjlo'] = options.get('prjlo',None)
     options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
-
     if options["trial"] is None:
         if rank == 0:
             print(f"# No trial specified in options.")
     options["ene0"] = options.get("ene0", 0.0)
     options["free_projection"] = options.get("free_projection", False)
+    options["n_batch"] = options.get("n_batch", 1)
+    options["LNO"] = options.get("LNO",True)
+    options['prjlo'] = options.get('prjlo',None)
+    options["orbE"] = options.get("orbE",0)
+    options['maxError'] = options.get('maxError',1e-3)
 
     try:
         with h5py.File("observable.h5", "r") as fh5:
@@ -194,7 +236,7 @@ if __name__ == "__main__":
         )
     else:
         e_afqmc, err_afqmc = driver.LNOafqmc(
-            ham_data, ham, prop, trial, wave_data, sampler, observable, options
+            ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
         )
     # comm.Barrier()
     end = time.time()

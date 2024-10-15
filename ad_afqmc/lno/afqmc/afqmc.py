@@ -193,12 +193,25 @@ class LNOAFQMC(LNO):
         self.efrag_cc   = efrag_cc   * frag_wghtlist
         self.efrag_cc_t = efrag_cc_t * frag_wghtlist
 
+    def total_lno_erro_afqmc_err(self):
+        filename = 'fragmentenergies.txt'
+        with open(filename, 'r') as file:
+            lines = file.readlines()
+        orbital_err = [line.split()[1] for line in lines]
+        if 'None' in orbital_err:
+            print('sample size not efficient to determine stochastic error!!!')
+            self.total_err = None
+        else: self.total_err = (sum([0 if err=='None' else float(err)**2 for err in orbital_err]))**0.5
+        return self.total_err
+
     def _finalize(self):
         r''' Hook for dumping results and clearing up the object.'''
         #logger.note(self, 'E(%s) = %.15g  E_corr = %.15g',
         #            'LNOMP2', self.e_tot_pt2, self.e_corr_pt2)
-        logger.note(self, 'E(%s) = %.15g  E_corr = %.15g',
-                    'LNO-AFQMC', self.e_tot, self.e_corr)
+        total_err = self.total_lno_erro_afqmc_err()
+        logger.note(self, f'E(LNO-AFQMC) = {self.e_tot}  E_corr = {self.e_corr}  E_err = {self.total_err}')
+        #logger.note(self, f'E(%s) = %.15g  E_corr = %.15g  E_err = {self.total_err}',
+        #            'LNO-AFQMC', self.e_tot, self.e_corr)
         if self.ccsd_t:
             logger.note(self, 'E(%s) = %.15g  E_corr = %.15g',
                         'LNOCCSD_T', self.e_tot_ccsd_t, self.e_corr_ccsd_t)

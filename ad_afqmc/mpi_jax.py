@@ -80,7 +80,7 @@ def _prep_afqmc(options=None):
     options["n_batch"] = options.get("n_batch", 1)
     options["LNO"] = options.get("LNO",False)
     if options["LNO"]:
-        print("Using Local Natural Orbital Approximation")
+        print("# Using Local Natural Orbital Approximation")
     options['prjlo'] = options.get('prjlo',None)
     options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
