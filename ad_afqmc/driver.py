@@ -694,11 +694,9 @@ def LNOafqmc(
     if rank == 0:
         print("#\n# Sampling sweeps:")
         if options["ad_mode"] is None:
-            print("#  Iter        Mean energy          Stochastic error          OrbitalEnergy          OrbE Stoch Error                        Walltime")
+            print("#  Iter        Mean energy          Stochastic error          OrbitalEnergy          OrbEStochError          Walltime")
         else:
-            print(
-                "#  Iter        Mean energy          Stochastic error       Mean observable       Walltime"
-            )
+            print("#  Iter        Mean energy          Stochastic error       Mean observable       Walltime")
     comm.Barrier()
 
     global_block_weights = None

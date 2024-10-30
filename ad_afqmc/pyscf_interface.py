@@ -55,6 +55,9 @@ def prep_afqmc(
     norb_frozen: int = 0,
     chol_cut: float = 1e-5,
     integrals: Optional[dict] = None,
+    mo_file = "mo_coeff.npz",
+    amp_file = "amplitudes.npz",
+    chol_file = "FCIDUMP_chol"
 ):
     """Prepare AFQMC calculation with mean field trial wavefunction. Writes integrals and mo coefficients to disk.
 
@@ -88,8 +91,9 @@ def prep_afqmc(
             ci2ab = ci2ab.transpose(0, 2, 1, 3)
             ci1a = np.array(cc.t1[0])
             ci1b = np.array(cc.t1[1])
+            
             np.savez(
-                "amplitudes.npz",
+                amp_file,
                 ci1a=ci1a,
                 ci1b=ci1b,
                 ci2aa=ci2aa,
@@ -100,7 +104,7 @@ def prep_afqmc(
             ci2 = cc.t2 + np.einsum("ia,jb->ijab", np.array(cc.t1), np.array(cc.t1))
             ci2 = ci2.transpose(0, 2, 1, 3)
             ci1 = np.array(cc.t1)
-            np.savez("amplitudes.npz", ci1=ci1, ci2=ci2)
+            np.savez(amp_file, ci1=ci1, ci2=ci2)
     else:
         mf = mf_or_cc
 
@@ -142,6 +146,7 @@ def prep_afqmc(
     else:
         DFbas = None
         if getattr(mf, "with_df", None) is not None:
+            print('# Decomposing ERI with DF')
             DFbas = mf.with_df.auxmol.basis  # type: ignore
         h1e, chol, nelec, enuc = generate_integrals(
             mol, mf.get_hcore(), basis_coeff, chol_cut, DFbas=DFbas
@@ -226,7 +231,7 @@ def prep_afqmc(
         trial_coeffs[0] = uhfCoeffs[:, :nbasis]
         trial_coeffs[1] = uhfCoeffs[:, nbasis:]
         # np.savetxt("uhf.txt", uhfCoeffs)
-        np.savez("mo_coeff.npz", mo_coeff=trial_coeffs)
+        np.savez(mo_file, mo_coeff=trial_coeffs)
 
     elif isinstance(mf, scf.rhf.RHF):
         q, _ = np.linalg.qr(
@@ -236,8 +241,8 @@ def prep_afqmc(
         )
         trial_coeffs[0] = q
         trial_coeffs[1] = q
-        np.savez("mo_coeff.npz", mo_coeff=trial_coeffs)
-
+        np.savez(mo_file, mo_coeff=trial_coeffs)
+    
     write_dqmc(
         h1e,
         h1e_mod,
@@ -246,7 +251,7 @@ def prep_afqmc(
         nbasis,
         enuc,
         ms=mol.spin,
-        filename="FCIDUMP_chol",
+        filename=chol_file,
         mo_coeffs=trial_coeffs,
     )
 

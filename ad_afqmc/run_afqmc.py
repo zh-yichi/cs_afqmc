@@ -133,6 +133,7 @@ def run_afqmc_lno_mf(mf, script=None, vmc_root = None,integrals=None, mpi_prefix
 #     import pdb;pdb.set_trace()
       nbasis = mo_coeff.shape[-1]
       act = [i for i in range(nbasis) if i not in norb_frozen]
+      #import pdb;pdb.set_trace()
       e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
       chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
 

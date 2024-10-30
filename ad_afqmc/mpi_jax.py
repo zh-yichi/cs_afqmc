@@ -30,11 +30,11 @@ from ad_afqmc import driver, hamiltonian, propagation, sampling, wavefunctions
 print = partial(print, flush=True)
 
 
-def _prep_afqmc(options=None):
+def _prep_afqmc(options=None,mo_file="mo_coeff.npz",amp_file="amplitudes.npz",chol_file="FCIDUMP_chol"):
     if rank == 0:
         print(f"# Number of MPI ranks: {size}\n#")
 
-    with h5py.File("FCIDUMP_chol", "r") as fh5:
+    with h5py.File(chol_file, "r") as fh5:
         [nelec, nmo, ms, nchol] = fh5["header"]
         h0 = jnp.array(fh5.get("energy_core"))
         h1 = jnp.array(fh5.get("hcore")).reshape(nmo, nmo)
@@ -104,7 +104,7 @@ def _prep_afqmc(options=None):
 
     wave_data = {}
     wave_data["prjlo"] = options["prjlo"]
-    mo_coeff = jnp.array(np.load("mo_coeff.npz")["mo_coeff"])
+    mo_coeff = jnp.array(np.load(mo_file)["mo_coeff"])
     wave_data["rdm1"] = jnp.array(
         [
             mo_coeff[0][:, : nelec_sp[0]] @ mo_coeff[0][:, : nelec_sp[0]].T,
@@ -134,7 +134,7 @@ def _prep_afqmc(options=None):
         )
     elif options["trial"] == "cisd":
         try:
-            amplitudes = np.load("amplitudes.npz")
+            amplitudes = np.load(amp_file)
             ci1 = jnp.array(amplitudes["ci1"])
             ci2 = jnp.array(amplitudes["ci2"])
             trial_wave_data = {"ci1": ci1, "ci2": ci2}
@@ -144,7 +144,7 @@ def _prep_afqmc(options=None):
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
     elif options["trial"] == "ucisd":
         try:
-            amplitudes = np.load("amplitudes.npz")
+            amplitudes = np.load(amp_file)
             ci1a = jnp.array(amplitudes["ci1a"])
             ci1b = jnp.array(amplitudes["ci1b"])
             ci2aa = jnp.array(amplitudes["ci2aa"])
