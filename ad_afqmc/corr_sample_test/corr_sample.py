@@ -1,12 +1,11 @@
-#import struct
 import time
-#from functools import partial
+from functools import partial
 from typing import List, Optional, Tuple, Union
 
 #import h5py
 import jax
 import jax.numpy as jnp
-from jax import random, lax
+from jax import random, lax, jit
 import numpy as np
 #import scipy
 from pyscf import __config__,  df,  lib, mcscf, scf
@@ -25,6 +24,7 @@ ao2mo_chol_copy = pyscf_interface.ao2mo_chol_copy
 ao2mo_chol = pyscf_interface.ao2mo_chol
 write_dqmc = pyscf_interface.write_dqmc
 
+@jit
 def fix_len_chunked_cholesky(mol, chol_len, max_error=1e-6, verbose=False, cmax=10):
     """Modified cholesky decomposition of certain length from pyscf eris."""
 
@@ -301,7 +301,7 @@ def init_prop(ham_data, ham, prop, trial, wave_data, options, MPI):
     prop_data = prop.init_prop_data(trial, wave_data, ham_data, init_walkers)
     prop_data["key"] = random.PRNGKey(seed + rank)
     prop_data["n_killed_walkers"] = 0
-    print(f"# initial energy: {prop_data['e_estimate']:.9e}")
+    #print(f"# initial energy: {prop_data['e_estimate']:.9e}")
     
     return prop_data, ham_data
 
@@ -324,6 +324,7 @@ def block_en_weight(prop_data,ham_data,prop,trial,wave_data):
     block_energy = jnp.sum(energy_samples * prop_data["weights"]) / block_weight
     return block_energy, block_weight
 
+@partial(jit, static_argnums=(3,4))
 def field_block_scan(
         prop_data: dict,
         fields,
@@ -349,6 +350,7 @@ def field_block_scan(
     )
     return prop_data
 
+@partial(jit, static_argnums=(2,3,7,8))
 def cs_block_scan(
         prop_data1: dict,
         ham_data1: dict,
@@ -375,6 +377,7 @@ def cs_block_scan(
 
     return prop_data1, prop_data2, fields
 
+@partial(jit, static_argnums=(2,3,7,8))
 def ucs_block_scan(
         prop_data1: dict,
         ham_data1: dict,
@@ -410,3 +413,52 @@ def ucs_block_scan(
     prop_data2 = field_block_scan(prop_data2,fields2,ham_data2,prop2,trial2,wave_data2)
 
     return prop_data1, prop_data2, fields1, fields2
+
+@partial(jit, static_argnums=(0,3,4,8,9))
+def cs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2):
+
+    cs_prop_data = (prop_data1,prop_data2)
+    def cs_step(cs_prop_data,_):
+        prop_data1,prop_data2= cs_prop_data
+        prop_data1,prop_data2,_ = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
+        en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+        en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+        norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
+        norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
+        weight_en_sample1 = en_samples1*norm_weight1
+        weight_en_sample2 = en_samples2*norm_weight2
+        weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
+        en1 = sum(weight_en_sample1)
+        en2 = sum(weight_en_sample2)
+        en_diff = sum(weight_en_diff_sample)
+        cs_prop_data = (prop_data1,prop_data2)
+        return cs_prop_data,(en1,en2,en_diff)
+
+    cs_prop_data,(en1,en2,en_diff) = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
+    return cs_prop_data,(en1,en2,en_diff)
+
+@partial(jit, static_argnums=(0,3,4,8,9))
+def ucs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2):
+
+    ucs_prop_data = (prop_data1,prop_data2)
+    def ucs_step(ucs_prop_data,_):
+        prop_data1,prop_data2= ucs_prop_data
+        prop_data1,prop_data2,_,_ = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
+        en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+        en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+        norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
+        norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
+        weight_en_sample1 = en_samples1*norm_weight1
+        weight_en_sample2 = en_samples2*norm_weight2
+        weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
+        en1 = sum(weight_en_sample1)
+        en2 = sum(weight_en_sample2)
+        en_diff = sum(weight_en_diff_sample)
+        ucs_prop_data = (prop_data1,prop_data2)
+        return ucs_prop_data,(en1,en2,en_diff)
+
+    (prop_data1,prop_data2),(en1,en2,en_diff) = jax.lax.scan(ucs_step,ucs_prop_data,xs=None,length=steps)
+    prop_data1 = prop1.stochastic_reconfiguration_local(prop_data1)
+    prop_data2 = prop2.stochastic_reconfiguration_local(prop_data2)
+    ucs_prop_data = (prop_data1,prop_data2)
+    return ucs_prop_data,(en1,en2,en_diff)

@@ -25,12 +25,15 @@ from functools import partial
 
 from jax import numpy as jnp
 
-from ad_afqmc import driver, hamiltonian, propagation, sampling, wavefunctions
+from ad_afqmc import driver, hamiltonian, propagation, sampling, wavefunctions, run_afqmc
 
 print = partial(print, flush=True)
 
+mo_file = run_afqmc.mo_file
+amp_file = run_afqmc.amp_file
+chol_file = run_afqmc.chol_file
 
-def _prep_afqmc(options=None,mo_file="mo_coeff.npz",amp_file="amplitudes.npz",chol_file="FCIDUMP_chol"):
+def _prep_afqmc(options=None,mo_file=mo_file,amp_file=amp_file,chol_file=chol_file):
     if rank == 0:
         print(f"# Number of MPI ranks: {size}\n#")
 

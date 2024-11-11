@@ -18,6 +18,9 @@ from pyscf import __config__, ao2mo, df, dft, lib, mcscf, scf
 
 print = partial(print, flush=True)
 
+mo_file = "mo_coeff.npz"
+amp_file = "amplitudes.npz"
+chol_file = "FCIDUMP_chol"
 
 def run_afqmc(options=None, script=None, mpi_prefix=None, nproc=None):
     if options is None:
