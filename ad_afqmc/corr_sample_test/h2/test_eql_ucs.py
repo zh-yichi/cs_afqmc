@@ -5,7 +5,7 @@ import jax
 
 print = partial(print, flush=True)
 nwalkers = 20
-n_runs = 20
+n_runs = 200
 eql_steps = 6
 options1 = {
     "dt": 0.005,
@@ -31,12 +31,12 @@ options2 = {
     "trial": "rhf",
 }
 
-mo_file1="mo1.npz"
+mo_file1="h2_mo1.npz"
 amp_file1="amp1.npz"
-chol_file1="chol1"
-mo_file2="mo2.npz"
+chol_file1="h2_chol1"
+mo_file2="h2_mo2.npz"
 amp_file2="amp2.npz"
-chol_file2="chol2"
+chol_file2="h2_chol2"
 
 from mpi4py import MPI
 import numpy as np
@@ -62,7 +62,7 @@ comm.Barrier()
 if rank == 0:
     print('# test equilibrium')
     print(f'tot_walkers: {nwalkers*size}, eql_steps: {eql_steps}')
-    print('n_eql \t system1_en \t system2_en \t en_diff \t totol_time')
+    print('n_run \t system1_en \t system2_en \t en_diff \t totol_time')
     energy1 = np.zeros(n_runs)
     energy2 = np.zeros(n_runs)
     en_diff = np.zeros(n_runs)
@@ -75,7 +75,7 @@ for i in range(n_runs):
     prop_data2, ham_data2 = corr_sample.init_prop(ham_data2, ham2, prop2, trial2, wave_data2, options2, MPI)
 
     (prop_data1,prop_data2),_ \
-        = corr_sample.cs_steps_scan(
+        = corr_sample.ucs_steps_scan(
             eql_steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2
             )
         
@@ -132,4 +132,4 @@ if rank == 0:
     print(f'averaged over {n_runs}')
     print(f'system1 energy: {en_mean1}, error: {en_err1}')
     print(f'system2 energy: {en_mean2}, error: {en_err2}')
-    print(f'cs energy difference: {en_diff_mean}, error: {en_diff_err}')
+    print(f'ucs energy difference: {en_diff_mean}, error: {en_diff_err}')

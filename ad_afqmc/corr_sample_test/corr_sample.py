@@ -375,7 +375,7 @@ def cs_block_scan(
     prop_data1 = field_block_scan(prop_data1,fields,ham_data1,prop1,trial1,wave_data1)
     prop_data2 = field_block_scan(prop_data2,fields,ham_data2,prop2,trial2,wave_data2)
 
-    return prop_data1, prop_data2, fields
+    return prop_data1, prop_data2
 
 @partial(jit, static_argnums=(2,3,7,8))
 def ucs_block_scan(
@@ -412,7 +412,7 @@ def ucs_block_scan(
     )
     prop_data2 = field_block_scan(prop_data2,fields2,ham_data2,prop2,trial2,wave_data2)
 
-    return prop_data1, prop_data2, fields1, fields2
+    return prop_data1, prop_data2
 
 @partial(jit, static_argnums=(0,3,4,8,9))
 def cs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2):
@@ -420,22 +420,22 @@ def cs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,
     cs_prop_data = (prop_data1,prop_data2)
     def cs_step(cs_prop_data,_):
         prop_data1,prop_data2= cs_prop_data
-        prop_data1,prop_data2,_ = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
-        en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
-        en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
-        norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
-        norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
-        weight_en_sample1 = en_samples1*norm_weight1
-        weight_en_sample2 = en_samples2*norm_weight2
-        weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
-        en1 = sum(weight_en_sample1)
-        en2 = sum(weight_en_sample2)
-        en_diff = sum(weight_en_diff_sample)
+        prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
+        # en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+        # en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+        # norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
+        # norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
+        # weight_en_sample1 = en_samples1*norm_weight1
+        # weight_en_sample2 = en_samples2*norm_weight2
+        # weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
+        # en1 = sum(weight_en_sample1)
+        # en2 = sum(weight_en_sample2)
+        # en_diff = sum(weight_en_diff_sample)
         cs_prop_data = (prop_data1,prop_data2)
-        return cs_prop_data,(en1,en2,en_diff)
+        return cs_prop_data, None #(en1,en2,en_diff)
 
-    cs_prop_data,(en1,en2,en_diff) = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
-    return cs_prop_data,(en1,en2,en_diff)
+    cs_prop_data,_ = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
+    return cs_prop_data
 
 @partial(jit, static_argnums=(0,3,4,8,9))
 def ucs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2):
@@ -443,22 +443,22 @@ def ucs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2
     ucs_prop_data = (prop_data1,prop_data2)
     def ucs_step(ucs_prop_data,_):
         prop_data1,prop_data2= ucs_prop_data
-        prop_data1,prop_data2,_,_ = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
-        en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
-        en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
-        norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
-        norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
-        weight_en_sample1 = en_samples1*norm_weight1
-        weight_en_sample2 = en_samples2*norm_weight2
-        weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
-        en1 = sum(weight_en_sample1)
-        en2 = sum(weight_en_sample2)
-        en_diff = sum(weight_en_diff_sample)
+        prop_data1,prop_data2 = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
+        # en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+        # en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+        # norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
+        # norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
+        # weight_en_sample1 = en_samples1*norm_weight1
+        # weight_en_sample2 = en_samples2*norm_weight2
+        # weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
+        # en1 = sum(weight_en_sample1)
+        # en2 = sum(weight_en_sample2)
+        # en_diff = sum(weight_en_diff_sample)
         ucs_prop_data = (prop_data1,prop_data2)
-        return ucs_prop_data,(en1,en2,en_diff)
+        return ucs_prop_data, None
 
-    (prop_data1,prop_data2),(en1,en2,en_diff) = jax.lax.scan(ucs_step,ucs_prop_data,xs=None,length=steps)
+    (prop_data1,prop_data2),_ = jax.lax.scan(ucs_step,ucs_prop_data,xs=None,length=steps)
     prop_data1 = prop1.stochastic_reconfiguration_local(prop_data1)
     prop_data2 = prop2.stochastic_reconfiguration_local(prop_data2)
     ucs_prop_data = (prop_data1,prop_data2)
-    return ucs_prop_data,(en1,en2,en_diff)
+    return ucs_prop_data
