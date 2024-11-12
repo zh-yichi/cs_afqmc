@@ -2,10 +2,12 @@ from functools import partial
 from jax import random
 from jax import numpy as jnp
 import jax
+import psutil
+import os
 
 print = partial(print, flush=True)
 nwalkers = 20
-n_runs = 200
+n_runs = 10
 eql_steps = 6
 options1 = {
     "dt": 0.005,
@@ -62,13 +64,15 @@ comm.Barrier()
 if rank == 0:
     print('# test equilibrium')
     print(f'tot_walkers: {nwalkers*size}, eql_steps: {eql_steps}')
-    print('n_run \t system1_en \t system2_en \t en_diff \t totol_time')
+    print('n_run \t system1_en \t system2_en \t   en_diff \t totol_time \t memory_usage(MB)')
     energy1 = np.zeros(n_runs)
     energy2 = np.zeros(n_runs)
     en_diff = np.zeros(n_runs)
+comm.Barrier()
 
-    
+
 for i in range(n_runs):
+
     options1["seed"] = seeds1[i]
     options2["seed"] = seeds2[i]
     prop_data1, ham_data1 = corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, options1, MPI)
@@ -99,13 +103,18 @@ for i in range(n_runs):
         en_sample2 = None
         weight1 = None
         weight2 = None
+    comm.Barrier()
 
     comm.Gather(loc_en_sample1,en_sample1,root=0)
     comm.Gather(loc_en_sample2,en_sample2,root=0)
     comm.Gather(loc_weight1,weight1,root=0)
     comm.Gather(loc_weight2,weight2,root=0)
 
+    process = psutil.Process(os.getpid())
+    memory_usage = process.memory_info().rss  # in bytes
+    all_memory_usages = comm.gather(memory_usage, root=0)
 
+    comm.Barrier()
     if rank == 0:
         norm_weight1 = weight1/sum(weight1)
         norm_weight2 = weight2/sum(weight2)
@@ -118,8 +127,11 @@ for i in range(n_runs):
         energy1[i] = sum(weight_en_sample1)
         energy2[i] = sum(weight_en_sample2)
         en_diff[i] = sum(weight_en_diff_sample)
+        total_memory_usage = sum(all_memory_usages)
         end_time = time.time()
-        print(f'{i+1} \t  {energy1[i]:.6f} \t {energy2[i]:.6f} \t  {en_diff[i]:.6f} \t {end_time-init_time:.2f}')
+        print(f'{i+1} \t  {energy1[i]:.6f} \t {energy2[i]:.6f} \t  {en_diff[i]:.6f} \t   {end_time-init_time:.2f} \t {total_memory_usage/ 1024 ** 2}')
+    comm.Barrier()
+    #jax.clear_backends_cache()
 
 comm.Barrier()
 if rank == 0:
@@ -133,3 +145,4 @@ if rank == 0:
     print(f'system1 energy: {en_mean1}, error: {en_err1}')
     print(f'system2 energy: {en_mean2}, error: {en_err2}')
     print(f'cs energy difference: {en_diff_mean}, error: {en_diff_err}')
+comm.Barrier()
