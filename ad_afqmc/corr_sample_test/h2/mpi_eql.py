@@ -73,10 +73,10 @@ comm.Barrier()
 
 for i in range(n_runs):
 
-    options1["seed"] = seeds1[i]
-    options2["seed"] = seeds2[i]
-    prop_data1, ham_data1 = corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, options1, MPI)
-    prop_data2, ham_data2 = corr_sample.init_prop(ham_data2, ham2, prop2, trial2, wave_data2, options2, MPI)
+    #options1["seed"] = seeds1[i]
+    #options2["seed"] = seeds2[i]
+    prop_data1, ham_data1 = corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, seeds1[i], MPI)
+    prop_data2, ham_data2 = corr_sample.init_prop(ham_data2, ham2, prop2, trial2, wave_data2, seeds2[i], MPI)
 
     (prop_data1,prop_data2) \
         = corr_sample.cs_steps_scan(

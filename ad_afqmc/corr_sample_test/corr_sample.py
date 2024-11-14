@@ -24,7 +24,7 @@ ao2mo_chol_copy = pyscf_interface.ao2mo_chol_copy
 ao2mo_chol = pyscf_interface.ao2mo_chol
 write_dqmc = pyscf_interface.write_dqmc
 
-@jit
+#@jit
 def fix_len_chunked_cholesky(mol, chol_len, max_error=1e-6, verbose=False, cmax=10):
     """Modified cholesky decomposition of certain length from pyscf eris."""
 
@@ -178,7 +178,8 @@ def fix_len_chol_prep(
 
     h1e, chol, nelec, enuc, nbasis,_ = [None] * 6
 
-    h1e, chol, nelec, enuc = fix_len_generate_integrals(mol, mf.get_hcore(), basis_coeff, chol_len, chol_cut)
+    h1e, chol, nelec, enuc = \
+        fix_len_generate_integrals(mol, mf.get_hcore(), basis_coeff, chol_len, chol_cut)
     nbasis = h1e.shape[-1]
     nelec = mol.nelec
 
@@ -286,11 +287,11 @@ def fix_len_chol_prep(
 
 sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 
-def init_prop(ham_data, ham, prop, trial, wave_data, options, MPI):
+def init_prop(ham_data, ham, prop, trial, wave_data, seed, MPI):
     comm = MPI.COMM_WORLD
     #size = comm.Get_size()
     rank = comm.Get_rank()
-    seed = options["seed"]
+    #seed = options["seed"]
     #neql = options["n_eql"]
     init_walkers: Optional[Union[List, jax.Array]] = None
     trial_rdm1 = trial.get_rdm1(wave_data)
@@ -415,22 +416,16 @@ def ucs_block_scan(
     return prop_data1, prop_data2
 
 @partial(jit, static_argnums=(0,3,4,8,9))
-def cs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2):
+def cs_steps_scan(steps,
+                  prop_data1,ham_data1,prop1,trial1,wave_data1,
+                  prop_data2,ham_data2,prop2,trial2,wave_data2
+                  ):
 
     cs_prop_data = (prop_data1,prop_data2)
     def cs_step(cs_prop_data,_):
         prop_data1,prop_data2= cs_prop_data
-        prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
-        # en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
-        # en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
-        # norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
-        # norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
-        # weight_en_sample1 = en_samples1*norm_weight1
-        # weight_en_sample2 = en_samples2*norm_weight2
-        # weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
-        # en1 = sum(weight_en_sample1)
-        # en2 = sum(weight_en_sample2)
-        # en_diff = sum(weight_en_diff_sample)
+        prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
+                                              prop_data2,ham_data2,prop2,trial2,wave_data2)
         cs_prop_data = (prop_data1,prop_data2)
         return cs_prop_data, None #(en1,en2,en_diff)
 
@@ -438,22 +433,16 @@ def cs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,
     return cs_prop_data
 
 @partial(jit, static_argnums=(0,3,4,8,9))
-def ucs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2):
+def ucs_steps_scan(steps,
+                   prop_data1,ham_data1,prop1,trial1,wave_data1,
+                   prop_data2,ham_data2,prop2,trial2,wave_data2
+                   ):
 
     ucs_prop_data = (prop_data1,prop_data2)
     def ucs_step(ucs_prop_data,_):
         prop_data1,prop_data2= ucs_prop_data
-        prop_data1,prop_data2 = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2,ham_data2,prop2,trial2,wave_data2)
-        # en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
-        # en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
-        # norm_weight1 = prop_data1["weights"]/jnp.sum(prop_data1["weights"])
-        # norm_weight2 = prop_data2["weights"]/jnp.sum(prop_data2["weights"])
-        # weight_en_sample1 = en_samples1*norm_weight1
-        # weight_en_sample2 = en_samples2*norm_weight2
-        # weight_en_diff_sample = weight_en_sample1 - weight_en_sample2
-        # en1 = sum(weight_en_sample1)
-        # en2 = sum(weight_en_sample2)
-        # en_diff = sum(weight_en_diff_sample)
+        prop_data1,prop_data2 = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
+                                               prop_data2,ham_data2,prop2,trial2,wave_data2)
         ucs_prop_data = (prop_data1,prop_data2)
         return ucs_prop_data, None
 
@@ -462,3 +451,42 @@ def ucs_steps_scan(steps,prop_data1,ham_data1,prop1,trial1,wave_data1,prop_data2
     prop_data2 = prop2.stochastic_reconfiguration_local(prop_data2)
     ucs_prop_data = (prop_data1,prop_data2)
     return ucs_prop_data
+
+#@partial(jit, static_argnums=(4,5,9,10))
+def scan_seeds(seeds,eq_steps,
+               prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+               prop_data2_init,ham_data2_init,prop2,trial2,wave_data2, 
+               MPI):
+    '''
+    do a number of independent runs of given equilirium steps
+    for a given array of seeds
+    return local energy of system1, local weight of system1
+    and the same for system2.
+    the ensemble energy average for each system should be 
+    loc_en/loc_weight
+    '''
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    def _seed_cs(carry,seed):
+        prop_data1_init["key"] = jax.random.PRNGKey(seed + rank)
+        (prop_data1,prop_data2) = cs_steps_scan(eq_steps,
+                                    prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+                                    prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
+        
+        loc_en_samples1 = en_samples(prop_data1,ham_data1_init,prop1,trial1,wave_data1)
+        loc_en_samples2 = en_samples(prop_data2,ham_data2_init,prop2,trial2,wave_data2)
+        loc_weight_sample1 = prop_data1["weights"]
+        loc_weight1 = jnp.sum(loc_weight_sample1)
+        loc_weight_sample2 = prop_data2["weights"]
+        loc_weight2 = jnp.sum(loc_weight_sample2)
+        loc_en_sample1 = loc_en_samples1*loc_weight_sample1
+        loc_en_sample2 = loc_en_samples2*loc_weight_sample2
+        loc_en1 = sum(loc_en_sample1) #not normalized
+        loc_en2 = sum(loc_en_sample2) #not normalized
+        return carry, (loc_en1,loc_weight1,loc_en2,loc_weight2)
+    
+    _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_cs, None, seeds)
+
+    return loc_en1,loc_weight1,loc_en2,loc_weight2
