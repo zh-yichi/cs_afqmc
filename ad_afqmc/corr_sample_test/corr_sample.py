@@ -427,10 +427,37 @@ def cs_steps_scan(steps,
         prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
                                               prop_data2,ham_data2,prop2,trial2,wave_data2)
         cs_prop_data = (prop_data1,prop_data2)
-        return cs_prop_data, None #(en1,en2,en_diff)
+        loc_en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+        loc_en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+        loc_weight_sample1 = prop_data1["weights"]
+        loc_weight1 = jnp.sum(loc_weight_sample1)
+        loc_weight_sample2 = prop_data2["weights"]
+        loc_weight2 = jnp.sum(loc_weight_sample2)
+        loc_en_sample1 = loc_en_samples1*loc_weight_sample1
+        loc_en_sample2 = loc_en_samples2*loc_weight_sample2
+        loc_en1 = sum(loc_en_sample1) #not normalized
+        loc_en2 = sum(loc_en_sample2) #not normalized
+        return cs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
 
-    cs_prop_data,_ = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
-    return cs_prop_data
+    cs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2) \
+        = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
+    return cs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
+
+# def cs_steps_scan(steps,
+#                   prop_data1,ham_data1,prop1,trial1,wave_data1,
+#                   prop_data2,ham_data2,prop2,trial2,wave_data2
+#                   ):
+
+#     cs_prop_data = (prop_data1,prop_data2)
+#     def cs_step(cs_prop_data,_):
+#         prop_data1,prop_data2= cs_prop_data
+#         prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
+#                                               prop_data2,ham_data2,prop2,trial2,wave_data2)
+#         cs_prop_data = (prop_data1,prop_data2)
+#         return cs_prop_data, None #(en1,en2,en_diff)
+
+#     cs_prop_data,_ = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
+#     return cs_prop_data
 
 @partial(jit, static_argnums=(0,3,4,8,9))
 def ucs_steps_scan(steps,
@@ -471,20 +498,21 @@ def scan_seeds(seeds,eq_steps,
 
     def _seed_cs(carry,seed):
         prop_data1_init["key"] = jax.random.PRNGKey(seed + rank)
-        (prop_data1,prop_data2) = cs_steps_scan(eq_steps,
-                                    prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
-                                    prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
+        _,(loc_en1,loc_weight1,loc_en2,loc_weight2) \
+            = cs_steps_scan(eq_steps,
+                            prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+                            prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
         
-        loc_en_samples1 = en_samples(prop_data1,ham_data1_init,prop1,trial1,wave_data1)
-        loc_en_samples2 = en_samples(prop_data2,ham_data2_init,prop2,trial2,wave_data2)
-        loc_weight_sample1 = prop_data1["weights"]
-        loc_weight1 = jnp.sum(loc_weight_sample1)
-        loc_weight_sample2 = prop_data2["weights"]
-        loc_weight2 = jnp.sum(loc_weight_sample2)
-        loc_en_sample1 = loc_en_samples1*loc_weight_sample1
-        loc_en_sample2 = loc_en_samples2*loc_weight_sample2
-        loc_en1 = sum(loc_en_sample1) #not normalized
-        loc_en2 = sum(loc_en_sample2) #not normalized
+        # loc_en_samples1 = en_samples(prop_data1,ham_data1_init,prop1,trial1,wave_data1)
+        # loc_en_samples2 = en_samples(prop_data2,ham_data2_init,prop2,trial2,wave_data2)
+        # loc_weight_sample1 = prop_data1["weights"]
+        # loc_weight1 = jnp.sum(loc_weight_sample1)
+        # loc_weight_sample2 = prop_data2["weights"]
+        # loc_weight2 = jnp.sum(loc_weight_sample2)
+        # loc_en_sample1 = loc_en_samples1*loc_weight_sample1
+        # loc_en_sample2 = loc_en_samples2*loc_weight_sample2
+        # loc_en1 = sum(loc_en_sample1) #not normalized
+        # loc_en2 = sum(loc_en_sample2) #not normalized
         return carry, (loc_en1,loc_weight1,loc_en2,loc_weight2)
     
     _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_cs, None, seeds)
