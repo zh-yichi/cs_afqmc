@@ -1,0 +1,88 @@
+# Hostname: YICHI
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: YICHI
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 10
+# nelec: (1, 1)
+#
+# dt: 0.01
+# n_exp_terms: 5
+# n_eql: 4
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 200
+# n_walkers: 20
+# seed: 29
+# walker_type: uhf
+# trial: uhf
+# free_proj: True
+# n_prop_steps: 50
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Number of MPI ranks: 5
+#
+# norb: 10
+# nelec: (1, 1)
+#
+# dt: 0.01
+# n_exp_terms: 5
+# n_eql: 4
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 200
+# n_walkers: 20
+# seed: 29
+# walker_type: uhf
+# trial: uhf
+# free_proj: True
+# n_prop_steps: 50
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# relaxation from mean-field object using 100 walkers
+# rlx_step 	 system1_en 	 system2_en 	 en_diff
+    0	 	 -0.762049	 -0.751719	 -0.010331
+free projection propagation
+# relaxation time: 2.53
+
+# multiple independent post relaxation propagation
+# tot_walkers: 100, propagation steps: 10, number of independent runs: 100
+# step	 system1_en 	 error	 	 system2_en 	 error	 	 energy_diff 	 error
+  1	 -0.808691 	 0.000979	 -0.802148 	 0.001148	 -0.006543 	 0.000187
+  2	 -0.865114 	 0.004071	 -0.863523 	 0.004859	 -0.001591 	 0.001844
+  3	 -0.922217 	 0.006892	 -0.916761 	 0.008133	 -0.005456 	 0.005886
+  4	 -0.940451 	 0.010910	 -0.945917 	 0.010614	 0.005467 	 0.006509
+  5	 -0.932860 	 0.011400	 -0.945184 	 0.011526	 0.012324 	 0.009192
+  6	 -0.924187 	 0.012893	 -0.925188 	 0.014327	 0.001001 	 0.007341
+  7	 -0.878766 	 0.013118	 -0.886978 	 0.013897	 0.008212 	 0.009921
+  8	 -0.866167 	 0.017087	 -0.863392 	 0.018602	 -0.002775 	 0.008987
+  9	 -0.879963 	 0.013728	 -0.896990 	 0.015098	 0.017027 	 0.010271
+  10	 -0.842144 	 0.017648	 -0.844409 	 0.017177	 0.002265 	 0.010526
+# total run time: 13.33
+free projection propagation
+free projection propagation
+free projection propagation
+free projection propagation

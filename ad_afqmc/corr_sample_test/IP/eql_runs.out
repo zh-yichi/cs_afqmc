@@ -1,0 +1,36 @@
+# Hostname: YICHI
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: YICHI
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 2
+#
+# norb: 13
+# nelec: (9, 9)
+#
+# dt: 0.01
+# n_eql: 4
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 200
+# n_walkers: 20
+# seed: 29
+# walker_type: rhf
+# trial: rhf
+# n_prop_steps: 50
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Number of MPI ranks: 2
+#

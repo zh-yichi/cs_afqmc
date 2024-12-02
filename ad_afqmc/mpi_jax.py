@@ -60,6 +60,7 @@ def _prep_afqmc(options=None,mo_file=mo_file,amp_file=amp_file,chol_file=chol_fi
             options = {}
 
     options["dt"] = options.get("dt", 0.01)
+    options["n_exp_terms"] = options.get("n_exp_terms",6)
     options["n_walkers"] = options.get("n_walkers", 50)
     options["n_prop_steps"] = options.get("n_prop_steps", 50)
     options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
@@ -184,9 +185,12 @@ def _prep_afqmc(options=None,mo_file=mo_file,amp_file=amp_file,chol_file=chol_fi
             ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
         else:
             ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
-
+        #print(f'using {options["n_exp_terms"]} exp_terms')
         prop = propagation.propagator_restricted(
-            options["dt"], options["n_walkers"], n_batch=options["n_batch"]
+            options["dt"], 
+            options["n_walkers"], 
+            options["n_exp_terms"],
+            options["n_batch"]
         )
 
     elif options["walker_type"] == "uhf":

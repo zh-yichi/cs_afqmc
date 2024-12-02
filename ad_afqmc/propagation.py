@@ -25,7 +25,7 @@ class propagator(ABC):
 
     dt: float = 0.01
     n_walkers: int = 50
-    n_exp_terms: int = 6
+    n_exp_terms: int = 10
 
     @abstractmethod
     def init_prop_data(

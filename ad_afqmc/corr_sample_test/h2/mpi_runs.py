@@ -1,12 +1,18 @@
 from functools import partial
 from jax import random
-from jax import numpy as jnp
+#from jax import numpy as jnp
+import argparse
+#from mpi4py import MPI
+import numpy as np
+from ad_afqmc.corr_sample_test import corr_sample
+from ad_afqmc import mpi_jax, config
+import time
 
 print = partial(print, flush=True)
 nwalkers = 20
-n_runs = 200
+n_runs = 100
 eql_steps = 3
-dt = 0.005
+dt = 0.003
 seed = 23
 
 options1 = {
@@ -38,11 +44,17 @@ chol_file1="h2_chol1"
 mo_file2="h2_mo2.npz"
 chol_file2="h2_chol2"
 
-from mpi4py import MPI
-import numpy as np
-from ad_afqmc.corr_sample_test import corr_sample
-from ad_afqmc import mpi_jax
-import time
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--use_gpu", action="store_true")
+    args = parser.parse_args()
+
+    if args.use_gpu:
+        config.afqmc_config["use_gpu"] = True
+
+config.setup_jax()
+MPI = config.setup_comm()
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
