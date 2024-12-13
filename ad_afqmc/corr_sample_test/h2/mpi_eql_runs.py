@@ -9,13 +9,14 @@ from ad_afqmc import mpi_jax, config
 import time
 
 print = partial(print, flush=True)
-nwalkers = 20
+nwalkers = 50
 n_runs = 100
 rlx_steps = 0
-prop_steps = 10
-dt = 0.01
+prop_steps = 50
+dt = 0.005
 n_exp_terms = 6
-seed = 29
+seed = 23
+cs = True
 
 options = {
     "dt": dt,
@@ -28,7 +29,7 @@ options = {
     "seed": seed,
     "walker_type": "rhf",
     "trial": "rhf",
-    "corr_samp": False,
+    "corr_samp": cs,
     "free_proj": False,
 }
 import pickle
@@ -136,26 +137,28 @@ comm.Barrier()
 comm.Barrier()
 if rank == 0:
     print()
-    print('# multiple independent post relaxation propagation')
+    print(f'# multiple independent post relaxation propagation with step size {dt}s')
     if options["corr_samp"]:
         print('# correlated sampling')
     else: print('# uncorrelated sampling')
-    
+
     print(f'# tot_walkers: {nwalkers*size}, propagation steps: {prop_steps}, number of independent runs: {n_runs}')
     print('# step' 
           '\t system1_en \t error' 
           '\t \t system2_en \t error'
           '\t \t energy_diff \t error')
-    # print(f'  {0}'
-    #         f'\t {prop_data1_rlx["e_estimate"]:.6f} \t {0}' 
-    #         f'\t \t {prop_data2_rlx["e_estimate"]:.6f} \t {0}'
-    #         f'\t \t {prop_data1_rlx["e_estimate"]-prop_data2_rlx["e_estimate"]:.6f} \t {0}')
+    
 comm.Barrier()
 
 if options["corr_samp"]:
     seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(n_runs,), minval=0, maxval=1000)
+                        shape=(n_runs,), minval=0, maxval=10000*n_runs)
     
+    # comm.Barrier()
+    # if rank == 0:
+    #     print(f'# the problem seed is : {seeds[51]}')
+    # comm.Barrier()
+
     loc_en1,loc_weight1,loc_en2,loc_weight2 \
     = corr_sample.scan_seeds(seeds,prop_steps,
                              prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
@@ -163,7 +166,7 @@ if options["corr_samp"]:
                              MPI)
 else:
     seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(n_runs,2), minval=0, maxval=1000)
+                        shape=(n_runs,2), minval=0, maxval=10000*n_runs)
 
     loc_en1,loc_weight1,loc_en2,loc_weight2 \
         = corr_sample.ucs_scan_seeds(seeds,prop_steps,
@@ -223,7 +226,16 @@ if rank == 0:
               f'\t {en_mean1:.6f} \t {en_err1:.6f}' 
               f'\t {en_mean2:.6f} \t {en_err2:.6f}'
               f'\t {en_diff_mean:.6f} \t {en_diff_mean_err:.6f}')
-    
-    end_time = time.time()
-    print(f'# total run time: {end_time - init_time:.2f}')
-comm.Barrier()
+
+#     print('# debug the big uncertainty step')
+#     print('# run \t sys1_en \t sys2_en \t en_diff')
+#     for run in range(n_runs):
+#         print(f'  {run+1} \t {energy1[prop_steps-1,run]:.6f} \t {energy2[prop_steps-1,run]:.6f} \t {en_diff[prop_steps-1,run]:.6f}')
+
+#     print(f'# system1 energy: {energy1[prop_steps-1,:].mean():.6f}')
+#     print(f'# system2 energy: {energy2[prop_steps-1,:].mean():.6f}')
+#     print(f'# energy difference: {en_diff[prop_steps-1,:].mean():.6f}')
+
+#     end_time = time.time()
+#     print(f'# total run time: {end_time - init_time:.2f}')
+# comm.Barrier()

@@ -325,6 +325,7 @@ def block_en_weight(prop_data,ham_data,prop,trial,wave_data):
     block_energy = jnp.sum(energy_samples * prop_data["weights"]) / block_weight
     return block_energy, block_weight
 
+
 @partial(jit, static_argnums=(3,4))
 def field_block_scan(
         prop_data: dict,
@@ -335,38 +336,54 @@ def field_block_scan(
         wave_data: dict,
         ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
     """Block scan function for a given field"""
-    with open("options.pkl", "rb") as file:
-        options = pickle.load(file)
-    if options["free_proj"]:
-        # print("free projection propagation")
-        _step_scan_wrapper = lambda x, y: sampler_eq._step_scan_free(
-            x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        # energy_samples = trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
-        # # energy_samples = jnp.where(jnp.abs(energy_samples - ham_data['ene0']) > jnp.sqrt(2./propagator.dt), ham_data['ene0'],     energy_samples)
-        # block_energy = jnp.sum(energy_samples * prop_data["overlaps"]) / jnp.sum(
-        #     prop_data["overlaps"]
-        # )
-        # #block_weight = jnp.sum(prop_data["overlaps"])
-        pass
-    else:
+    # with open("options.pkl", "rb") as file:
+    #     options = pickle.load(file)
+    # if options["free_proj"]:
+    #     # print("free projection propagation")
+    #     _step_scan_wrapper = lambda x, y: sampler_eq._step_scan_free(
+    #         x, y, ham_data, prop, trial, wave_data
+    #     )
+    #     prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+    #     # energy_samples = trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+    #     # # energy_samples = jnp.where(jnp.abs(energy_samples - ham_data['ene0']) > jnp.sqrt(2./propagator.dt), ham_data['ene0'],     energy_samples)
+    #     # block_energy = jnp.sum(energy_samples * prop_data["overlaps"]) / jnp.sum(
+    #     #     prop_data["overlaps"]
+    #     # )
+    #     # #block_weight = jnp.sum(prop_data["overlaps"])
+    # else:
         # print("phaseless propagation")
-        _step_scan_wrapper = lambda x, y: sampler_eq._step_scan(
-            x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-        prop_data = prop.orthonormalize_walkers(prop_data)
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    _step_scan_wrapper = lambda x, y: sampler_eq._step_scan(
+        x, y, ham_data, prop, trial, wave_data
+    )
+    prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+    prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+        prop_data["weights"]
+    )
+    prop_data = prop.orthonormalize_walkers(prop_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-        block_energy,_ = block_en_weight(prop_data,ham_data,prop,wave_data,trial)
-        prop_data["pop_control_ene_shift"] = (
-            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * block_energy
-        )
+    block_energy,_ = block_en_weight(prop_data,ham_data,prop,wave_data,trial)
+    prop_data["pop_control_ene_shift"] = (
+        0.9 * prop_data["pop_control_ene_shift"] + 0.1 * block_energy
+    )
     return prop_data
+
+
+def corr_otler_rm(prop_data1, prop_data2):
+    olp1 = jnp.sqrt(prop_data1["overlaps"].real**2+prop_data1["overlaps"].imag**2)
+    olp2 = jnp.sqrt(prop_data2["overlaps"].real**2+prop_data2["overlaps"].imag**2)
+    olp = jnp.array(jnp.where(olp1 < olp2, olp1, olp2)) # take the smaller
+    olp_thresh = 0.02
+    wt1 = prop_data1["weights"]
+    wt2 = prop_data2["weights"]
+    wt = jnp.array(jnp.where(wt1 > wt2, wt1, wt2)) # take the larger
+    wt_thresh = 5
+    prop_data1["weights"] = jnp.array(jnp.where(wt > wt_thresh, 0.0, prop_data1["weights"]))
+    prop_data2["weights"] = jnp.array(jnp.where(wt > wt_thresh, 0.0, prop_data2["weights"]))
+    prop_data1["weights"] = jnp.array(jnp.where(olp < olp_thresh, 0.0, prop_data1["weights"]))
+    prop_data2["weights"] = jnp.array(jnp.where(olp < olp_thresh, 0.0, prop_data2["weights"]))
+    return prop_data1, prop_data2
+
 
 @partial(jit, static_argnums=(2,3,7,8))
 def cs_block_scan(
@@ -392,6 +409,8 @@ def cs_block_scan(
     )
     prop_data1 = field_block_scan(prop_data1,fields,ham_data1,prop1,trial1,wave_data1)
     prop_data2 = field_block_scan(prop_data2,fields,ham_data2,prop2,trial2,wave_data2)
+    
+    prop_data1, prop_data2 = corr_otler_rm(prop_data1, prop_data2)
 
     return prop_data1, prop_data2
 
@@ -447,9 +466,9 @@ def cs_steps_scan(steps,
         loc_en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
         loc_en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
         loc_weight_sample1 = prop_data1["weights"]
-        loc_weight1 = jnp.sum(loc_weight_sample1)
+        loc_weight1 = sum(loc_weight_sample1)
         loc_weight_sample2 = prop_data2["weights"]
-        loc_weight2 = jnp.sum(loc_weight_sample2)
+        loc_weight2 = sum(loc_weight_sample2)
         loc_en_sample1 = loc_en_samples1*loc_weight_sample1
         loc_en_sample2 = loc_en_samples2*loc_weight_sample2
         loc_en1 = sum(loc_en_sample1) #not normalized
@@ -462,24 +481,6 @@ def cs_steps_scan(steps,
 
 
 @partial(jit, static_argnums=(0,3,4,8,9))
-# def ucs_steps_scan(steps,
-#                    prop_data1,ham_data1,prop1,trial1,wave_data1,
-#                    prop_data2,ham_data2,prop2,trial2,wave_data2
-#                    ):
-
-#     ucs_prop_data = (prop_data1,prop_data2)
-#     def ucs_step(ucs_prop_data,_):
-#         prop_data1,prop_data2= ucs_prop_data
-#         prop_data1,prop_data2 = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
-#                                                prop_data2,ham_data2,prop2,trial2,wave_data2)
-#         ucs_prop_data = (prop_data1,prop_data2)
-#         return ucs_prop_data, None
-
-#     (prop_data1,prop_data2),_ = jax.lax.scan(ucs_step,ucs_prop_data,xs=None,length=steps)
-#     prop_data1 = prop1.stochastic_reconfiguration_local(prop_data1)
-#     prop_data2 = prop2.stochastic_reconfiguration_local(prop_data2)
-#     ucs_prop_data = (prop_data1,prop_data2)
-#     return ucs_prop_data
 def ucs_steps_scan(steps,
                   prop_data1,ham_data1,prop1,trial1,wave_data1,
                   prop_data2,ham_data2,prop2,trial2,wave_data2
@@ -531,16 +532,6 @@ def scan_seeds(seeds,eq_steps,
                             prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
                             prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
         
-        # loc_en_samples1 = en_samples(prop_data1,ham_data1_init,prop1,trial1,wave_data1)
-        # loc_en_samples2 = en_samples(prop_data2,ham_data2_init,prop2,trial2,wave_data2)
-        # loc_weight_sample1 = prop_data1["weights"]
-        # loc_weight1 = jnp.sum(loc_weight_sample1)
-        # loc_weight_sample2 = prop_data2["weights"]
-        # loc_weight2 = jnp.sum(loc_weight_sample2)
-        # loc_en_sample1 = loc_en_samples1*loc_weight_sample1
-        # loc_en_sample2 = loc_en_samples2*loc_weight_sample2
-        # loc_en1 = sum(loc_en_sample1) #not normalized
-        # loc_en2 = sum(loc_en_sample2) #not normalized
         return carry, (loc_en1,loc_weight1,loc_en2,loc_weight2)
     
     _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_cs, None, seeds)
