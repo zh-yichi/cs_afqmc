@@ -1,4 +1,4 @@
-# Automatic differentiable AFQMC
+# Correlated Sampling Automatic differentiable AFQMC
 
 A code to calculate derivatives of energy in auxiliary field quantum Monte Carlo calculations using automatic differentiation.
 
