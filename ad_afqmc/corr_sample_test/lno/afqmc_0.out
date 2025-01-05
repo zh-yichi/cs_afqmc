@@ -1,0 +1,79 @@
+# Hostname: YICHI
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 4
+#
+# Using Local Natural Orbital Approximation
+# Using Local Natural Orbital Approximation
+# Using Local Natural Orbital Approximation
+# Using Local Natural Orbital Approximation
+# norb: 13
+# nelec: (4, 4)
+#
+# n_eql: 1
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 10
+# n_walkers: 10
+# seed: 98
+# walker_type: rhf
+# trial: rhf
+# dt: 0.005
+# orbE: 3
+# prjlo: [[-2.77555756e-16  3.46944695e-17  2.77555756e-17  1.00000000e+00]]
+# maxError: 0.00035355339059327376
+# LNO: True
+# n_exp_terms: 6
+# n_prop_steps: 50
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+#
+# Equilibration sweeps:
+#   Iter        Block energy      Walltime
+#     0      -1.520625105e+02     1.63e+00 
+#     1      -1.522075043e+02     5.43e+00 
+#
+# Sampling sweeps:
+#  Iter        Mean energy          Stochastic error          OrbitalEnergy          OrbEStochError          Walltime
+     0      -1.522243805e+02                -              -4.254742339e-02        -       7.87e+00 
+     1      -1.522474156e+02                -              -4.285882135e-02        -       8.10e+00 
+     2      -1.522290966e+02                -              -3.778216280e-02        -       8.32e+00 
+     3      -1.522300336e+02        1.129284703e-02        -3.913030409e-02        2.699480897e-03        8.55e+00 
+     4      -1.522295627e+02        8.783448127e-03        -3.836197392e-02        2.166040488e-03        8.78e+00 
+     5      -1.522317919e+02        7.358793712e-03        -3.908527841e-02        1.844769290e-03        9.01e+00 
+     6      -1.522398088e+02        8.395530179e-03        -4.109483803e-02        2.104574786e-03        9.24e+00 
+     7      -1.522388333e+02                -              -4.071107502e-02        -       9.47e+00 
+     8      -1.522371217e+02        6.745816011e-03        -4.077953752e-02        1.707177742e-03        9.69e+00 
+     9      -1.522367006e+02        5.876540999e-03        -4.082620277e-02        1.464455579e-03        9.92e+00 
+#
+# Number of large deviations: 0
+#
+# Mean: -4.08262028e-02
+# Block size    # of blocks         Mean                Error
+      1               40       -4.08262028e-02       1.003537e-03
+      2               20       -4.08262028e-02       1.456564e-03
+      5                8       -4.08262028e-02       1.464456e-03
+     10                4       -4.08262028e-02       2.176059e-03
+# Stocahstic error estimate: 1.464456e-03
+#
+# Number of outliers in post: 0 
+#
+# Mean: -1.52236701e+02
+# Block size    # of blocks         Mean                Error
+      1               40       -1.52236701e+02       4.048793e-03
+      2               20       -1.52236701e+02       5.876541e-03
+      5                8       -1.52236701e+02       5.845340e-03
+     10                4       -1.52236701e+02       9.080408e-03
+# Stocahstic error estimate: 5.876541e-03
+#
+AFQMC energy: -152.237 +/- 0.006
+
+orbE energy: -0.041 +/- 0.001
+
+ph_afqmc walltime: 9.938381433486938
