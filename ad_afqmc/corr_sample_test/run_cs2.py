@@ -31,7 +31,7 @@ seed = options["seed"]
 rlx_steps = options["rlx_steps"]
 prop_steps = options["prop_steps"]
 n_runs = options["n_runs"]
-# use_gpu = options["use_gpu"]
+use_gpu = options["use_gpu"]
 
 mo_file1=files["mo1"]
 chol_file1=files["chol1"]
@@ -40,17 +40,8 @@ mo_file2=files["mo2"]
 chol_file2=files["chol2"]
 amp_file2=files["amp2"]
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--use_gpu", action="store_true")
-    args = parser.parse_args()
-
-    if args.use_gpu:
-        config.afqmc_config["use_gpu"] = True
-
-# if use_gpu:
-#     config.afqmc_config["use_gpu"] = True
-
+if use_gpu:
+    config.afqmc_config["use_gpu"] = True
 config.setup_jax()
 MPI = config.setup_comm()
 
@@ -59,9 +50,9 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()  # Process rank
 size = comm.Get_size()  # Total number of processes
 
-ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
+ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options1, _ \
     = mpi_jax._prep_afqmc(options,mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
-ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
+ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options2, _ \
     = mpi_jax._prep_afqmc(options,mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
 prop_data1_init, ham_data1_init = \
@@ -72,12 +63,12 @@ prop_data2_init, ham_data2_init = \
 ### relaxation ###
 comm.Barrier()
 if rank == 0:
-    print(f'# relaxation from mean-field object using {nwalkers*size} walkers')
+    print(f'# relaxation from couple-cluster initial guess using {nwalkers*size} walkers')
     print('# rlx_step \t system1_en \t system2_en \t en_diff')
     print(f'    {0}'
-          f'\t \t {prop_data1_init["e_estimate"]:.6f}' 
-          f'\t {prop_data2_init["e_estimate"]:.6f}'
-          f'\t {prop_data1_init["e_estimate"]-prop_data2_init["e_estimate"]:.6f}')
+          f'\t \t {prop_data1_init["e_estimate"]:.7f}' 
+          f'\t {prop_data2_init["e_estimate"]:.7f}'
+          f'\t {prop_data1_init["e_estimate"]-prop_data2_init["e_estimate"]:.7f}')
 comm.Barrier()
 
 (prop_data1_rlx,prop_data2_rlx),(loc_en1,loc_weight1,loc_en2,loc_weight2) \
@@ -127,7 +118,7 @@ if rank == 0:
         energy2[step] = sum(glb_en2[step,:])/sum(glb_weight2[step,:])
         en_diff[step] = energy1[step] - energy2[step]
 
-        print(f'    {step+1} \t \t {energy1[step]:.6f} \t {energy2[step]:.6f} \t {en_diff[step]:.6f}')
+        print(f'    {step+1} \t \t {energy1[step]:.7f} \t {energy2[step]:.7f} \t {en_diff[step]:.7f}')
     
     now_time = time.time()
     print(f'# relaxation time: {now_time - init_time:.2f}')
@@ -152,7 +143,7 @@ comm.Barrier()
 
 if options["corr_samp"]:
     seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(n_runs,), minval=0, maxval=1000000*n_runs)
+                        shape=(n_runs,), minval=0, maxval=10000*n_runs)
 
     loc_en1,loc_weight1,loc_en2,loc_weight2 \
     = corr_sample.scan_seeds(seeds,prop_steps,
@@ -218,9 +209,9 @@ if rank == 0:
         en_err2 = energy2[step,:].std()/np.sqrt(n_runs)
         en_diff_mean_err = en_diff[step,:].std()/np.sqrt(n_runs)
         print(f'  {step+1}'
-              f'\t {en_mean1:.6f} \t {en_err1:.6f}' 
-              f'\t {en_mean2:.6f} \t {en_err2:.6f}'
-              f'\t {en_diff_mean:.6f} \t {en_diff_mean_err:.6f}')
+              f'\t {en_mean1:.7f} \t {en_err1:.7f}' 
+              f'\t {en_mean2:.7f} \t {en_err2:.7f}'
+              f'\t {en_diff_mean:.7f} \t {en_diff_mean_err:.7f}')
 
     end_time = time.time()
     print(f'# total run time: {end_time - init_time:.2f}')
