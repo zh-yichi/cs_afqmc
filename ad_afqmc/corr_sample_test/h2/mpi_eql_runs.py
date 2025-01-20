@@ -9,11 +9,11 @@ from ad_afqmc import mpi_jax, config
 import time
 
 print = partial(print, flush=True)
-nwalkers = 50
+nwalkers = 40
 n_runs = 100
 rlx_steps = 0
-prop_steps = 50
-dt = 0.005
+prop_steps = 10
+dt = 0.01
 n_exp_terms = 6
 seed = 23
 cs = True
@@ -21,10 +21,6 @@ cs = True
 options = {
     "dt": dt,
     "n_exp_terms": n_exp_terms,
-    "n_eql": 4,
-    "n_ene_blocks": 1,
-    "n_sr_blocks": 10,
-    "n_blocks": 200,
     "n_walkers": nwalkers,
     "seed": seed,
     "walker_type": "rhf",
@@ -37,10 +33,12 @@ with open("options.pkl", "wb") as file:
     pickle.dump(options, file)
 
 
-mo_file1="h2_mo1.npz"
-chol_file1="h2_chol1"
-mo_file2="h2_mo2.npz"
-chol_file2="h2_chol2"
+mo_file1="mo1.npz"
+chol_file1="chol1"
+amp_file1="amp1.npz"
+mo_file2="mo2.npz"
+chol_file2="chol2"
+amp_file2="amp2.npz"
 
 
 if __name__ == "__main__":
@@ -60,14 +58,14 @@ rank = comm.Get_rank()  # Process rank
 size = comm.Get_size()  # Total number of processes
 
 ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options1, _ \
-    = mpi_jax._prep_afqmc(options,mo_file=mo_file1,chol_file=chol_file1)
+    = mpi_jax._prep_afqmc(options,mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
 ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options2, _ \
-    = mpi_jax._prep_afqmc(options,mo_file=mo_file2,chol_file=chol_file2)
+    = mpi_jax._prep_afqmc(options,mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
 prop_data1_init, ham_data1_init = \
-    corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, 2, MPI)
+    corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, seed, MPI)
 prop_data2_init, ham_data2_init = \
-    corr_sample.init_prop(ham_data2, ham2, prop2, trial2, wave_data2, 98, MPI)
+    corr_sample.init_prop(ham_data2, ham2, prop2, trial2, wave_data2, seed, MPI)
 
 ### relaxation ###
 comm.Barrier()
@@ -152,7 +150,7 @@ comm.Barrier()
 
 if options["corr_samp"]:
     seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(n_runs,), minval=0, maxval=10000*n_runs)
+                        shape=(n_runs,), minval=0, maxval=1000000*n_runs)
     
     # comm.Barrier()
     # if rank == 0:

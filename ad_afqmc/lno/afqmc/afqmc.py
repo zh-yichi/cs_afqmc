@@ -13,8 +13,22 @@ _fdot = np.dot
 fdot = lambda *args: reduce(_fdot, args)
 einsum = lib.einsum
 THRESH_INTERNAL = 1e-10
-def impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=None,
-                   log=None, verbose_imp=0,filename='fragmentenergies.txt',chol_vecs=None,can_orbfrag=None,nblocks = 800,seed=None,chol_cut = None,cholesky_threshold = 2e-3,vmc_root = None,maxError=2e-4,dt=0.005,multislater=False,DiceBinary=None,ndets=1000,nwalk_per_proc=20,active_space=[],nproc=None):
+def impurity_solve(mf,
+                   mo_coeff,
+                   lo_coeff,
+                   active_space = [],
+                   frozen = None,
+                   eris = None,
+                   filename = 'fragmentenergies.txt',
+                   can_orbfrag = None,
+                   chol_cut = None,
+                   maxError = 2e-4,
+                   dt = 0.005,
+                   nwalk_per_proc = 20,
+                   nproc = None,
+                   nblocks = 800,
+                   log = None,
+                   verbose_imp = 0):
     r''' Solve impurity problem and calculate local correlation energy.
 
     Args:
@@ -73,22 +87,28 @@ def impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=None,
 
     orbitalE= nactocc-1
     act_index = [] 
-    norb_act = (nactocc+nactvir)
-    nelec_act = nactocc*2
-    central_mo = mo_coeff[:,orbitalE].copy()
+    # norb_act = (nactocc+nactvir)
+    # nelec_act = nactocc*2
+    # central_mo = mo_coeff[:,orbitalE].copy()
     for i in range(len(active_space)):
       act_index.append(np.argmax(np.abs(mf.mo_coeff[:,active_space[i]]@mf.get_ovlp(mf.mol)@mo_coeff)))
-
-    
-
-
-
-
    
 #    #import QMCUtils
 #    import LNOhelper as QMCUtils
     from ad_afqmc import run_afqmc
-    e_afqmc,err_afqmc = run_afqmc.run_afqmc_lno_mf(mf,mo_coeff = mo_coeff,norb_act = (nactocc+nactvir),nelec_act = nactocc*2,norb_frozen=frozen,nwalk_per_proc = nwalk_per_proc,orbitalE=nactocc-1,vmc_root=vmc_root,nblocks=nblocks,chol_vecs=chol_vecs,seed=seed,chol_cut = chol_cut, cholesky_threshold = cholesky_threshold,maxError=maxError,dt=dt,nproc=nproc,prjlo=prjlo)#,right='uhf')
+    e_afqmc,err_afqmc = run_afqmc.run_afqmc_lno_mf(mf,
+                                                   mo_coeff = mo_coeff,
+                                                   norb_act = (nactocc+nactvir),
+                                                   nelec_act = nactocc*2,
+                                                   norb_frozen = frozen,
+                                                   orbitalE = nactocc-1,
+                                                   dt = dt,
+                                                   nwalk_per_proc = nwalk_per_proc,
+                                                   nproc = nproc,
+                                                   nblocks = nblocks,
+                                                   chol_cut = chol_cut,
+                                                   maxError = maxError,
+                                                   prjlo = prjlo)#,right='uhf')
 #    e_afqmc,err_afqmc = QMCUtils.run_afqmc_lno_mc(mf,mo_coeff = mo_sort,norb_act = norb_act,nelec_act = nelec_act,norb_frozen=frz_ind,nwalk_per_proc = 20,orbitalE=orbitalE,vmc_root=vmc_root,nblocks=nblocks,chol_vecs=chol_vecs,seed=seed,chol_cut = chol_cut, cholesky_threshold = cholesky_threshold,maxError=maxError,dt=dt,prjlo=prjlo,active_space=act_index,ndets=ndets)#,ncore=ncore)
 
     #e_afqmc,err_afqmc = QMCUtils.run_afqmc_lno_mf(mf,mo_coeff = mo_coeff,norb_act = (nactocc+nactvir),nelec_act = nactocc*2,norb_frozen=frozen,nwalk_per_proc = 20,orbitalE=nactocc-1,vmc_root=vmc_root,nblocks=nblocks,chol_vecs=chol_vecs,seed=seed,chol_cut = chol_cut, cholesky_threshold = cholesky_threshold,maxError=maxError,dt=dt,prjlo=prjlo)#,right='uhf')
@@ -153,7 +173,7 @@ class LNOAFQMC(LNO):
         self.efrag_pt2 = None
         self.efrag_cc_t = None
         self.ccsd_t = False
-        self.nblocks = 800
+        self.nblocks = 500
         self.seed = None
         self.chol_cut = 1e-6
         self.cholesky_threshold = 0.5e-3
@@ -175,7 +195,23 @@ class LNOAFQMC(LNO):
         return self
 
     def impurity_solve(self, mf, mo_coeff, lo_coeff, eris=None, frozen=None, log=None,can_orbfrag=None):
-        return impurity_solve(mf, mo_coeff, lo_coeff, eris=eris, frozen=frozen, log=log,verbose_imp=self.verbose_imp, ccsd_t=self.ccsd_t,chol_vecs=self.chol_vecs,can_orbfrag=can_orbfrag,nblocks=self.nblocks,seed = self.seed,chol_cut = self.chol_cut,cholesky_threshold = self.cholesky_threshold,vmc_root = self.vmc_root,maxError= self.maxError,dt=self.dt,multislater=self.multislater,DiceBinary=self.DiceBinary,ndets=self.ndets,nwalk_per_proc=self.nwalk_per_proc,active_space=self.active_space,nproc=self.nproc)
+        return impurity_solve(mf,
+                              mo_coeff,
+                              lo_coeff,
+                              active_space = self.active_space,
+                              frozen = frozen,
+                              eris = eris,
+                              filename = 'fragmentenergies.txt',
+                              can_orbfrag = can_orbfrag,
+                              chol_cut = self.chol_cut,
+                              maxError = self.maxError,
+                              dt = self.dt,
+                              nwalk_per_proc = self.nwalk_per_proc,
+                              nproc = self.nproc,
+                              nblocks = self.nblocks,
+                              log = log,
+                              verbose_imp = self.verbose_imp)
+
 
     def _post_proc(self, frag_res, frag_wghtlist):
         ''' Post processing results returned by `impurity_solve` collected in `frag_res`.

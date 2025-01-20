@@ -674,7 +674,7 @@ class LNO(lib.StreamObject):
 
     def kernel(self, eris=None, orbloc=None, lo_type=None, no_type=None,
                frag_lolist=None, frag_atmlist=None, frag_wghtlist=None,
-               frag_nonvlist=None,canonicalize=True):
+               frag_nonvlist=None, canonicalize=True):
         r'''
         Args:
             orbloc (matrix, nao * nlo):

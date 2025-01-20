@@ -30,12 +30,12 @@ print(f"CCSD(T) energy: {mycc.e_tot + et}")
 pyscf_interface.prep_afqmc(mycc)
 options = {
     "dt": 0.005,
-    "n_eql": 5,
+    "n_eql": 1,
     "n_ene_blocks": 1,
     "n_sr_blocks": 5,
-    "n_blocks": 100,
-    "n_prop_steps": 50,
-    "n_walkers": 50,
+    "n_blocks": 10,
+    "n_prop_steps": 10,
+    "n_walkers": 10,
     "seed": 8,
     "walker_type": "rhf",
     "trial": "cisd",

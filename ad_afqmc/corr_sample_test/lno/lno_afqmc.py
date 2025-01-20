@@ -4,11 +4,11 @@ from functools import reduce
 
 from pyscf.lib import logger
 from pyscf import lib
-#import QMCUtils
+
 from lno.base import LNO
 from lno.afqmc import LNOAFQMC
 
-from pyscf import gto, scf, mp, cc
+from pyscf import gto, scf, mp
 
 log = logger.Logger(sys.stdout, 6)
 
@@ -46,6 +46,7 @@ for thresh in [1e-4]:
     mfcc.thresh_vir = thresh
     mfcc.nblocks = 10
     mfcc.nwalk_per_proc = 10
+    mfcc.nproc = 4
     mfcc.lo_type = 'pm'
     mfcc.no_type = 'cim'
     mfcc.frag_lolist = '1o'

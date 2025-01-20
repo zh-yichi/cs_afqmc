@@ -1,22 +1,19 @@
 import time
+import os
 from functools import partial
 from typing import List, Optional, Tuple, Union
-
 import pickle
 import jax
 import jax.numpy as jnp
 from jax import random, lax, jit
 import numpy as np
-#import scipy
 from pyscf import __config__,  df,  lib, mcscf, scf
 from pyscf.cc.ccsd import CCSD
 from pyscf.cc.uccsd import UCCSD
-from ad_afqmc import pyscf_interface
-
-
+from ad_afqmc import pyscf_interface, sampling, config
 from ad_afqmc.propagation import propagator
 from ad_afqmc.wavefunctions import wave_function
-from ad_afqmc import sampling
+
 
 modified_cholesky = pyscf_interface.modified_cholesky
 generate_integrals = pyscf_interface.generate_integrals
@@ -369,19 +366,41 @@ def field_block_scan(
     return prop_data
 
 
-def corr_otler_rm(prop_data1, prop_data2):
-    olp1 = jnp.sqrt(prop_data1["overlaps"].real**2+prop_data1["overlaps"].imag**2)
-    olp2 = jnp.sqrt(prop_data2["overlaps"].real**2+prop_data2["overlaps"].imag**2)
-    olp = jnp.array(jnp.where(olp1 < olp2, olp1, olp2)) # take the smaller
-    olp_thresh = 0.02
-    wt1 = prop_data1["weights"]
-    wt2 = prop_data2["weights"]
-    wt = jnp.array(jnp.where(wt1 > wt2, wt1, wt2)) # take the larger
-    wt_thresh = 5
-    prop_data1["weights"] = jnp.array(jnp.where(wt > wt_thresh, 0.0, prop_data1["weights"]))
-    prop_data2["weights"] = jnp.array(jnp.where(wt > wt_thresh, 0.0, prop_data2["weights"]))
-    prop_data1["weights"] = jnp.array(jnp.where(olp < olp_thresh, 0.0, prop_data1["weights"]))
-    prop_data2["weights"] = jnp.array(jnp.where(olp < olp_thresh, 0.0, prop_data2["weights"]))
+def corr_otler_rm(prop_data1, prop_data2, z_thresh = 5):
+
+    # problem for overlap as a measure
+    # for large system which should be describe by many determinants
+    # the overlaps with a single determinant trial generally
+    # becomes very small
+
+    #######################################################################
+    # not efficient when running on cpus                                  #
+    # this function is applied locally on each core                       #
+    # this function is applied locally on each core                       #
+    # a glbal outliner may not be a local outliner                        #
+    # especially when having very few walkers on each core                #
+    # which restrict me from defining this function in a more generalized #
+    # way. i.e., z_score > z_thresh*std                                   #
+    #######################################################################
+    
+    # olp1 = jnp.sqrt(prop_data1["overlaps"].real**2+prop_data1["overlaps"].imag**2)
+    # olp2 = jnp.sqrt(prop_data2["overlaps"].real**2+prop_data2["overlaps"].imag**2)
+    # olp = jnp.array(jnp.where(olp1 < olp2, olp1, olp2)) # take the smaller
+    # olp_thresh = 0.02
+    wt1 = jnp.array(prop_data1["weights"])
+    wt2 = jnp.array(prop_data2["weights"])
+    # wt = jnp.array(jnp.where(wt1 > wt2, wt1, wt2)) # take the larger
+    wt1_mean = jnp.mean(wt1)
+    wt1_std = jnp.std(wt1)
+    wt1_z = jnp.abs(wt1-wt1_mean)/wt1_std
+    wt2_mean = jnp.mean(wt2)
+    wt2_std = jnp.std(wt2)
+    wt2_z = jnp.abs(wt2-wt2_mean)/wt2_std
+    wt_z = jnp.array(jnp.where(wt1_z > wt2_z, wt1_z, wt2_z)) # take the larger
+    prop_data1["weights"] = jnp.array(jnp.where(wt_z > z_thresh, 0.0, wt1))
+    prop_data2["weights"] = jnp.array(jnp.where(wt_z > z_thresh, 0.0, wt2))
+    # prop_data1["weights"] = jnp.array(jnp.where(olp < olp_thresh, 0.0, prop_data1["weights"]))
+    # prop_data2["weights"] = jnp.array(jnp.where(olp < olp_thresh, 0.0, prop_data2["weights"]))
     return prop_data1, prop_data2
 
 
@@ -397,7 +416,7 @@ def cs_block_scan(
         prop2: propagator,
         trial2: wave_function,
         wave_data2: dict):
-    '''correlated sampling of two blocks over the same field'''
+    '''correlated sampling of two blocks of walkers over the same field'''
     prop_data1["key"], subkey1 = random.split(prop_data1["key"])
     fields = random.normal(
         subkey1,
@@ -568,3 +587,38 @@ def ucs_scan_seeds(seeds,eq_steps,
     _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_ucs, None, seeds)
 
     return loc_en1,loc_weight1,loc_en2,loc_weight2
+
+def run_cs_afqmc(options=None,files=None,script=None,mpi_prefix=None, nproc=None):
+    if options is None:
+        options = {}
+    if files is None:
+        raise ValueError("files for correlated sampling not found!")
+    with open("options.bin", "wb") as f:
+        pickle.dump(options, f)
+    with open("files.bin", "wb") as f:
+        pickle.dump(files, f)
+    if script is None:
+        path = os.path.abspath(__file__)
+        dir_path = os.path.dirname(path)
+        script = f"{dir_path}/run_cs.py"
+    use_gpu = options["use_gpu"]
+    if use_gpu:
+        config.afqmc_config["use_gpu"] = True
+        gpu_flag = "--use_gpu"
+    else: gpu_flag = ""
+    if mpi_prefix is None:
+        if use_gpu:
+            mpi_prefix = ""
+        else:
+            mpi_prefix = "mpirun "
+    if nproc is not None:
+        mpi_prefix += f"-np {nproc} "
+    os.system(
+        f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} |tee cs_afqmc.out"
+    )
+    # try:
+    #     ene_err = np.loadtxt("ene_err.txt")
+    # except:
+    #     print("AFQMC did not execute correctly.")
+    #     ene_err = 0.0, 0.0
+    return None
