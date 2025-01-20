@@ -31,7 +31,7 @@ seed = options["seed"]
 rlx_steps = options["rlx_steps"]
 prop_steps = options["prop_steps"]
 n_runs = options["n_runs"]
-# use_gpu = options["use_gpu"]
+use_gpu = options["use_gpu"]
 
 mo_file1=files["mo1"]
 chol_file1=files["chol1"]
@@ -40,16 +40,16 @@ mo_file2=files["mo2"]
 chol_file2=files["chol2"]
 amp_file2=files["amp2"]
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--use_gpu", action="store_true")
-    args = parser.parse_args()
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser()
+#     parser.add_argument("--use_gpu", action="store_true")
+#     args = parser.parse_args()
 
-    if args.use_gpu:
-        config.afqmc_config["use_gpu"] = True
+#     if args.use_gpu:
+#         config.afqmc_config["use_gpu"] = True
 
-# if use_gpu:
-#     config.afqmc_config["use_gpu"] = True
+if use_gpu:
+    config.afqmc_config["use_gpu"] = True
 
 config.setup_jax()
 MPI = config.setup_comm()
