@@ -9,37 +9,6 @@ from ad_afqmc.corr_sample_test import corr_sample
 from ad_afqmc import mpi_jax, config
 import time
 
-# print = partial(print, flush=True)
-# nwalkers = 10
-# n_runs = 100
-# rlx_steps = 0
-# prop_steps = 10
-# dt = 0.01
-# n_exp_terms = 6
-# seed = 23
-# cs = True
-# use_gpu = False
-
-# options = {
-#     "dt": dt,
-#     "n_exp_terms": n_exp_terms,
-#     "n_walkers": nwalkers,
-#     "seed": seed,
-#     "walker_type": "rhf",
-#     "trial": "rhf",
-#     "corr_samp": cs,
-#     "free_proj": False,
-# }
-
-# files = {
-#     "mo1":"mo1.npz",
-#     "chol1":"chol1",
-#     "amp1":"amp1.npz",
-#     "mo2":"mo2.npz",
-#     "chol2":"chol2",
-#     "amp2":"amp2.npz",
-# }
-
 with open("options.bin", "rb") as f:
     options = pickle.load(f)
 
@@ -60,6 +29,7 @@ seed = options["seed"]
 rlx_steps = options["rlx_steps"]
 prop_steps = options["prop_steps"]
 n_runs = options["n_runs"]
+use_gpu = options["use_gpu"]
 
 mo_file1=files["mo1"]
 chol_file1=files["chol1"]
@@ -68,6 +38,8 @@ mo_file2=files["mo2"]
 chol_file2=files["chol2"]
 amp_file2=files["amp2"]
 
+if use_gpu:
+    config.afqmc_config["use_gpu"] = True
 config.setup_jax()
 MPI = config.setup_comm()
 
