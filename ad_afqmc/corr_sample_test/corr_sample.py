@@ -603,7 +603,7 @@ def run_cs_afqmc(options=None,files=None,script=None,mpi_prefix=None, nproc=None
         script = f"{dir_path}/run_cs.py"
     use_gpu = options["use_gpu"]
     if use_gpu:
-        config.afqmc_config["use_gpu"] = True
+        # config.afqmc_config["use_gpu"] = True
         gpu_flag = "--use_gpu"
     else: gpu_flag = ""
     if mpi_prefix is None:
