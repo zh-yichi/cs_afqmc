@@ -9,6 +9,8 @@ from ad_afqmc.corr_sample_test import corr_sample
 from ad_afqmc import mpi_jax, config
 import time
 
+print = partial(print, flush=True)
+
 with open("options.bin", "rb") as f:
     options = pickle.load(f)
 
