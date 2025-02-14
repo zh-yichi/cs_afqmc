@@ -1,21 +1,21 @@
 
 WARN: Even tempered Gaussians are generated as DF auxbasis for  H Li
 
-converged SCF energy = -15.8674358403812
+converged SCF energy = -15.9234017904822
 
 WARN: Even tempered Gaussians are generated as DF auxbasis for  H Li
 
-converged SCF energy = -15.8412749856044
-E(RCCSD) = -15.92215029773742  E_corr = -0.05471445735620764
-RCCSD(T) correction = -0.000407755988172494
-E(RCCSD) = -15.9014945279115  E_corr = -0.06021954230708219
-RCCSD(T) correction = -2.63784451969304e-05
-fci1 energy is -15.922483081938502
-fci2 energy is -15.90097142474023
-rhf energy difference is -0.0261608547768013
-ccsd energy difference is -0.02065576982592532
-ccsd(t) energy difference is -0.02103714736890094
-fci energy difference is -0.021511657198271195
+converged SCF energy = -15.9041250431087
+E(RCCSD) = -15.96304523539503  E_corr = -0.03964344491284547
+RCCSD(T) correction = -0.000175319918946744
+E(RCCSD) = -15.94490244065449  E_corr = -0.04077739754578498
+RCCSD(T) correction = -1.57706070197083e-05
+fci1 energy is -15.963149150927258
+fci2 energy is -15.944638509880043
+rhf energy difference is -0.01927674737348184
+ccsd energy difference is -0.01814279474054281
+ccsd(t) energy difference is -0.01830234405247003
+fci energy difference is -0.01851064104721445
 #
 # Preparing AFQMC calculation
 # If you import pyscf cc modules and use MPI for AFQMC in the same script, finalize MPI before calling the AFQMC driver.

@@ -72,7 +72,10 @@ prop_data2_init, ham_data2_init = \
 ### relaxation ###
 comm.Barrier()
 if rank == 0:
-    print(f'# relaxation from mean-field object using {nwalkers*size} walkers')
+    if options["trial"] == "rhf":
+        print(f'# relaxation from mean-field object using {nwalkers*size} walkers')
+    if options["trial"] == "cisd":
+        print(f'# relaxation from ccsd object using {nwalkers*size} walkers')
     print('# rlx_step \t system1_en \t system2_en \t en_diff')
     print(f'    {0}'
           f'\t \t {prop_data1_init["e_estimate"]:.6f}' 
@@ -173,7 +176,7 @@ comm.Barrier()
 if rank == 0:
     glb_en1 = np.empty(size*loc_en1.size,dtype='float32')
     glb_en2 = np.empty(size*loc_en2.size,dtype='float32')
-    glb_weight1 = np.empty(size*loc_weight2.size,dtype='float32')
+    glb_weight1 = np.empty(size*loc_weight1.size,dtype='float32')
     glb_weight2 = np.empty(size*loc_weight2.size,dtype='float32')
 else:
     glb_en1 = None

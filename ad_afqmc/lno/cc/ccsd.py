@@ -1,11 +1,11 @@
 import sys
 import numpy as np
 from functools import reduce
-from lno.tools import tools
+from ad_afqmc.lno.tools import tools
 from pyscf.lib import logger
 from pyscf import lib
 #from lno.base_test import LNO
-from lno.base import LNO
+from ad_afqmc.lno.base import LNO
 
 _fdot = np.dot
 fdot = lambda *args: reduce(_fdot, args)
@@ -320,7 +320,7 @@ def impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=None,
     elcorr_cc = get_fragment_energy(oovv, t2, prjlo)
     cput1 = log.timer_debug1('imp sol - cc  ene', *cput1)
     if ccsd_t:
-        from lno.cc.ccsd_t import kernel as CCSD_T
+        from ad_afqmc.lno.cc.ccsd_t import kernel as CCSD_T
         t2 -= einsum('ia,jb->ijab',t1,t1)   # restore t2
         elcorr_cc_t = CCSD_T(mcc, imp_eris, prjlo, t1=t1, t2=t2, verbose=verbose_imp)
         cput1 = log.timer_debug1('imp sol - cc  (T)', *cput1)

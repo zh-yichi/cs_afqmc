@@ -33,7 +33,7 @@ mo_file = run_afqmc.mo_file
 amp_file = run_afqmc.amp_file
 chol_file = run_afqmc.chol_file
 
-def _prep_afqmc(options=None,mo_file=mo_file,amp_file=amp_file,chol_file=chol_file):
+def _prep_afqmc(options=None,option_file="options.bin",mo_file=mo_file,amp_file=amp_file,chol_file=chol_file):
     if rank == 0:
         print(f"# Number of MPI ranks: {size}\n#")
 
@@ -54,7 +54,7 @@ def _prep_afqmc(options=None,mo_file=mo_file,amp_file=amp_file,chol_file=chol_fi
 
     if options is None:
         try:
-            with open("options.bin", "rb") as f:
+            with open(option_file, "rb") as f:
                 options = pickle.load(f)
         except:
             options = {}
@@ -84,7 +84,8 @@ def _prep_afqmc(options=None,mo_file=mo_file,amp_file=amp_file,chol_file=chol_fi
     options["n_batch"] = options.get("n_batch", 1)
     options["LNO"] = options.get("LNO",False)
     if options["LNO"]:
-        print("# Using Local Natural Orbital Approximation")
+        if rank == 0:
+            print("# Using Local Natural Orbital Approximation")
     options['prjlo'] = options.get('prjlo',None)
     options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
@@ -235,6 +236,7 @@ if __name__ == "__main__":
     ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
         _prep_afqmc()
     )
+    # print(f"wave_data {wave_data}") #yichi
     assert trial is not None
     init = time.time()
     comm.Barrier()

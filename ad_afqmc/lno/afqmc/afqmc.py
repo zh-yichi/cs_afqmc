@@ -6,8 +6,8 @@ from pyscf.lib import logger
 from pyscf import lib
 #from pyscf.shciscf import shci
 #import QMCUtils
-from lno.base import LNO
-from lno.cc import ccsd
+from ad_afqmc.lno.base import LNO
+from ad_afqmc.lno.cc import ccsd
 
 _fdot = np.dot
 fdot = lambda *args: reduce(_fdot, args)
@@ -26,7 +26,7 @@ def impurity_solve(mf,
                    dt = 0.005,
                    nwalk_per_proc = 20,
                    nproc = None,
-                   nblocks = 800,
+                   nblocks = 100,
                    log = None,
                    verbose_imp = 0):
     r''' Solve impurity problem and calculate local correlation energy.
@@ -52,7 +52,7 @@ def impurity_solve(mf,
     cput1 = (logger.process_clock(), logger.perf_counter())
 
     maskocc = mf.mo_occ>1e-10
-    nocc = np.count_nonzero(maskocc)
+    # nocc = np.count_nonzero(maskocc)
     nmo = mf.mo_occ.size
 
     # Convert frozen to 0 bc PySCF solvers do not support frozen=None or empty list
@@ -85,7 +85,7 @@ def impurity_solve(mf,
     #print("DQMC root: ",vmc_root)
 
 
-    orbitalE= nactocc-1
+    # orbitalE= nactocc-1
     act_index = [] 
     # norb_act = (nactocc+nactvir)
     # nelec_act = nactocc*2
@@ -108,14 +108,8 @@ def impurity_solve(mf,
                                                    nblocks = nblocks,
                                                    chol_cut = chol_cut,
                                                    maxError = maxError,
-                                                   prjlo = prjlo)#,right='uhf')
-#    e_afqmc,err_afqmc = QMCUtils.run_afqmc_lno_mc(mf,mo_coeff = mo_sort,norb_act = norb_act,nelec_act = nelec_act,norb_frozen=frz_ind,nwalk_per_proc = 20,orbitalE=orbitalE,vmc_root=vmc_root,nblocks=nblocks,chol_vecs=chol_vecs,seed=seed,chol_cut = chol_cut, cholesky_threshold = cholesky_threshold,maxError=maxError,dt=dt,prjlo=prjlo,active_space=act_index,ndets=ndets)#,ncore=ncore)
+                                                   prjlo = prjlo)
 
-    #e_afqmc,err_afqmc = QMCUtils.run_afqmc_lno_mf(mf,mo_coeff = mo_coeff,norb_act = (nactocc+nactvir),nelec_act = nactocc*2,norb_frozen=frozen,nwalk_per_proc = 20,orbitalE=nactocc-1,vmc_root=vmc_root,nblocks=nblocks,chol_vecs=chol_vecs,seed=seed,chol_cut = chol_cut, cholesky_threshold = cholesky_threshold,maxError=maxError,dt=dt,prjlo=prjlo)#,right='uhf')
-    #e_afqmc,err_afqmc = QMCUtils.run_afqmc_lno_mf(mf,mo_coeff = can_orbfrag,norb_act = (nactocc+nactvir),nelec_act = nactocc*2,norb_frozen=frozen,nwalk_per_proc = 20,orbitalE=nactocc-1,vmc_root=vmc_root,nblocks=nblocks,chol_vecs=chol_vecs,seed=seed,chol_cut = chol_cut, cholesky_threshold = cholesky_threshold,maxError=maxError,dt=dt,prjlo=prjlo)#,right='uhf')
-
-
-    
 
     if(e_afqmc==0 and err_afqmc==0):
         frag_msg = '  '.join([f'E_corr(MP2) = 0', f'E_corr(AFQMC) = 0', f'E_corr(CCSD(T)) = 0'])
@@ -178,9 +172,9 @@ class LNOAFQMC(LNO):
         self.chol_cut = 1e-6
         self.cholesky_threshold = 0.5e-3
         self.chol_vecs = None
-        self.vmc_root = None #'/projects/joku8258/software/VMC_forwork/VMC/'
+        self.vmc_root = None #'./VMC_forwork/VMC/'
         self.multislater=False
-        self.DiceBinary= None #"/projects/joku8258/software/alpine_software/Dice_Dice/Dice/bin/Dice" #'/projects/xuwa0145/tools/Dice/bin_gcc_alpine/Dice'
+        self.DiceBinary= None #"./Dice_Dice/Dice/bin/Dice"
         self.nwalk_per_proc = 20
         self.ndets=1000
         self.maxError = 1e-3

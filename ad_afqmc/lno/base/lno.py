@@ -69,7 +69,8 @@ def kernel(mfcc, orbloc, frag_lolist, no_type, eris=None, frag_nonvlist=None):
     if not (no_type[0] in 'rei' and no_type[1] in 'rei'):
         log.warn('Input no_type "%s" is invalid.', no_type)
         raise ValueError
-
+    # print("######## no type ########")
+    # print(no_type)
     #nfrag = len(frag_lolist)
     #mfcc.maxError = mfcc.maxError/np.sqrt(nfrag)
 
@@ -90,8 +91,9 @@ def kernel(mfcc, orbloc, frag_lolist, no_type, eris=None, frag_nonvlist=None):
 ##    		import pdb;pdb.set_trace()
 #    		molden.orbital_coeff(mf.mol, f1, orbfragloc, ene=mf.mo_energy, occ=mf.mo_occ)
 #    exit(0)
-
-    for ifrag in range(0, nfrag):
+    # print(f'frag_nonvlist: {frag_nonvlist}')
+    # print("########### here ###########")
+    for ifrag in range(0,nfrag):
     # local basis for internal space
         if(len(mfcc.runfrags)>0):
             if(ifrag not in mfcc.runfrags):frag_res[ifrag] = (0,0,0);continue
@@ -122,24 +124,27 @@ def kernel_1frag(mfcc, eris, orbfragloc, no_type, **kwargs):
     mf = mfcc._scf
     frozen_mask = mfcc.get_frozen_mask()
     thresh_pno = [mfcc.thresh_occ, mfcc.thresh_vir]
-    ccsd_t = mfcc.ccsd_t
+    # ccsd_t = mfcc.ccsd_t
     frag_target_nocc = kwargs.get('frag_target_nocc', None)
     frag_target_nvir = kwargs.get('frag_target_nvir', None)
     canonicalize = kwargs.get('canonicalize',True)
-    chol_vecs = kwargs.get('chol_vecs',None)
-    ifrag = kwargs.get('ifrag',-1)
+    # chol_vecs = kwargs.get('chol_vecs',None)
+    # ifrag = kwargs.get('ifrag',-1)
 # make fpno
     frzfrag, orbfrag, can_orbfrag = make_fpno1(mfcc, eris, orbfragloc, no_type,
-                                  THRESH_INTERNAL, thresh_pno,
-                                  frozen_mask=frozen_mask,
-                                  frag_target_nocc=frag_target_nocc,
-                                  frag_target_nvir=frag_target_nvir,canonicalize=canonicalize)
+                                               THRESH_INTERNAL, thresh_pno,
+                                               frozen_mask=frozen_mask,
+                                               frag_target_nocc=frag_target_nocc,
+                                               frag_target_nvir=frag_target_nvir,
+                                               canonicalize=canonicalize)
     cput1 = log.timer('make pno         ', *cput1)
     
 # solve impurity
-    if(canonicalize == True): frag_msg, frag_res = mfcc.impurity_solve(mf, orbfrag, orbfragloc,frozen=frzfrag, eris=eris, log=log)
+    if(canonicalize == True): frag_msg, frag_res = mfcc.impurity_solve(mf,orbfrag,orbfragloc,frozen=frzfrag,
+                                                                       eris=eris,log=log)
     #else: frag_msg, frag_res = mfcc.impurity_solve(mf, orbfrag, orbfragloc,frozen=frzfrag, eris=eris, log=log,can_orbfrag=can_orbfrag,nblocks = mfcc.nblocks,seed = mfcc.seed,chol_cut = mfcc.chol_cut, cholesky_threshold = mfcc.cholesky_threshold)
-    else : frag_msg, frag_res = mfcc.impurity_solve(mf, orbfrag, orbfragloc,frozen=frzfrag, eris=eris, log=log,can_orbfrag=can_orbfrag)
+    else : frag_msg, frag_res = mfcc.impurity_solve(mf,orbfrag,orbfragloc,frozen=frzfrag,
+                                                    eris=eris,log=log,can_orbfrag=can_orbfrag)
     cput1 = log.timer('imp sol          ', *cput1)
     return frag_msg, frag_res
 
@@ -149,14 +154,15 @@ def make_fpno1(mfcc, eris, orbfragloc, no_type, thresh_internal, thresh_external
     mf = mfcc._scf
     nocc = np.count_nonzero(mf.mo_occ>1e-10)
     nmo = mf.mo_occ.size
-    orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo()
-    moeocc0, moeocc1, moevir1, moevir0 = mfcc.split_moe()
-    nocc0, nocc1, nvir1, nvir0 = [m.size for m in [moeocc0,moeocc1,
-                                                   moevir1,moevir0]]
-    nlo = orbfragloc.shape[1]
+    orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo() # frz_occ, act_occ, act_vir, frz_vir
+    moeocc0, moeocc1, moevir1, moevir0 = mfcc.split_moe() # split energy
+    # nocc0, nocc1, nvir1, nvir0 = [m.size for m in [moeocc0,moeocc1,
+    #                                                moevir1,moevir0]]
+    # nlo = orbfragloc.shape[1]
     s1e = eris.s1e # if eris.s1e is None else mf.get_ovlp()
     fock = eris.fock # if eris.fock is None else mf.get_fock()
     Lov = eris.Lov
+    # chosen loc_orb overlap with act_vir
     lovir = abs(fdot(orbfragloc.T, s1e, orbvir1)).max() > 1e-10
 
     if isinstance(thresh_external, float):
@@ -173,7 +179,7 @@ def make_fpno1(mfcc, eris, orbfragloc, no_type, thresh_internal, thresh_external
         raise ValueError
 
     # split active occ/vir into internal(1) and external(2)
-    m = fdot(orbfragloc.T, s1e, orbocc1)
+    m = fdot(orbfragloc.T, s1e, orbocc1) # overlap with all loc act_occs
     uocc1, uocc2 = projection_construction(m, thresh_internal)
     moefragocc1, orbfragocc1 = subspace_eigh(fock, fdot(orbocc1, uocc1))
     if lovir:
@@ -782,7 +788,7 @@ class LNO(lib.StreamObject):
         if frag_lolist is None:
             if frag_atmlist is None:
                 log.info('Grouping LOs by single-atom fragments')
-                from lno.tools import autofrag
+                from ad_afqmc.lno.tools import autofrag
                 frag_atmlist = autofrag(self.mol)
             else:
                 log.info('Grouping LOs by user input atom-based fragments')

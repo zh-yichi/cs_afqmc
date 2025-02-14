@@ -80,7 +80,7 @@ def run_afqmc_lno_mf(mf,
                      integrals=None,
                      dt = 0.005,
                      nwalk_per_proc = 5,
-                     nblocks = 1000,
+                     nblocks = 100,
                      mpi_prefix = None,                     
                      nproc = None,
                      chol_cut = 1e-5,
@@ -139,26 +139,29 @@ def run_afqmc_lno_mf(mf,
                   chol[i, n, m] = chol0[i, triind]
 
     else:
-      print('# Generating Cholesky Integrals')
-      h1e, chol, nelec, enuc = pyscf_interface.generate_integrals(mol, mf.get_hcore(), mo_coeff, chol_cut)
-      nbasis = h1e.shape[-1]
-      nelec = mol.nelec
+        print('# Generating Cholesky Integrals')
+        h1e, chol, nelec, enuc = pyscf_interface.generate_integrals(mol, mf.get_hcore(), mo_coeff, chol_cut)
+        nbasis = h1e.shape[-1]
+        nelec = mol.nelec
 
-      mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
-      mc.frozen = norb_frozen
-      nelec = mc.nelecas
-      mc.mo_coeff = mo_coeff
-      h1e, enuc = mc.get_h1eff()
-#     import pdb;pdb.set_trace()
-      nbasis = mo_coeff.shape[-1]
-      act = [i for i in range(nbasis) if i not in norb_frozen]
-      #import pdb;pdb.set_trace()
-      e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
-      chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
+        mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
+        mc.frozen = norb_frozen
+        nelec = mc.nelecas
+        mc.mo_coeff = mo_coeff
+        h1e, enuc = mc.get_h1eff()
 
-    print("# Finished calculating Cholesky integrals\n")
-
+        nbasis = mo_coeff.shape[-1]
+        act = [i for i in range(nbasis) if i not in norb_frozen]
+        print(f'# local active orbitals are {act}') #yichi
+        print(f'# local active space size {len(act)}') #yichi
+        e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
+        print(f'# loc_eris shape: {e.shape}') #yichi
+        # add e = pyscf_interface.df(mol_mf,e) for selected loc_mos
+        chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
+        print(f'# chol shape: {chol.shape}') #yichi
+    
     nbasis = h1e.shape[-1]
+    print("# Finished calculating Cholesky integrals\n")
     print('# Size of the correlation space:')
     print(f'# Number of electrons: {nelec}')
     print(f'# Number of basis functions: {nbasis}')

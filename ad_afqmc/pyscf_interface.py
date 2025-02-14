@@ -379,6 +379,7 @@ def generate_integrals(mol, hcore, X, chol_cut=1e-5, verbose=False, DFbas=None):
         h1e = np.dot(X[0].T, np.dot(hcore, X[0]))
 
     if DFbas is not None:
+        print('# Decomposing ERI with DF')
         chol_vecs = df.incore.cholesky_eri(mol, auxbasis=DFbas)
         chol_vecs = lib.unpack_tril(chol_vecs).reshape(chol_vecs.shape[0], -1)
     else:  # do cholesky

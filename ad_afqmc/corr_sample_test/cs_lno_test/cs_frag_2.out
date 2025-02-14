@@ -1,0 +1,95 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 10
+#
+# norb: 17
+# nelec: (4, 4)
+#
+# dt: 0.01
+# n_exp_terms: 6
+# n_walkers: 40
+# n_runs: 200
+# rlx_steps: 0
+# prop_steps: 10
+# seed: 23
+# walker_type: rhf
+# trial: rhf
+# use_gpu: False
+# free_proj: False
+# prjlo: [[ 2.42861287e-17  8.67361738e-18 -1.04083409e-17 -1.00000000e+00]]
+# n_prop_steps: 50
+# n_ene_blocks: 50
+# n_sr_blocks: 1
+# n_blocks: 50
+# n_eql: 1
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Number of MPI ranks: 10
+#
+# norb: 17
+# nelec: (4, 4)
+#
+# dt: 0.01
+# n_exp_terms: 6
+# n_walkers: 40
+# n_runs: 200
+# rlx_steps: 0
+# prop_steps: 10
+# seed: 23
+# walker_type: rhf
+# trial: rhf
+# use_gpu: False
+# free_proj: False
+# prjlo: [[-2.86229374e-17 -3.03576608e-18  6.93889390e-18 -1.00000000e+00]]
+# n_prop_steps: 50
+# n_ene_blocks: 50
+# n_sr_blocks: 1
+# n_blocks: 50
+# n_eql: 1
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# initial energy: -152.062491
+# initial energy: -152.053272
+# relaxation from mean-field object using 400 walkers
+# rlx_step 	 system1_en 	 system2_en 	 en_diff 	 orb1_en 	 orb2_en 	 orb_en_diff
+    0	 	 -152.062491	 -152.053272	 -0.009219
+# relaxation time: 18.11
+
+# multiple independent post relaxation propagation with step size 0.01s
+# tot_walkers: 400, propagation steps: 10, number of independent runs: 200
+# step	 orb1_en 	 error	 	 orb2_en 	 error	 	 orb_en_diff 	 error
+  1	 -0.049526 	 0.000192	 -0.049431 	 0.000185	 -0.000095 	 0.000080
+  2	 -0.057611 	 0.000259	 -0.057476 	 0.000244	 -0.000135 	 0.000098
+  3	 -0.059296 	 0.000232	 -0.059106 	 0.000233	 -0.000190 	 0.000101
+  4	 -0.060186 	 0.000272	 -0.060117 	 0.000254	 -0.000069 	 0.000112
+  5	 -0.060602 	 0.000264	 -0.060611 	 0.000284	 0.000009 	 0.000119
+  6	 -0.060477 	 0.000264	 -0.060582 	 0.000281	 0.000105 	 0.000130
+  7	 -0.060353 	 0.000258	 -0.060427 	 0.000253	 0.000074 	 0.000124
+  8	 -0.060887 	 0.000272	 -0.060899 	 0.000281	 0.000012 	 0.000122
+  9	 -0.060288 	 0.000284	 -0.060221 	 0.000295	 -0.000067 	 0.000127
+  10	 -0.060844 	 0.000266	 -0.060630 	 0.000265	 -0.000214 	 0.000127
+# total run time: 4830.49

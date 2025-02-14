@@ -281,6 +281,177 @@ def fix_len_chol_prep(
         mo_coeffs=trial_coeffs,
     )
 
+def pre_lno(options,mf,mo_coeff,lo_coeff,frozen=None,eris=None,chol_cut=1e-5,
+            option_file='options.bin',mo_file='mo.npz',chol_file='FCIDUMP'):
+    from functools import reduce
+    from pyscf import ao2mo
+    _fdot = np.dot
+    fdot = lambda *args: reduce(_fdot, args)
+
+    print("#\n# Preparing LNO-AFQMC calculation")
+    mol = mf.mol
+    # frozen = frzfrag2
+    # choose the orbital basis
+    # mo_coeff = orbfrag2
+    maskocc = mf.mo_occ>1e-10
+    nmo = mf.mo_occ.size
+    # Convert frozen to 0 bc PySCF solvers do not support frozen=None or empty list
+    if frozen is None:
+        frozen = 0
+    elif isinstance(frozen, (list,tuple,np.ndarray)) and len(frozen) == 0:
+        frozen = 0
+    if isinstance(frozen, (int,np.integer)):
+        maskact = np.hstack([np.zeros(frozen,dtype=bool),
+                                np.ones(nmo-frozen,dtype=bool)])
+    elif isinstance(frozen, (list,tuple,np.ndarray)):
+        maskact = np.array([i not in frozen for i in range(nmo)])
+        
+    orbfrzocc = mo_coeff[:,~maskact& maskocc]
+    orbactocc = mo_coeff[:, maskact& maskocc]
+    orbactvir = mo_coeff[:, maskact&~maskocc]
+    orbfrzvir = mo_coeff[:,~maskact&~maskocc]
+    _, nactocc, nactvir, _ = \
+        [orb.shape[1] for orb in [orbfrzocc,orbactocc,orbactvir,orbfrzvir]]
+    norb_act = (nactocc+nactvir)
+    nelec_act = nactocc*2
+    norb_frozen = frozen
+
+    # lo_coeff = orbfragloc2
+    s1e = mf.get_ovlp() if eris is None else eris.s1e
+    prjlo = fdot(lo_coeff.T, s1e, orbactocc)
+    options["prjlo"] = prjlo
+    import pickle
+    with open(option_file, 'wb') as f:
+        pickle.dump(options, f)
+
+    # calculate cholesky integrals
+    print('# Generating Cholesky Integrals')
+    nbasis = mf.mol.nao
+    act_idx = [i for i in range(nbasis) if i not in norb_frozen]
+    _, chol, _, _ = \
+        pyscf_interface.generate_integrals(mol,mf.get_hcore(),mo_coeff[:,act_idx],chol_cut,DFbas=mf.with_df.auxmol.basis)
+    # nbasis = h1e.shape[-1]
+    # nelec = mol.nelec
+    mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
+    mc.frozen = norb_frozen
+    nelec = mc.nelecas
+    mc.mo_coeff = mo_coeff
+    h1e, enuc = mc.get_h1eff()
+
+    # nbasis = mo_coeff.shape[-1]
+    # act = [i for i in range(nbasis) if i not in norb_frozen]
+    # e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
+    # chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
+
+    print(f'# local active orbitals are {act_idx}') #yichi
+    print(f'# local active space size {len(act_idx)}') #yichi
+    # print(f'# loc_eris shape: {e.shape}') #yichi
+    print(f'# chol shape: {chol.shape}') #yichi
+
+    nbasis = h1e.shape[-1]
+    print("# Finished calculating Cholesky integrals\n")
+    print('# Size of the correlation space:')
+    print(f'# Number of electrons: {nelec}')
+    print(f'# Number of basis functions: {nbasis}')
+    print(f'# Number of Cholesky vectors: {chol.shape[0]}\n')
+    chol = chol.reshape((-1, nbasis, nbasis))
+    v0 = 0.5 * np.einsum('nik,njk->ij', chol, chol, optimize='optimal')
+    h1e_mod = h1e - v0
+    chol = chol.reshape((chol.shape[0], -1))
+
+    # write mo coefficients
+    trial_coeffs = np.empty((2, nbasis, nbasis))
+    # overlap = mf.get_ovlp(mol)
+    #q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[:, norb_frozen:]))
+    q = np.eye(mol.nao- len(norb_frozen))
+    trial_coeffs[0] = q
+    trial_coeffs[1] = q
+    np.savez(mo_file,mo_coeff=trial_coeffs)
+    pyscf_interface.write_dqmc(h1e,h1e_mod,chol,sum(nelec),nbasis,enuc,ms=mol.spin,
+                               filename=chol_file,mo_coeffs=trial_coeffs)
+    
+    return None
+
+
+def mk_cs_frag(ifrag,mf1,mf2,frozen,options,
+               chol_cut=1e-5,lno_thresh=1e-4,
+               no_type='ie',lo_type="pm"):
+    
+    from ad_afqmc.lno.afqmc import LNOAFQMC
+    mfcc1 = LNOAFQMC(mf1,thresh=lno_thresh,frozen=frozen)
+    mfcc1.thresh_occ = lno_thresh*10
+    mfcc1.thresh_vir = lno_thresh
+    mfcc1.nwalk_per_proc = options["n_walkers"]
+    mfcc1.chol_cut = chol_cut
+
+    mfcc2 = LNOAFQMC(mf2,thresh=lno_thresh,frozen=frozen)
+    mfcc2.thresh_occ = lno_thresh*10
+    mfcc2.thresh_vir = lno_thresh
+    mfcc2.nwalk_per_proc = options["n_walkers"]
+    mfcc2.chol_cut = chol_cut
+
+    eris1 = mfcc1.ao2mo()
+    orbloc1 = mfcc1.get_lo(lo_type=lo_type)
+    # frag_atmlist1=None
+    frag_lolist1 = [[i] for i in range(orbloc1.shape[1])]
+    frag_nonvlist1 = mfcc1.frag_nonvlist
+    nfrag1 = len(frag_lolist1)
+    if frag_nonvlist1 is None: frag_nonvlist1 = [[None,None]] * nfrag1
+
+    eris2 = mfcc2.ao2mo()
+    orbloc2 = mfcc2.get_lo(lo_type=lo_type)
+    # frag_atmlist2=None
+    frag_lolist2 = [[i] for i in range(orbloc2.shape[1])]
+    frag_nonvlist2 = mfcc2.frag_nonvlist
+    nfrag2 = len(frag_lolist2)
+    if frag_nonvlist2 is None: frag_nonvlist2 = [[None,None]] * nfrag2
+
+    if nfrag1 != nfrag2: 
+        raise ValueError("number of fragments are different in two system!")
+
+    from ad_afqmc.lno.base import lno
+    # for ifrag in range(nfrag):
+    frag_target_nocc1, frag_target_nvir1 = frag_nonvlist1[ifrag]
+    fraglo1 = frag_lolist1[ifrag]
+    # frag_res1 = [None] * nfrag1
+    orbfragloc1 = orbloc1[:,fraglo1]
+    frag_target_nocc2, frag_target_nvir2 = frag_nonvlist2[ifrag]
+    fraglo2 = frag_lolist2[ifrag]
+    # frag_res2 = [None] * nfrag2
+    orbfragloc2 = orbloc2[:,fraglo2]
+
+    # make fpno
+    THRESH_INTERNAL = 1e-10
+    thresh_pno1 = [mfcc1.thresh_occ, mfcc1.thresh_vir]
+    frozen_mask1 = mfcc1.get_frozen_mask()
+    thresh_pno2 = [mfcc2.thresh_occ, mfcc2.thresh_vir]
+    frozen_mask2 = mfcc2.get_frozen_mask()
+    
+    frzfrag1, orbfrag1, can_orbfrag1 = lno.make_fpno1(mfcc1,eris1,orbfragloc1,no_type,
+                                                      THRESH_INTERNAL,thresh_pno1,
+                                                      frozen_mask=frozen_mask1,
+                                                      frag_target_nocc=frag_target_nocc1,
+                                                      frag_target_nvir=frag_target_nvir1,
+                                                      canonicalize=False)
+    
+    frzfrag2, orbfrag2, can_orbfrag2 = lno.make_fpno1(mfcc2,eris2,orbfragloc2,no_type,
+                                                      THRESH_INTERNAL, thresh_pno2,
+                                                      frozen_mask=frozen_mask2,
+                                                      frag_target_nocc=frag_target_nocc2,
+                                                      frag_target_nvir=frag_target_nvir2,
+                                                      canonicalize=False)
+    #take the larger active space
+    if len(frzfrag1) > len(frzfrag2):
+        frzfrag = frzfrag2
+    else:
+        frzfrag = frzfrag1
+    
+    pre_lno(options,mf1,orbfrag1,orbfragloc1,frozen=frzfrag,eris=eris1,chol_cut=chol_cut,
+            option_file='option1.bin',mo_file='mo1.npz',chol_file='chol1')
+    pre_lno(options,mf2,orbfrag2,orbfragloc2,frozen=frzfrag,eris=eris2,chol_cut=chol_cut,
+            option_file='option2.bin',mo_file='mo2.npz',chol_file='chol2')
+        
+    return None #can_orbfrag1,can_orbfrag2 for mp2
 
 sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 
@@ -299,9 +470,14 @@ def init_prop(ham_data, ham, prop, trial, wave_data, seed, MPI):
     prop_data = prop.init_prop_data(trial, wave_data, ham_data, init_walkers)
     prop_data["key"] = random.PRNGKey(seed + rank)
     prop_data["n_killed_walkers"] = 0
-    #print(f"# initial energy: {prop_data['e_estimate']:.9e}")
+
+    comm.Barrier()
+    if rank == 0:
+        print(f"# initial energy: {prop_data['e_estimate']:.6f}")
+    comm.Barrier()
     
     return prop_data, ham_data
+
 
 def en_samples(prop_data,ham_data,prop,trial,wave_data):
     energy_samples = jnp.real(
@@ -313,6 +489,15 @@ def en_samples(prop_data,ham_data,prop,trial,wave_data):
         energy_samples,
     )
     return energy_samples
+
+def orb_en_samples(prop_data,ham_data,prop,trial,wave_data,orbE):
+    orb_en_samples = jnp.real(
+        trial.calc_orbenergy(prop_data['walkers'],ham_data,wave_data,orbE)
+        )
+    # orbE_samples = jnp.where(jnp.abs(energy_samples - prop_data['pop_control_ene_shift']) 
+    #                      > jnp.sqrt(2./prop.dt), prop_data['pop_control_ene_shift'],
+    #                      orbE_samples)
+    return orb_en_samples
 
 def block_en_weight(prop_data,ham_data,prop,trial,wave_data):
 
@@ -498,6 +683,40 @@ def cs_steps_scan(steps,
         = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
     return cs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
 
+@partial(jit, static_argnums=(0,3,4,9,10))
+def lno_cs_steps_scan(steps,
+                      prop_data1,ham_data1,prop1,trial1,wave_data1,orbE1,
+                      prop_data2,ham_data2,prop2,trial2,wave_data2,orbE2,
+                      ):
+
+    cs_prop_data = (prop_data1,prop_data2)
+    def lno_cs_step(cs_prop_data,_):
+        prop_data1,prop_data2= cs_prop_data
+        prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
+                                              prop_data2,ham_data2,prop2,trial2,wave_data2)
+        cs_prop_data = (prop_data1,prop_data2)
+        loc_en_sp1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+        loc_en_sp2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+        loc_orb_en_sp1 = orb_en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1,orbE1)
+        loc_orb_en_sp2 = orb_en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2,orbE2)
+        loc_wt_sp1 = prop_data1["weights"]
+        loc_wt1 = sum(loc_wt_sp1)
+        loc_wt_sp2 = prop_data2["weights"]
+        loc_wt2 = sum(loc_wt_sp2)
+        loc_en_sp1 = loc_en_sp1*loc_wt_sp1
+        loc_en_sp2 = loc_en_sp2*loc_wt_sp2
+        loc_orb_en_sp1 = loc_orb_en_sp1*loc_wt_sp1
+        loc_orb_en_sp2 = loc_orb_en_sp2*loc_wt_sp2
+        loc_en1 = sum(loc_en_sp1) #not normalized
+        loc_en2 = sum(loc_en_sp2) #not normalized
+        loc_orb_en1 = sum(loc_orb_en_sp1) #not normalized
+        loc_orb_en2 = sum(loc_orb_en_sp2) #not normalized
+        return cs_prop_data, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2)
+
+    cs_prop_data, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
+        = jax.lax.scan(lno_cs_step,cs_prop_data,xs=None,length=steps)
+    return cs_prop_data, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2)
+
 
 @partial(jit, static_argnums=(0,3,4,8,9))
 def ucs_steps_scan(steps,
@@ -556,6 +775,36 @@ def scan_seeds(seeds,eq_steps,
     _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_cs, None, seeds)
 
     return loc_en1,loc_weight1,loc_en2,loc_weight2
+
+def lno_cs_seeds_scan(seeds,eq_steps,
+                      prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,orbE1,
+                      prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,orbE2,
+                      MPI):
+    '''
+    do a number of independent runs of given equilirium steps
+    for a given array of seeds
+    return local energy of system1, local weight of system1
+    and the same for system2.
+    the ensemble energy average for each system should be 
+    loc_en/loc_weight
+    '''
+
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+
+    def lno_cs_seed(carry,seed):
+        prop_data1_init["key"] = jax.random.PRNGKey(seed + rank)
+        _,(loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
+            = lno_cs_steps_scan(eq_steps,
+                                prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,orbE1,
+                                prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,orbE2
+                                )
+        
+        return carry, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2)
+    
+    _, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) = jax.lax.scan(lno_cs_seed, None, seeds)
+
+    return loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2
 
 def ucs_scan_seeds(seeds,eq_steps,
                   prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
@@ -621,4 +870,94 @@ def run_cs_afqmc(options=None,files=None,script=None,mpi_prefix=None, nproc=None
     # except:
     #     print("AFQMC did not execute correctly.")
     #     ene_err = 0.0, 0.0
+    return None
+
+
+def data_analyze(rlx_data,prop_data,rhf_en=None,ccsd_en=None,ccsd_t_en=None,fci_en=None):
+    
+    from matplotlib import pyplot as plt
+
+    rlx_en_diff = []
+    rlx_en1 = []
+    rlx_en2 = []
+    lines = rlx_data.splitlines()
+    for line in lines:
+        if not line.startswith("#"): 
+            columns = line.split()
+            if len(columns) > 1:
+                rlx_en1.append(columns[1])
+            if len(columns) > 2:
+                rlx_en2.append(columns[2])
+            if len(columns) > 3:
+                rlx_en_diff.append(columns[3])
+                
+    rlx_en1 = np.array(rlx_en1,dtype='float32')
+    rlx_en2 = np.array(rlx_en2,dtype='float32')
+    rlx_en_diff = np.array(rlx_en_diff,dtype='float32')
+
+    prop_en1 = []
+    prop_en1_err = []
+    prop_en2 = []
+    prop_en2_err = []
+    prop_en_diff = []
+    prop_en_diff_err = []
+    lines = prop_data.splitlines()
+    for line in lines:
+        if not line.startswith("#"): 
+            columns = line.split()
+            if len(columns) > 1:
+                prop_en1.append(columns[1])
+            if len(columns) > 2:
+                prop_en1_err.append(columns[2])
+            if len(columns) > 3:
+                prop_en2.append(columns[3])
+            if len(columns) > 4:
+                prop_en2_err.append(columns[4])
+            if len(columns) > 5:
+                prop_en_diff.append(columns[5])
+            if len(columns) > 6:
+                prop_en_diff_err.append(columns[6])
+
+    prop_en1 = np.array(prop_en1,dtype='float32')
+    prop_en1_err = np.array(prop_en1_err,dtype='float32')
+    prop_en2 = np.array(prop_en2,dtype='float32')
+    prop_en2_err = np.array(prop_en2_err,dtype='float32')
+    prop_en_diff = np.array(prop_en_diff,dtype='float32')
+    prop_en_diff_err = np.array(prop_en_diff_err,dtype='float32')
+
+    rlx_steps = np.arange(len(rlx_en_diff))
+    prop_steps = np.arange(len(rlx_en_diff),len(rlx_en_diff)+len(prop_en_diff))
+    x_steps = np.linspace(0,max(prop_steps),100)
+    
+    if rhf_en is not None:
+        rhf_en = [rhf_en]*100
+        plt.plot(x_steps,rhf_en,label='rhf')
+    if ccsd_en is not None:
+        ccsd_en = [ccsd_en]*100
+        plt.plot(x_steps,ccsd_en,label='ccsd')
+    if ccsd_t_en is not None:
+        ccsd_t_en = [ccsd_t_en]*100
+        plt.plot(x_steps,ccsd_t_en,label='ccsd(t)')
+    if fci_en is not None:
+        fci_en = [fci_en]*100
+        plt.plot(x_steps,fci_en,label='fci')
+        
+    plt.plot(rlx_steps,rlx_en_diff,'o',label='cs_relaxation')
+    plt.errorbar(prop_steps,prop_en_diff,yerr=prop_en_diff_err, fmt='o', capsize=5,label='cs_prop')
+    plt.xlabel('steps')
+    plt.ylabel('energy difference')
+    plt.title('correlated walkers energy differences')
+    plt.legend()
+    plt.show()
+
+    plt.plot(rlx_steps,rlx_en1,'o',color='blue')
+    plt.plot(rlx_steps,rlx_en2,'o',color='orange')
+    plt.errorbar(prop_steps,prop_en1,yerr=prop_en1_err, fmt='o', color='blue', capsize=5,label='system 1')
+    plt.errorbar(prop_steps,prop_en2,yerr=prop_en2_err, fmt='o', color='orange', capsize=5,label='system 2')
+    plt.xlabel('steps')
+    plt.ylabel('energy')
+    plt.title('system1 and system2')
+    plt.legend()
+    plt.show()
+
     return None

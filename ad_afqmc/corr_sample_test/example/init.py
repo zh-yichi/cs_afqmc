@@ -4,7 +4,7 @@ import numpy as np
 basis = 'sto6g'
 verbose = 4
 memory = 120000
-a = 2
+a = 1.596
 d1 = 3
 d2 = 100
 
@@ -23,16 +23,18 @@ H {a} 0 {d2}
 '''
 
 mol1 = gto.Mole(
-verbose=3,
+verbose=verbose,
 atom=atom1,
 basis=basis,
+max_memory=memory
 )
 mol1.build()
 
 mol2 = gto.Mole(
-verbose=3,
+verbose=verbose,
 atom=atom2,
 basis=basis,
+max_memory=memory
 )
 mol2.build()
 
