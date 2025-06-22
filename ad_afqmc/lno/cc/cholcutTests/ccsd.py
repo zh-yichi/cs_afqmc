@@ -5,8 +5,8 @@ from functools import reduce
 from pyscf.lib import logger
 from pyscf import lib
 
-from lno.base import LNO
-from lno.cc import LNOCCSD
+from ad_afqmc.lno.base import LNO
+from ad_afqmc.lno.cc import LNOCCSD
 _fdot = np.dot
 fdot = lambda *args: reduce(_fdot, args)
 einsum = lib.einsum
@@ -49,9 +49,9 @@ from pyscf.cc.ccsd_t import kernel as CCSD_T
 eccsd_t = CCSD_T(mcc, eris)
 
 # LNO
-for thresh in [1e-3]:
+for thresh in [1e-5]:
     mfcc = LNOCCSD(mf, thresh=thresh, frozen=frozen).set(verbose=5)
-    mfcc.thresh_occ = 1e-3
+    mfcc.thresh_occ = 1e-4
     mfcc.thresh_vir = thresh
     mfcc.lo_type = 'pm'
     mfcc.no_type = 'cim'

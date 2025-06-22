@@ -242,7 +242,8 @@ class wave_function(ABC):
     
     @singledispatchmethod
     def calc_orbenergy(self, walkers,ham_data:dict , wave_data:dict, orbE:int) -> jnp.ndarray:
-        return vmap(self._calc_orbenergy, in_axes=(None, None, None, 0, None,None))(ham_data['h0'], ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,orbE)
+        return vmap(self._calc_orbenergy, in_axes=(None, None, None, 0, None,None))(
+            ham_data['h0'], ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,orbE)
 
     @partial(jit, static_argnums=0)
     def _calc_energy_restricted(
@@ -622,7 +623,7 @@ class rhf(wave_function):
         ene0 =0
         m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
         nocc = rot_h1.shape[0]
-        green_walker = self._calc_green(walker, wave_data)
+        green_walker = self._calc_green(walker, wave_data) # in ao
         f = jnp.einsum('gij,jk->gik', rot_chol[:,:nocc,nocc:], green_walker.T[nocc:,:nocc], optimize='optimal')
         c = vmap(jnp.trace)(f)
 

@@ -52,7 +52,6 @@ def impurity_solve(mf,
     cput1 = (logger.process_clock(), logger.perf_counter())
 
     maskocc = mf.mo_occ>1e-10
-    # nocc = np.count_nonzero(maskocc)
     nmo = mf.mo_occ.size
 
     # Convert frozen to 0 bc PySCF solvers do not support frozen=None or empty list
@@ -68,8 +67,7 @@ def impurity_solve(mf,
         maskact = np.array([i not in frozen for i in range(nmo)])
     else:
         raise RuntimeError
-    #import pdb
-    #pdb.set_trace()
+  
     orbfrzocc = mo_coeff[:,~maskact& maskocc]
     orbactocc = mo_coeff[:, maskact& maskocc]
     orbactvir = mo_coeff[:, maskact&~maskocc]
@@ -82,19 +80,11 @@ def impurity_solve(mf,
     s1e = mf.get_ovlp() if eris is None else eris.s1e
     prjlo = fdot(lo_coeff.T, s1e, orbactocc)
 
-    #print("DQMC root: ",vmc_root)
-
-
-    # orbitalE= nactocc-1
     act_index = [] 
-    # norb_act = (nactocc+nactvir)
-    # nelec_act = nactocc*2
-    # central_mo = mo_coeff[:,orbitalE].copy()
+
     for i in range(len(active_space)):
       act_index.append(np.argmax(np.abs(mf.mo_coeff[:,active_space[i]]@mf.get_ovlp(mf.mol)@mo_coeff)))
    
-#    #import QMCUtils
-#    import LNOhelper as QMCUtils
     from ad_afqmc import run_afqmc
     e_afqmc,err_afqmc = run_afqmc.run_afqmc_lno_mf(mf,
                                                    mo_coeff = mo_coeff,
@@ -127,8 +117,7 @@ def impurity_solve(mf,
         mcc._h1e = eris.h1e
         mcc._vhf = eris.vhf
     imp_eris = mcc.ao2mo()
-    #import pdb
-    #pdb.set_trace()
+
     if isinstance(imp_eris.ovov, np.ndarray):
         ovov = imp_eris.ovov
     else:
@@ -140,9 +129,6 @@ def impurity_solve(mf,
     t1, t2 = mcc.init_amps(eris=imp_eris)[1:]
     cput1 = log.timer_debug1('imp sol - mp2 amp', *cput1)
     elcorr_pt2 = get_fragment_energy(oovv, t2, prjlo)
-    #print(elcorr_pt2)
-    #import pdb
-    #pdb.set_trace()
 
     f = open(filename,'a')
     f.write(f'{e_afqmc}     \t {err_afqmc}     \t {elcorr_pt2}\n')

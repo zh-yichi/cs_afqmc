@@ -140,9 +140,8 @@ def run_afqmc_lno_mf(mf,
 
     else:
         print('# Generating Cholesky Integrals')
-        h1e, chol, nelec, enuc = pyscf_interface.generate_integrals(mol, mf.get_hcore(), mo_coeff, chol_cut)
-        nbasis = h1e.shape[-1]
-        nelec = mol.nelec
+        #_, chol, _, _ = pyscf_interface.generate_integrals(mol, mf.get_hcore(), mo_coeff, chol_cut)
+        # nbasis = h1e.shape[-1]
 
         mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
         mc.frozen = norb_frozen
@@ -150,8 +149,11 @@ def run_afqmc_lno_mf(mf,
         mc.mo_coeff = mo_coeff
         h1e, enuc = mc.get_h1eff()
 
-        nbasis = mo_coeff.shape[-1]
-        act = [i for i in range(nbasis) if i not in norb_frozen]
+        nbasis = h1e.shape[-1]
+        print(f'# frozen orbitals are {norb_frozen}')
+        if isinstance(norb_frozen, (int, float)) and norb_frozen == 0:
+            norb_frozen = []
+        act = np.array([i for i in range(mol.nao) if i not in norb_frozen])
         print(f'# local active orbitals are {act}') #yichi
         print(f'# local active space size {len(act)}') #yichi
         e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
@@ -160,7 +162,6 @@ def run_afqmc_lno_mf(mf,
         chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
         print(f'# chol shape: {chol.shape}') #yichi
     
-    nbasis = h1e.shape[-1]
     print("# Finished calculating Cholesky integrals\n")
     print('# Size of the correlation space:')
     print(f'# Number of electrons: {nelec}')
@@ -175,7 +176,6 @@ def run_afqmc_lno_mf(mf,
     trial_coeffs = np.empty((2, nbasis, nbasis))
     overlap = mf.get_ovlp(mol)
     if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
-        hf_type = "uhf"
         uhfCoeffs = np.empty((nbasis, 2 * nbasis))
         if isinstance(mf, scf.uhf.UHF):
             q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[0][:, norb_frozen:]))
@@ -193,14 +193,13 @@ def run_afqmc_lno_mf(mf,
         np.savez('mo_coeff.npz', mo_coeff=trial_coeffs)
 
     elif isinstance(mf, scf.rhf.RHF):
-        hf_type = "rhf"
         #q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[:, norb_frozen:]))
         q = np.eye(mol.nao- len(norb_frozen))
         trial_coeffs[0] = q
         trial_coeffs[1] = q
         np.savez("mo_coeff.npz",mo_coeff=trial_coeffs)
 
-    pyscf_interface.write_dqmc(h1e, h1e_mod, chol, sum(nelec), nbasis, enuc, ms=mol.spin, filename='FCIDUMP_chol', mo_coeffs = trial_coeffs)
+    pyscf_interface.write_dqmc(h1e,h1e_mod,chol,sum(nelec),nbasis,enuc,ms=mol.spin,filename='FCIDUMP_chol',mo_coeffs=trial_coeffs)
     #if script is None:
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)

@@ -1,0 +1,41 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 8
+#
+# norb: 12
+# nelec: (3, 3)
+#
+# n_eql: 6
+# n_prop_steps: 20
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 20
+# n_walkers: 50
+# seed: 2
+# walker_type: rhf
+# trial: cisd
+# dt: 0.01
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# maxError: 0.001
+# use_gpu: False
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# afqmc propagation with ccsd trial using 400 walkers
+# system relaxing and appraching the equilibrium of the Markov Chain
+# eql_step 	 sys_energy 	 zero_orb_cr 	 hf_orb_cr 	 ccsd_orb_cr 	 tot_orb_cr 	 wall_time
+    0	 	 -3.315322	 0.000000	 0.000000	 -0.039918	 -0.039918	    0.00
+    1	 	 -3.315516	 0.128707	 -0.028224	 -0.140257	 -0.039774	   41.58 
+    2	 	 -3.316036	 0.178857	 -0.035495	 -0.183213	 -0.039851	   70.05 
+    3	 	 -3.316076	 0.192781	 -0.037726	 -0.195043	 -0.039988	   74.36 

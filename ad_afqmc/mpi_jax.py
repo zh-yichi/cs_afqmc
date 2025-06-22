@@ -236,7 +236,7 @@ if __name__ == "__main__":
     ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
         _prep_afqmc()
     )
-    # print(f"wave_data {wave_data}") #yichi
+
     assert trial is not None
     init = time.time()
     comm.Barrier()

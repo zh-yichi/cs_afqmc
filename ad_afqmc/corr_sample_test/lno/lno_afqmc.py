@@ -1,12 +1,7 @@
 import sys
-import numpy as np
-from functools import reduce
-
 from pyscf.lib import logger
-from pyscf import lib
 
-from lno.base import LNO
-from lno.afqmc import LNOAFQMC
+from ad_afqmc.lno.afqmc import LNOAFQMC
 
 from pyscf import gto, scf, mp
 
@@ -20,7 +15,7 @@ atom = '''
  H    1.746241653903   -0.373945564047   -0.758561000000
  H    1.746241653903   -0.373945564047    0.758561000000
 '''
-basis = 'cc-pvdz'
+basis = 'sto6g'
 mol = gto.M(atom=atom, basis=basis)
 mol.verbose = 4
 mf = scf.RHF(mol).density_fit()

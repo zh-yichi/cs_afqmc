@@ -376,16 +376,16 @@ class sampler:
         block_energy = jnp.sum(energy_samples * prop_data['weights']) / block_weight
         block_orbE = jnp.sum(orbE_samples * prop_data['weights']) / block_weight
         prop_data['pop_control_ene_shift'] = 0.9 * prop_data['pop_control_ene_shift'] + 0.1 * block_energy
-        return prop_data, (block_energy, block_weight,block_orbE)
+        return prop_data, (block_energy,block_weight,block_orbE)
 
 
     @partial(jit, static_argnums=(0,4,5))
     def _sr_block_scan_LNO(self,prop_data, _x, ham_data, propagator, trial, wave_data,orbE):
         _block_scan_wrapper = lambda x, y: self._block_scan_LNO(x, y, ham_data, propagator, trial, wave_data,orbE)
-        prop_data, (block_energy, block_weight,block_orbE) = lax.scan(checkpoint(_block_scan_wrapper), prop_data, None, length=self.n_ene_blocks)
+        prop_data, (block_energy,block_weight,block_orbE) = lax.scan(checkpoint(_block_scan_wrapper), prop_data, None, length=self.n_ene_blocks)
         prop_data = propagator.stochastic_reconfiguration_local(prop_data)
         prop_data['overlaps'] = trial.calc_overlap(prop_data['walkers'], wave_data)
-        return prop_data, (block_energy, block_weight,block_orbE)
+        return prop_data, (block_energy,block_weight,block_orbE)
     
     @partial(jit, static_argnums=(0, 1, 3,5))
     def propagate_phaselessLNO(self,ham, ham_data, propagator, prop_data, trial, wave_data,orbE):
@@ -394,7 +394,7 @@ class sampler:
         prop_data['overlaps'] = trial.calc_overlap(prop_data['walkers'], wave_data)
         prop_data['n_killed_walkers'] = 0
         prop_data['pop_control_ene_shift'] = prop_data['e_estimate']
-        prop_data, (block_energy, block_weight,block_orbE) = lax.scan(_sr_block_scan_wrapper, prop_data, None, length=self.n_sr_blocks)
+        prop_data, (block_energy,block_weight,block_orbE) = lax.scan(_sr_block_scan_wrapper, prop_data, None, length=self.n_sr_blocks)
         prop_data['n_killed_walkers'] /= (self.n_sr_blocks *
                                             self.n_ene_blocks * propagator.n_walkers)
         return jnp.sum(block_energy * block_weight) / jnp.sum(block_weight), prop_data, jnp.sum(block_orbE * block_weight) / jnp.sum(block_weight)

@@ -69,10 +69,6 @@ def kernel(mfcc, orbloc, frag_lolist, no_type, eris=None, frag_nonvlist=None):
     if not (no_type[0] in 'rei' and no_type[1] in 'rei'):
         log.warn('Input no_type "%s" is invalid.', no_type)
         raise ValueError
-    # print("######## no type ########")
-    # print(no_type)
-    #nfrag = len(frag_lolist)
-    #mfcc.maxError = mfcc.maxError/np.sqrt(nfrag)
 
     if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
 
@@ -81,18 +77,7 @@ def kernel(mfcc, orbloc, frag_lolist, no_type, eris=None, frag_nonvlist=None):
     cput1 = (logger.process_clock(), logger.perf_counter())
 ## Loop over fragment
     frag_res = [None] * nfrag
-#    mf = mfcc._scf
-#    from pyscf.tools import molden
-#    for ifrag in range(0,nfrag):
-#    	fraglo = frag_lolist[ifrag]
-#    	orbfragloc = orbloc[:,fraglo]
-#    	with open(f'frag_{ifrag+1}.molden', 'w') as f1:	
-#    		molden.header(mf.mol, f1)
-##    		import pdb;pdb.set_trace()
-#    		molden.orbital_coeff(mf.mol, f1, orbfragloc, ene=mf.mo_energy, occ=mf.mo_occ)
-#    exit(0)
-    # print(f'frag_nonvlist: {frag_nonvlist}')
-    # print("########### here ###########")
+
     for ifrag in range(0,nfrag):
     # local basis for internal space
         if(len(mfcc.runfrags)>0):
@@ -105,7 +90,9 @@ def kernel(mfcc, orbloc, frag_lolist, no_type, eris=None, frag_nonvlist=None):
                                                  frag_target_nvir=frag_target_nvir,canonicalize=canonicalize,ifrag=ifrag)
         cput1 = log.timer('Fragment %d'%(ifrag+1)+' '*(8-len(str(ifrag+1))), *cput1)
         log.info('Fragment %d  %s', ifrag+1, frag_msg)
-        os.system(f"mv afqmc.out afqmc_{ifrag}.out")
+        
+        if(type(mfcc).__name__ =='LNOAFQMC'):
+            os.system(f"mv afqmc.out afqmc_{ifrag}.out")
         
     classname = mfcc.__class__.__name__
     cput0 = log.timer(classname+' '*(17-len(classname)), *cput0)
