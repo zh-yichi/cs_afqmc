@@ -1,12 +1,7 @@
-import sys, os
-import numpy as np
-from functools import reduce
+import sys
 from pyscf.lib import logger
-from ad_afqmc.lno.cc import LNOCCSD
-from ad_afqmc import lno_ccsd
-from pyscf import gto, scf, mp, cc
-from ad_afqmc.lno.base import lno
-from ad_afqmc.lno.afqmc import LNOAFQMC
+from ad_afqmc.lno_ccsd import lno_ccsd
+from pyscf import gto, scf
 
 log = logger.Logger(sys.stdout, 6)
 
@@ -52,5 +47,5 @@ options = {'n_eql': 5,
             }
 
 
-thresh = 1.00e-05
-lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,1e-6,8)
+thresh = 1.00e-04
+lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,1,options,1e-6,8)

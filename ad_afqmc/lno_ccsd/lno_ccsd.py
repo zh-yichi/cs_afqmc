@@ -1296,7 +1296,7 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
                 # elec_orb_cr = line.split()[1]
                 # elec_orb_cr_err = line.split()[2]
                 # print(elec_orb_cr, elec_orb_cr_err)
-    data = np.array(data.reshape(3,11))
+    data = np.array(data.reshape(nfrag,11))
     elec_orb_cr = np.array(data[:,1],dtype='float32')
     elec_orb_cr_err = np.array(data[:,2],dtype='float32')
     hf_orb_cr = np.array(data[:,3],dtype='float32')
@@ -1349,4 +1349,5 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
         out_file.write(f'# e_ccsd_corr {e_ccsd_corr}\n')
         if mp2:
             out_file.write(f'# mp2_corrected tot_afqmc_cr {mp2_corrected_tot_cr}\n')
+        out_file.write(f'# lno-thresh {thresh_pno}\n')
     return None
