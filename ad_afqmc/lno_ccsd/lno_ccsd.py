@@ -1246,14 +1246,23 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
             print(f'# lno-mp2 fragment energy: {elcorr_pt2:.6f}')
 
         # Run AFQMC
-        mpi_prefix = "mpirun "
+        use_gpu = options["use_gpu"]
+        if use_gpu:
+            print(f'# running AFQMC on GPU')
+            gpu_flag = "--use_gpu"
+            mpi_prefix = ""
+            nproc = None
+        else:
+            print(f'# running AFQMC on CPU')
+            gpu_flag = ""
+            mpi_prefix = "mpirun "
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
         path = os.path.abspath(__file__)
         dir_path = os.path.dirname(path)
         script = f"{dir_path}/run_lnocc_frg.py"
         os.system(
-            f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} |tee frg_{ifrag+1}.out"
+            f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} |tee frg_{ifrag+1}.out"
         )
 
         with open(f'frg_{ifrag+1}.out', 'a') as out_file:
