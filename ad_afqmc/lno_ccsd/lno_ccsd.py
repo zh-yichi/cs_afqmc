@@ -10,62 +10,21 @@ from ad_afqmc import pyscf_interface, wavefunctions
 from ad_afqmc.lno.cc import ccsd
 from functools import reduce
 from ad_afqmc.wavefunctions import wave_function
-from typing import Any, Tuple
+from typing import Tuple
 import pickle
 import h5py
 from ad_afqmc import config
+from functools import partial
+from ad_afqmc import hamiltonian, propagation, sampling
+
+print = partial(print, flush=True)
 
 _fdot = np.dot
 fdot = lambda *args: reduce(_fdot, args)
 #from ad_afqmc.lno.base import lno
 
-def h1_frg(mf,orbfragloc):
-    '''
-        orbfragloc is the localized active occ that a set
-        of active occ and vir orbitals are chosen for
-    '''
-    h1e = mf.get_hcore()
-    nao = orbfragloc.shape[0]
-    dm_i = np.einsum('j,k->jk',orbfragloc.reshape(nao),orbfragloc.reshape(nao))
-    h1_i = np.einsum('ij,ji->',h1e,dm_i)*2
-    return h1_i
 
-def jk_frg(mf,orbfragloc,orbfrag,frzfrag):
-    "Coulomb and exchange repulsion of fragment i"
-    
-    mol = mf.mol
-    nao = mol.nao
-    eri = mol.intor('int2e')
-    dm_i = np.einsum('j,k->jk',orbfragloc.reshape(nao),orbfragloc.reshape(nao))
-    act = np.array([i for i in range(mol.nao) if i not in frzfrag])
-    nocc = mol.nelectron // 2
-    act_occ = np.array([i for i in act if i < nocc])
-    dm_act_occ = orbfrag[:, act_occ] @ orbfrag[:, act_occ].T
-    en_j_frag = np.einsum("ij,kl,ijkl->",dm_i,dm_act_occ,eri)
-    en_k_frag = np.einsum("il,kj,ijkl->",dm_i,dm_act_occ,eri)
-
-    return 2*en_j_frag-en_k_frag
-
-def e_elec_frg(mf,mo_frg,mo,frozen=[]):
-    '''
-    Fragemental electronic part of Hartree-Fock energy
-    for given core hamiltonian and HF potential
-    '''
-    mol = mf.mol
-    nao = mol.nao
-    mo_frg = mo_frg.reshape(nao)
-    dm_frg = 2*np.einsum('i,j->ij',mo_frg.T,mo_frg)
-    nocc = np.count_nonzero(mf.mo_occ)
-    act = np.array([i for i in range(nao) if i not in frozen])
-    actocc = np.array([i for i in act if i < nocc])
-    mo_acc = mo[:,actocc]
-    dm_act = 2*np.einsum('nj,lj->nl',mo_acc,mo_acc)
-    h1e = mf.get_hcore()
-    vhf = mf.get_veff(mf.mol, dm_act)
-    e1_frg = np.einsum('ij,ji->', h1e, dm_frg).real
-    e_coul_frg = np.einsum('ij,ji->', vhf, dm_frg).real * .5
-    return e1_frg+e_coul_frg
-
+@jax.jit
 def _calc_olp_ratio_restricted(walker: jax.Array, wave_data: dict) -> complex:
     '''
     <psi_hf|walker>/<psi_ccsd|walker>
@@ -79,6 +38,7 @@ def _calc_olp_ratio_restricted(walker: jax.Array, wave_data: dict) -> complex:
     ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
     return 1/(1.0 + 2 * o1 + o2)
 
+@partial(jit, static_argnums=(2,))
 def cal_olp_ratio(walkers: jax.Array, wave_data: dict, trial) -> jax.Array:
     n_batch = trial.n_batch
     norb = trial.norb
@@ -96,11 +56,13 @@ def cal_olp_ratio(walkers: jax.Array, wave_data: dict, trial) -> jax.Array:
     )
     return overlaps.reshape(n_walkers)
 
+@partial(jit, static_argnums=(3,))
 def frg_hf_orb_cr(walkers,ham_data,wave_data,trial):
     hf_orb_cr = vmap(_frg_hf_orb_cr, in_axes=(None, None, 0, None, None))(
         ham_data['rot_h1'], ham_data['rot_chol'], walkers, trial, wave_data)
     return hf_orb_cr
 
+@partial(jit, static_argnums=(3,))
 def _frg_hf_orb_cr(rot_h1, rot_chol, walker, trial, wave_data):
     '''hf orbital energy multiplies the overlap ratio'''
     m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
@@ -118,6 +80,7 @@ def _frg_hf_orb_cr(rot_h1, rot_chol, walker, trial, wave_data):
     hf_orb_cr = jnp.real(olp_ratio*hf_orb_en)
     return hf_orb_cr
 
+@jax.jit
 def _frg_modified_ccsd_olp_restricted(walker: jax.Array, wave_data: dict) -> complex:
     '''
     <psi_ccsd|walker>=<psi_0|walker>+C_ia^*G_ia+C_iajb^*(G_iaG_jb-G_ibG_ja)
@@ -138,6 +101,7 @@ def _frg_modified_ccsd_olp_restricted(walker: jax.Array, wave_data: dict) -> com
     olp_i = jnp.einsum("i,i->", olp, pick_i)
     return olp_i
 
+@partial(jit, static_argnums=(2,))
 def frg_modified_ccsd_olp_restricted(walkers: jax.Array, wave_data: dict, trial) -> jax.Array:
     n_batch = trial.n_batch
     norb = trial.norb
@@ -157,6 +121,7 @@ def frg_modified_ccsd_olp_restricted(walkers: jax.Array, wave_data: dict, trial)
     return overlaps.reshape(n_walkers)
 
 ## h0-E0 term
+@partial(jit, static_argnums=(1,))
 def _frg_elec_cr(walker,trial,wave_data,h0_E0):
     '''
     (h0-E0)*(1-N0(phi)/N_ccsd(phi))
@@ -167,6 +132,7 @@ def _frg_elec_cr(walker,trial,wave_data,h0_E0):
     elec_cr = jnp.real(h0_E0*mod_olp/ccsd_olp)
     return elec_cr
 
+@partial(jit, static_argnums=(1,))
 def frg_elec_cr(walkers,trial,wave_data,h0_E0) -> jax.Array:
 
     elec_cr = vmap(_frg_elec_cr, in_axes=(0, None, None, None))(
@@ -174,11 +140,12 @@ def frg_elec_cr(walkers,trial,wave_data,h0_E0) -> jax.Array:
 
     return elec_cr
 
-
+@partial(jit, static_argnums=(3,))
 def calc_hf_orbenergy(walkers,ham_data:dict,wave_data:dict,trial:wavefunctions) -> jnp.ndarray:
     return vmap(_calc_hf_orbenergy, in_axes=(None, None, 0, None, None))(
         ham_data['rot_h1'], ham_data['rot_chol'], walkers, trial, wave_data)
 
+@partial(jit, static_argnums=(3,))
 def _calc_hf_orbenergy(rot_h1, rot_chol, walker, trial, wave_data):
     m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
     nocc = rot_h1.shape[0]
@@ -191,14 +158,17 @@ def _calc_hf_orbenergy(rot_h1, rot_chol, walker, trial, wave_data):
     eneo2ext = jnp.einsum('Gxy,Gyk,xk->',f,f,m)
     return eneo2Jt - eneo2ext
 
+@jax.jit
 def _thouless_linear(t,walker):
     new_walker = walker + t.dot(walker)
     return new_walker
 
+@jax.jit
 def thouless_linear(t,walkers):
     new_walkers = vmap(_thouless_linear,in_axes=(None,0))(t,walkers)
     return new_walkers
 
+@jax.jit
 def _frg_olp_exp1(x: float, h1_mod: jax.Array, walker: jax.Array,
                   wave_data: dict) -> complex:
     '''
@@ -208,6 +178,7 @@ def _frg_olp_exp1(x: float, h1_mod: jax.Array, walker: jax.Array,
     olp = _frg_modified_ccsd_olp_restricted(walker_1x, wave_data)
     return olp
 
+@jax.jit
 def _frg_olp_exp2(x: float, chol_i: jax.Array, walker: jax.Array,
                   wave_data: dict) -> complex:
     '''
@@ -221,6 +192,7 @@ def _frg_olp_exp2(x: float, chol_i: jax.Array, walker: jax.Array,
     olp = _frg_modified_ccsd_olp_restricted(walker_2x, wave_data)
     return olp
 
+@partial(jit, static_argnums=(3,))
 def _frg_ccsd_orb_cr(
     walker: jax.Array,
     ham_data: dict,
@@ -263,6 +235,7 @@ def _frg_ccsd_orb_cr(
     ccsd_cr = jnp.real((d_overlap + jnp.sum(d_2_overlap) / 2.0) / ccsd_olp)
     return ccsd_cr
 
+@partial(jit, static_argnums=(3,))
 def frg_ccsd_orb_cr(
         walkers: jax.Array,
         ham_data: dict,
@@ -521,26 +494,26 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     return None
 
 
-config.setup_jax()
-MPI = config.setup_comm()
-comm = MPI.COMM_WORLD
-size = comm.Get_size()
-rank = comm.Get_rank()
-
-from functools import partial
-from ad_afqmc import hamiltonian, propagation, sampling, run_afqmc
-
-print = partial(print, flush=True)
-
-# mo_file = run_afqmc.mo_file
-# amp_file = run_afqmc.amp_file
-# chol_file = run_afqmc.chol_file
-
 def prep_lnoccsd_afqmc(options=None,prjlo=True,
                        option_file="options.bin",
                        mo_file="mo_coeff.npz",
                        amp_file="amplitudes.npz",
                        chol_file="FCIDUMP_chol"):
+    
+    if options is None:
+        try:
+            with open(option_file, "rb") as f:
+                options = pickle.load(f)
+        except:
+            options = {}
+
+    if options["use_gpu"]:
+        config.afqmc_config["use_gpu"] = True
+    config.setup_jax()
+    MPI = config.setup_comm()
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
     if rank == 0:
         print(f"# Number of MPI ranks: {size}\n#")
 
@@ -559,13 +532,6 @@ def prep_lnoccsd_afqmc(options=None,prjlo=True,
     nelec_sp = ((nelec + abs(ms)) // 2, (nelec - abs(ms)) // 2)
 
     norb = nmo
-
-    if options is None:
-        try:
-            with open(option_file, "rb") as f:
-                options = pickle.load(f)
-        except:
-            options = {}
 
     options["dt"] = options.get("dt", 0.01)
     options["n_exp_terms"] = options.get("n_exp_terms",6)
@@ -1220,7 +1186,7 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
         
         #MP2 correction 
         if mp2:
-            log.info('running fragment MP2')
+            log.info('# running fragment MP2')
             from pyscf.cc import CCSD
             s1e = mf.get_ovlp() if eris is None else eris.s1e
             can_prjlo = fdot(orbfragloc.T, s1e, can_orbfrag[:, maskact& maskocc])
@@ -1256,8 +1222,8 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
             print(f'# running AFQMC on CPU')
             gpu_flag = ""
             mpi_prefix = "mpirun "
-        if nproc is not None:
-            mpi_prefix += f"-np {nproc} "
+            if nproc is not None:
+                mpi_prefix += f"-np {nproc} "
         path = os.path.abspath(__file__)
         dir_path = os.path.dirname(path)
         script = f"{dir_path}/run_lnocc_frg.py"

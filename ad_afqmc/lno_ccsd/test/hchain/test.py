@@ -44,8 +44,9 @@ options = {'n_eql': 5,
             'trial': 'cisd',
             'dt':0.01,
             'ad_mode':None,
+            'use_gpu': False,
             }
 
 
-thresh = 3.00e-05
+thresh = 1.00e-04
 lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,1e-6,8,mp2=True)
