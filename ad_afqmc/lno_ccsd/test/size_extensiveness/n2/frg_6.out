@@ -1,0 +1,118 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 8
+#
+# norb: 7
+# nelec: (4, 4)
+#
+# n_eql: 3
+# n_prop_steps: 50
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 20
+# n_walkers: 50
+# seed: 2
+# walker_type: rhf
+# trial: cisd
+# dt: 0.005
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# maxError: 0.001
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# afqmc propagation with ccsd trial using 400 walkers
+# system relaxing and appraching the equilibrium of the Markov Chain
+# eql_step 	 sys_energy 	 elec_orb_cr 	 hf_orb_cr 	 ccsd_orb_cr 	 tot_orb_cr 	 wall_time
+    0	 	 -108.700461	 0.000000	 0.000000	 -0.041957	 -0.041957	    0.00
+    1	 	 -108.700470	 0.347614	 -0.033522	 -0.355931	 -0.041839	   45.39 
+    2	 	 -108.701294	 0.429485	 -0.038605	 -0.433194	 -0.042314	   78.59 
+    3	 	 -108.702881	 0.465172	 -0.042482	 -0.465063	 -0.042373	   81.16 
+# Sampling sweeps:
+# iter 	 sys_energy 	 err 	 elec_orb_cr 	 err 	 hf_orb_cr 	 err 	 ccsd_orb_cr 	 err 	 tot_orb_cr 	 err 	 time
+   0   -108.700704     None     0.422198     None     -0.037625     None     -0.426698     None     -0.042125     None    2.54 
+   2   -108.701030   0.000462   0.411627   0.015830   -0.036819   0.001186   -0.416886   0.014744   -0.042077   0.000154  65.12 
+   4   -108.701189   0.000511   0.421422   0.012009   -0.037513   0.000968   -0.426060   0.011176   -0.042150   0.000162  70.28 
+   6   -108.701308   0.000391   0.425766   0.009936   -0.037818   0.000831   -0.430070   0.008657   -0.042122   0.000130  75.10 
+   8   -108.701349   0.000345   0.426711   0.008476   -0.037757   0.000697   -0.431083   0.007890   -0.042130   0.000125  79.90 
+  10   -108.701705   0.000419   0.431605   0.007349   -0.038122   0.000598   -0.435682   0.006849   -0.042199   0.000141  84.91 
+  12   -108.702380   0.000642   0.435267   0.006580   -0.038456   0.000534   -0.439188   0.006152   -0.042377   0.000165  89.64 
+  14   -108.702406   0.000755   0.437164   0.006032   -0.038698   0.000493   -0.440836   0.005632   -0.042371   0.000145  94.54 
+  16   -108.702413   0.000505   0.436866   0.005597   -0.038760   0.000460   -0.440463   0.005226   -0.042358   0.000131  99.47 
+  18   -108.702382   0.000455   0.435251   0.005156   -0.038682   0.000425   -0.438909   0.004812   -0.042340   0.000120  104.22 
+# Number of outliers in post: 2 
+#
+# Mean: -1.08701853e+02
+# Block size    # of blocks         Mean                Error
+      1              158       -1.08701853e+02       2.580935e-04
+      2               79       -1.08701853e+02       2.432377e-04
+      5               31       -1.08701900e+02       2.107483e-04
+     10               15       -1.08701920e+02       2.489500e-04
+     20                7       -1.08701923e+02       2.550504e-04
+     50                3       -1.08701920e+02       4.056297e-04
+# Stocahstic error estimate: 2.580935e-04
+#
+#
+# Mean: 4.32915076e-01
+# Block size    # of blocks         Mean                Error
+      1              158       4.32915076e-01       4.978323e-03
+      2               79       4.32915076e-01       4.595073e-03
+      5               31       4.34031479e-01       4.660534e-03
+     10               15       4.34642636e-01       4.240193e-03
+     20                7       4.35979141e-01       4.504856e-03
+     50                3       4.34642636e-01       7.652553e-03
+# Stocahstic error estimate: 4.978323e-03
+#
+#
+# Mean: -3.85358416e-02
+# Block size    # of blocks         Mean                Error
+      1              158       -3.85358416e-02       4.125257e-04
+      2               79       -3.85358416e-02       3.797029e-04
+      5               31       -3.86300966e-02       3.892158e-04
+     10               15       -3.86551376e-02       3.603798e-04
+     20                7       -3.87275104e-02       4.150239e-04
+     50                3       -3.86551376e-02       6.169743e-04
+# Stocahstic error estimate: 4.125257e-04
+#
+#
+# Mean: -4.36596778e-01
+# Block size    # of blocks         Mean                Error
+      1              158       -4.36596778e-01       4.636707e-03
+      2               79       -4.36596778e-01       4.281770e-03
+      5               31       -4.37633949e-01       4.326940e-03
+     10               15       -4.38226737e-01       3.960652e-03
+     20                7       -4.39506853e-01       4.146149e-03
+     50                3       -4.38226737e-01       7.148932e-03
+# Stocahstic error estimate: 4.636707e-03
+#
+#
+# Mean: -4.22175435e-02
+# Block size    # of blocks         Mean                Error
+      1              158       -4.22175435e-02       8.954890e-05
+      2               79       -4.22175435e-02       8.592073e-05
+      5               31       -4.22325668e-02       8.335102e-05
+     10               15       -4.22392386e-02       1.060673e-04
+     20                7       -4.22552225e-02       4.501000e-05
+     50                3       -4.22392386e-02       3.718331e-05
+# Stocahstic error estimate: 8.954890e-05
+#
+Final Results:
+lno-ccsd orbital correlation energy: -0.041957
+lno-ccsd-afqmc energy: -108.701853 +/- 0.000258
+lno-ccsd-afqmc elec_orb_cr: 0.432915 +/- 0.004978
+lno-ccsd-afqmc hf_orb_cr: -0.038536 +/- 0.000413
+lno-ccsd-afqmc ccsd_orb_cr: -0.436597 +/- 0.004637
+lno-ccsd-afqmc tot_orb_cr: -0.042218 +/- 0.000090
+lno-mp2 orb_corr: -0.043055
+lno-ccsd orb_corr: -0.041956

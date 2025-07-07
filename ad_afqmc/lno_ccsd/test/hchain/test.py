@@ -5,13 +5,13 @@ from pyscf import gto, scf
 
 log = logger.Logger(sys.stdout, 6)
 
-a = 0.9
+a = 1.2
 nH = 6
 atoms = ""
 for i in range(nH):
     atoms += f"H {i*a} 0 0 \n"
 
-mol = gto.M(atom=atoms, basis="ccpvdz", verbose=4)
+mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
 mf = scf.RHF(mol).density_fit()
 mf.kernel()
 

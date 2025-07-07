@@ -1,0 +1,10 @@
+# frag 	 err 	 hf_orb_cr 	 err 	 ccsd_orb_cr 	 err 	 e_afqmc_orb_cr 	 err 	 e_mp2_orb_corr 	 e_ccsd_orb_corr
+  1 	 -0.037392 	 0.000709 	 -0.002194 	 0.000718 	 -0.039586 	 0.000009 	 -0.022510 	 -0.040061
+# final results 
+# hf_cr -0.037392 +/- 0.000709
+# ccsd_cr -0.002194 +/- 0.000718
+# tot_afqmc_cr -0.039586 +/- 0.000009
+# e_mp2_corr -0.022510
+# e_ccsd_corr -0.040061
+# mp2_corrected tot_afqmc_cr -0.039586
+# lno-thresh [0.0001, 1e-05]

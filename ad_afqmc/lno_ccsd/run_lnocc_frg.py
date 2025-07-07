@@ -49,20 +49,19 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 init_time = time.time()
 comm.Barrier()
 if rank == 0:
-    init_elec_orb_cr = lno_ccsd._frg_elec_cr(
-        prop_data["walkers"][0],trial,wave_data,ham_data["h0"]-ham_data["E0"])
+    # init_elec_orb_cr = lno_ccsd._frg_elec_cr(
+    #     prop_data["walkers"][0],trial,wave_data,ham_data["h0"]-ham_data["E0"])
     init_hf_orb_cr = lno_ccsd._frg_hf_orb_cr(
         ham_data['rot_h1'], ham_data['rot_chol'],prop_data["walkers"][0],trial,wave_data)
     init_ccsd_orb_cr = lno_ccsd._frg_ccsd_orb_cr(
         prop_data["walkers"][0],ham_data,wave_data,trial,1e-5)
-    init_orb_cr = init_elec_orb_cr+init_hf_orb_cr+init_ccsd_orb_cr
+    init_orb_cr = init_hf_orb_cr+init_ccsd_orb_cr
     print(f'# afqmc propagation with ccsd trial using {options["n_walkers"]*size} walkers')
     print(f'# system relaxing and appraching the equilibrium of the Markov Chain')
     #print('# eql_step \t hf_orb_cr \t ccsd_orb_cr \t  olp_rt \t wall_time')
-    print('# eql_step \t sys_energy \t elec_orb_cr \t hf_orb_cr \t ccsd_orb_cr \t tot_orb_cr \t wall_time')
+    print('# eql_step \t sys_energy \t hf_orb_cr \t ccsd_orb_cr \t tot_orb_cr \t wall_time')
     print(f'{0:5d}'
           f'\t \t {prop_data["e_estimate"]:.6f}'
-          f'\t {init_elec_orb_cr:.6f}'
           f'\t {init_hf_orb_cr:.6f}'
           f'\t {init_ccsd_orb_cr:.6f}'
           f'\t {init_orb_cr:.6f}'
@@ -71,11 +70,11 @@ comm.Barrier()
 
 for n in range(options["n_eql"]):
     # prop_data,(block_energy_n,_) \
-    prop_data, (blk_energy,blk_elec_orb_cr,blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr,blk_wt)\
+    prop_data, (blk_energy,blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr,blk_wt)\
                 = lno_ccsd.propagate_phaseless_orb(ham_data,prop,prop_data,trial,wave_data,sampler)
     
     blk_energy = np.array([blk_energy], dtype="float32")
-    blk_elec_orb_cr = np.array([blk_elec_orb_cr],dtype="float32")
+    # blk_elec_orb_cr = np.array([blk_elec_orb_cr],dtype="float32")
     blk_hf_orb_cr = np.array([blk_hf_orb_cr], dtype="float32")
     blk_ccsd_orb_cr = np.array([blk_ccsd_orb_cr], dtype="float32")
     blk_orb_cr = np.array([blk_orb_cr], dtype="float32")
@@ -84,9 +83,9 @@ for n in range(options["n_eql"]):
     blk_wt_energy = np.array(
         [blk_energy * blk_wt], dtype="float32"
     )
-    blk_wt_elec_orb_cr = np.array(
-        [blk_elec_orb_cr * blk_wt], dtype="float32"
-    )
+    # blk_wt_elec_orb_cr = np.array(
+    #     [blk_elec_orb_cr * blk_wt], dtype="float32"
+    # )
     blk_wt_hf_orb_cr = np.array(
         [blk_hf_orb_cr * blk_wt], dtype="float32"
     )
@@ -98,7 +97,7 @@ for n in range(options["n_eql"]):
     )
 
     tot_wt_energy = np.zeros(1, dtype="float32")
-    tot_wt_elec_orb_cr = np.zeros(1, dtype="float32")
+    # tot_wt_elec_orb_cr = np.zeros(1, dtype="float32")
     tot_wt_hf_orb_cr = np.zeros(1, dtype="float32")
     tot_wt_ccsd_orb_cr = np.zeros(1, dtype="float32")
     tot_wt_orb_cr = np.zeros(1, dtype="float32")
@@ -110,12 +109,12 @@ for n in range(options["n_eql"]):
             op=MPI.SUM,
             root=0,
         )
-    comm.Reduce(
-            [blk_wt_elec_orb_cr, MPI.FLOAT],
-            [tot_wt_elec_orb_cr, MPI.FLOAT],
-            op=MPI.SUM,
-            root=0,
-        )
+    # comm.Reduce(
+    #         [blk_wt_elec_orb_cr, MPI.FLOAT],
+    #         [tot_wt_elec_orb_cr, MPI.FLOAT],
+    #         op=MPI.SUM,
+    #         root=0,
+    #     )
     comm.Reduce(
             [blk_wt_hf_orb_cr, MPI.FLOAT],
             [tot_wt_hf_orb_cr, MPI.FLOAT],
@@ -144,14 +143,14 @@ for n in range(options["n_eql"]):
     comm.Barrier()
     if rank == 0:
         blk_energy = tot_wt_energy / tot_wt
-        blk_elec_orb_cr = tot_wt_elec_orb_cr / tot_wt
+        # blk_elec_orb_cr = tot_wt_elec_orb_cr / tot_wt
         blk_hf_orb_cr = tot_wt_hf_orb_cr / tot_wt
         blk_ccsd_orb_cr = tot_wt_ccsd_orb_cr / tot_wt
         blk_orb_cr = tot_wt_orb_cr / tot_wt
         blk_wt = tot_wt
 
     comm.Bcast(blk_energy, root=0)
-    comm.Bcast(blk_elec_orb_cr, root=0)
+    # comm.Bcast(blk_elec_orb_cr, root=0)
     comm.Bcast(blk_hf_orb_cr, root=0)
     comm.Bcast(blk_ccsd_orb_cr, root=0)
     comm.Bcast(blk_orb_cr, root=0)
@@ -168,7 +167,6 @@ for n in range(options["n_eql"]):
         print(
             f"{n+1:5d}"
             f"\t \t {blk_energy[0]:.6f}"
-            f"\t {blk_elec_orb_cr[0]:.6f}"
             f"\t {blk_hf_orb_cr[0]:.6f}"
             f"\t {blk_ccsd_orb_cr[0]:.6f}"
             f"\t {blk_orb_cr[0]:.6f}"
@@ -183,7 +181,7 @@ glb_blk_orb_cr = None
 
 if rank == 0:
     glb_blk_energy = np.zeros(size * sampler.n_blocks)
-    glb_blk_elec_orb_cr = np.zeros(size * sampler.n_blocks)
+    # glb_blk_elec_orb_cr = np.zeros(size * sampler.n_blocks)
     glb_blk_hf_orb_cr = np.zeros(size * sampler.n_blocks)
     glb_blk_ccsd_orb_cr = np.zeros(size * sampler.n_blocks)
     glb_blk_orb_cr = np.zeros(size * sampler.n_blocks)
@@ -207,22 +205,22 @@ comm.Barrier()
 init_time = time.time()
 if rank == 0:
     print("# Sampling sweeps:")
-    print("# iter \t sys_energy \t err \t elec_orb_cr \t err \t hf_orb_cr \t err \t ccsd_orb_cr \t err \t tot_orb_cr \t err \t time")
+    print("# iter \t sys_energy \t err \t hf_orb_cr \t err \t ccsd_orb_cr \t err \t tot_orb_cr \t err \t time")
 comm.Barrier()
 
 for n in range(sampler.n_blocks):
-    prop_data,(blk_energy,blk_elec_orb_cr,blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr,blk_wt) \
+    prop_data,(blk_energy,blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr,blk_wt) \
         = lno_ccsd.propagate_phaseless_orb(ham_data,prop,prop_data,trial,wave_data,sampler)
 
     blk_energy = np.array([blk_energy], dtype="float32")
-    blk_elec_orb_cr = np.array([blk_elec_orb_cr], dtype="float32")
+    # blk_elec_orb_cr = np.array([blk_elec_orb_cr], dtype="float32")
     blk_hf_orb_cr = np.array([blk_hf_orb_cr], dtype="float32")
     blk_ccsd_orb_cr = np.array([blk_ccsd_orb_cr], dtype="float32")
     blk_orb_cr = np.array([blk_orb_cr], dtype="float32")
     blk_wt = np.array([blk_wt], dtype="float32")
 
     gather_energy = None
-    gather_elec_orb_cr = None
+    # gather_elec_orb_cr = None
     gather_hf_orb_cr = None
     gather_ccsd_orb_cr = None
     gather_orb_cr = None
@@ -231,7 +229,7 @@ for n in range(sampler.n_blocks):
     comm.Barrier()
     if rank == 0:
         gather_energy = np.zeros(size, dtype="float32")
-        gather_elec_orb_cr = np.zeros(size, dtype="float32")
+        # gather_elec_orb_cr = np.zeros(size, dtype="float32")
         gather_hf_orb_cr = np.zeros(size, dtype="float32")
         gather_ccsd_orb_cr = np.zeros(size, dtype="float32")
         gather_orb_cr = np.zeros(size, dtype="float32")
@@ -239,7 +237,7 @@ for n in range(sampler.n_blocks):
     comm.Barrier()
 
     comm.Gather(blk_energy, gather_energy, root=0)
-    comm.Gather(blk_elec_orb_cr, gather_elec_orb_cr, root=0)
+    # comm.Gather(blk_elec_orb_cr, gather_elec_orb_cr, root=0)
     comm.Gather(blk_hf_orb_cr, gather_hf_orb_cr, root=0)
     comm.Gather(blk_ccsd_orb_cr, gather_ccsd_orb_cr, root=0)
     comm.Gather(blk_orb_cr, gather_orb_cr, root=0)
@@ -248,7 +246,7 @@ for n in range(sampler.n_blocks):
     comm.Barrier()
     if rank == 0:
         glb_blk_energy[n * size : (n + 1) * size] = gather_energy
-        glb_blk_elec_orb_cr[n * size : (n + 1) * size] = gather_elec_orb_cr
+        # glb_blk_elec_orb_cr[n * size : (n + 1) * size] = gather_elec_orb_cr
         glb_blk_hf_orb_cr[n * size : (n + 1) * size] = gather_hf_orb_cr
         glb_blk_ccsd_orb_cr[n * size : (n + 1) * size] = gather_ccsd_orb_cr
         glb_blk_orb_cr[n * size : (n + 1) * size] = gather_orb_cr
@@ -257,7 +255,7 @@ for n in range(sampler.n_blocks):
         assert gather_wt is not None
 
         blk_energy = np.sum(gather_wt * gather_energy) / np.sum(gather_wt)
-        blk_elec_orb_cr = np.sum(gather_wt * gather_elec_orb_cr) / np.sum(gather_wt)
+        # blk_elec_orb_cr = np.sum(gather_wt * gather_elec_orb_cr) / np.sum(gather_wt)
         blk_hf_orb_cr = np.sum(gather_wt * gather_hf_orb_cr) / np.sum(gather_wt)
         blk_ccsd_orb_cr = np.sum(gather_wt * gather_ccsd_orb_cr) / np.sum(gather_wt)
         blk_orb_cr= np.sum(gather_wt * gather_orb_cr) / np.sum(gather_wt)
@@ -275,11 +273,11 @@ for n in range(sampler.n_blocks):
                     glb_blk_energy[: (n + 1) * size],
                     neql=0,
                 )
-                elec_orb_cr, elec_orb_cr_err = stat_utils.blocking_analysis(
-                    glb_blk_wt[: (n + 1) * size],
-                    glb_blk_elec_orb_cr[: (n + 1) * size],
-                    neql=0,
-                )
+                # elec_orb_cr, elec_orb_cr_err = stat_utils.blocking_analysis(
+                #     glb_blk_wt[: (n + 1) * size],
+                #     glb_blk_elec_orb_cr[: (n + 1) * size],
+                #     neql=0,
+                # )
                 hf_orb_cr, hf_orb_cr_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
                     glb_blk_hf_orb_cr[: (n + 1) * size],
@@ -314,10 +312,10 @@ for n in range(sampler.n_blocks):
                     energy_err = f"{energy_err:.6f}"
                 else:
                     energy_err = f"  {energy_err}  "
-                if elec_orb_cr_err is not None:
-                    elec_orb_cr_err = f"{elec_orb_cr_err:.6f}"
-                else:
-                    elec_orb_cr_err = f"  {elec_orb_cr_err}  "
+                # if elec_orb_cr_err is not None:
+                #     elec_orb_cr_err = f"{elec_orb_cr_err:.6f}"
+                # else:
+                #     elec_orb_cr_err = f"  {elec_orb_cr_err}  "
                 if hf_orb_cr_err is not None:
                     hf_orb_cr_err = f"{hf_orb_cr_err:.6f}"
                 else:
@@ -331,11 +329,11 @@ for n in range(sampler.n_blocks):
                 else:
                     orb_cr_err = f"  {orb_cr_err}  "
                 energy = f"{energy:.6f}"
-                elec_orb_cr = f"{elec_orb_cr:.6f}"
+                # elec_orb_cr = f"{elec_orb_cr:.6f}"
                 hf_orb_cr = f"{hf_orb_cr:.6f}"
                 ccsd_orb_cr = f"{ccsd_orb_cr:.6f}"
                 orb_cr = f"{orb_cr:.6f}"
-                print(f"{n:4d}   {energy}   {energy_err}   {elec_orb_cr}   {elec_orb_cr_err}   {hf_orb_cr}   {hf_orb_cr_err}   {ccsd_orb_cr}   {ccsd_orb_cr_err}   {orb_cr}   {orb_cr_err}  {time.time() - init_time:.2f} ")
+                print(f"{n:4d}   {energy}   {energy_err}   {hf_orb_cr}   {hf_orb_cr_err}   {ccsd_orb_cr}   {ccsd_orb_cr_err}   {orb_cr}   {orb_cr_err}  {time.time() - init_time:.2f} ")
         comm.Barrier()
 
 # global_large_deviations = np.array(0)
@@ -353,7 +351,7 @@ for n in range(sampler.n_blocks):
 comm.Barrier()
 if rank == 0:
     assert glb_blk_energy is not None
-    assert glb_blk_elec_orb_cr is not None
+    # assert glb_blk_elec_orb_cr is not None
     assert glb_blk_hf_orb_cr is not None
     assert glb_blk_ccsd_orb_cr is not None
     assert glb_blk_orb_cr is not None
@@ -364,7 +362,6 @@ if rank == 0:
                 (
                     glb_blk_wt,
                     glb_blk_energy,
-                    glb_blk_elec_orb_cr,
                     glb_blk_hf_orb_cr,
                     glb_blk_ccsd_orb_cr,
                     glb_blk_orb_cr,
@@ -378,10 +375,9 @@ if rank == 0:
         )
     glb_blk_wt = samples_clean[:, 0]
     glb_blk_energy = samples_clean[:, 1]
-    glb_blk_elec_orb_cr = samples_clean[:, 2]
-    glb_blk_hf_orb_cr = samples_clean[:, 3]
-    glb_blk_ccsd_orb_cr = samples_clean[:, 4]
-    glb_blk_orb_cr = samples_clean[:, 5]
+    glb_blk_hf_orb_cr = samples_clean[:, 2]
+    glb_blk_ccsd_orb_cr = samples_clean[:, 3]
+    glb_blk_orb_cr = samples_clean[:, 4]
 
 
     energy, energy_err = stat_utils.blocking_analysis(
@@ -389,11 +385,11 @@ if rank == 0:
                     glb_blk_energy[: (n + 1) * size],
                     neql=0,printQ=True
                 )
-    elec_orb_cr, elec_orb_cr_err = stat_utils.blocking_analysis(
-                    glb_blk_wt[: (n + 1) * size],
-                    glb_blk_elec_orb_cr[: (n + 1) * size],
-                    neql=0,printQ=True
-                )
+    # elec_orb_cr, elec_orb_cr_err = stat_utils.blocking_analysis(
+    #                 glb_blk_wt[: (n + 1) * size],
+    #                 glb_blk_elec_orb_cr[: (n + 1) * size],
+    #                 neql=0,printQ=True
+    #             )
     hf_orb_cr, hf_orb_cr_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
                     glb_blk_hf_orb_cr[: (n + 1) * size],
@@ -414,10 +410,10 @@ if rank == 0:
         energy_err = f"{energy_err:.6f}"
     else:
         energy_err = f"  {energy_err}  "
-    if elec_orb_cr_err is not None:
-        elec_orb_cr_err = f"{elec_orb_cr_err:.6f}"
-    else:
-        elec_orb_cr_err = f"  {elec_orb_cr_err}  "
+    # if elec_orb_cr_err is not None:
+    #     elec_orb_cr_err = f"{elec_orb_cr_err:.6f}"
+    # else:
+    #     elec_orb_cr_err = f"  {elec_orb_cr_err}  "
     if hf_orb_cr_err is not None:
         hf_orb_cr_err = f"{hf_orb_cr_err:.6f}"
     else:
@@ -431,7 +427,7 @@ if rank == 0:
     else:
         orb_cr_err = f"  {orb_cr_err}  "
     energy = f"{energy:.6f}"
-    elec_orb_cr = f"{elec_orb_cr:.6f}"
+    # elec_orb_cr = f"{elec_orb_cr:.6f}"
     hf_orb_cr = f"{hf_orb_cr:.6f}"
     ccsd_orb_cr = f"{ccsd_orb_cr:.6f}"
     orb_cr = f"{orb_cr:.6f}"
@@ -439,7 +435,7 @@ if rank == 0:
     print(f"Final Results:")
     print(f"lno-ccsd orbital correlation energy: {init_ccsd_orb_cr:.6f}")
     print(f"lno-ccsd-afqmc energy: {energy} +/- {energy_err}")
-    print(f"lno-ccsd-afqmc elec_orb_cr: {elec_orb_cr} +/- {elec_orb_cr_err}")
+    # print(f"lno-ccsd-afqmc elec_orb_cr: {elec_orb_cr} +/- {elec_orb_cr_err}")
     print(f"lno-ccsd-afqmc hf_orb_cr: {hf_orb_cr} +/- {hf_orb_cr_err}")
     print(f"lno-ccsd-afqmc ccsd_orb_cr: {ccsd_orb_cr} +/- {ccsd_orb_cr_err}")
     print(f"lno-ccsd-afqmc tot_orb_cr: {orb_cr} +/- {orb_cr_err}")

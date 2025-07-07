@@ -177,6 +177,7 @@ def _make_df_eris_outcore(mycc, mo_coeff=None):
     nocc = eris.nocc
     nao, nmo = mo_coeff.shape
     nvir = nmo - nocc
+    #print(f'################ {nvir} {nocc} {nao} {nmo} ################')
     nvir_pair = nvir*(nvir+1)//2
 
     naux = mycc._scf.with_df.get_naoaux()
@@ -189,10 +190,13 @@ def _make_df_eris_outcore(mycc, mo_coeff=None):
     p1 = 0
     for eri1 in mycc._scf.with_df.loop():
         Lpq = _ao2mo.nr_e2(eri1, mo_coeff, ijslice, aosym='s2', out=Lpq).reshape(-1,nmo,nmo)
+        # print(f'################ {Lpq.shape} ################')
+        # print(f'################ {Lpq[:,nocc:,nocc:]} ################')
         p0, p1 = p1, p1 + Lpq.shape[0]
         Loo[p0:p1] = Lpq[:,:nocc,:nocc]
         Lov[p0:p1] = Lpq[:,:nocc,nocc:]
         Lvo[p0:p1] = Lpq[:,nocc:,:nocc]
+        # print(f'################ {Lpq[:,nocc:,nocc:]} ################')
         Lvv[p0:p1] = lib.pack_tril(Lpq[:,nocc:,nocc:].reshape(-1,nvir,nvir))
     
 #    import pdb;pdb.set_trace() 
