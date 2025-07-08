@@ -1,7 +1,7 @@
 import numpy as np
 from pyscf import gto, scf, cc
 
-nh2 = 1
+nh2 = 10
 s = 20
 e_hf = np.zeros(nh2)
 e_ccsd = np.zeros(nh2)
