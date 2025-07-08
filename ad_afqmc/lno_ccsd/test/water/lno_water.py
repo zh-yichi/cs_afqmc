@@ -1,7 +1,8 @@
 import sys
 from pyscf.lib import logger
 from ad_afqmc.lno_ccsd import lno_ccsd
-from pyscf import gto, scf
+from pyscf import gto, scf, mp
+from ad_afqmc.lno.afqmc import LNOAFQMC
 
 log = logger.Logger(sys.stdout, 6)
 
@@ -15,23 +16,7 @@ mol = gto.M(atom=atoms, basis="ccpvdz", verbose=4)
 mf = scf.RHF(mol).density_fit()
 mf.kernel()
 
-# frozen = 0
-# mmp = mp.MP2(mf,frozen=frozen)
-# mmp.kernel()[0]
-
-# # cc
-# mycc = cc.CCSD(mf)
-# mycc.kernel()
-# et = mycc.ccsd_t()
-
-# fci
-#cisolver = fci.FCI(mf)
-#fci_ene, fci_vec = cisolver.kernel()
-
-# print(f'rhf energy is {mf.e_tot}')
-# print(f"ccsd energy is {mycc.e_tot}")
-# print(f"ccsd_t energy is {mycc.e_tot+et}")
-# print(f"ccsd correlation energy is {mycc.e_corr}")
+frozen = 1
 
 options = {'n_eql': 5,
            'n_prop_steps': 30,
@@ -47,5 +32,32 @@ options = {'n_eql': 5,
             }
 
 
-thresh = 1.00e-04
-lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,1,options,1e-6,8)
+# thresh = 1.00e-04
+# lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,frozen,options,1e-6,8)
+
+mmp = mp.MP2(mf, frozen=frozen)
+mmp.kernel()
+
+filename = 'fragmentenergies.txt'
+# LNO
+for thresh in [1e-4]:
+    f = open(filename,'w')
+    f.close()
+    mfcc = LNOAFQMC(mf, thresh=thresh, frozen=frozen).set(verbose=5)
+    mfcc.thresh_occ = 1e-3
+    mfcc.thresh_vir = thresh
+    mfcc.nblocks = 20
+    mfcc.seed = 1234 
+    mfcc.lo_type = 'pm'
+    mfcc.no_type = 'cim'
+    mfcc.frag_lolist = '1o'
+    mfcc.nwalk_per_proc = 30
+    mfcc.force_outcore_ao2mo = True
+    mfcc.kernel()#canonicalize=False,chol_vecs=chol_vecs)
+    ecc = mfcc.e_corr #+ mf.energy_nuc()
+    ecc_pt2corrected = mfcc.e_corr_pt2corrected(mmp.e_corr)
+
+    log.info('thresh = %.0e  E_corr(AFQMC)     = %.10f, %.10f  rel(wrt CCSD) = %6.2f%%  '
+             'diff = % .10f',
+             thresh, ecc,mf.energy_nuc(), 0, 0)
+    log.info('E_corr(AFQMC+PT2) = %.10f',ecc_pt2corrected)

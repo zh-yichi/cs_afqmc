@@ -510,6 +510,30 @@ def prep_lnoccsd_afqmc(options=None,prjlo=True,
                 options = pickle.load(f)
         except:
             options = {}
+            
+    options["dt"] = options.get("dt", 0.01)
+    options["n_exp_terms"] = options.get("n_exp_terms",6)
+    options["n_walkers"] = options.get("n_walkers", 50)
+    options["n_prop_steps"] = options.get("n_prop_steps", 50)
+    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
+    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
+    options["n_blocks"] = options.get("n_blocks", 50)
+    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
+    options["n_eql"] = options.get("n_eql", 1)
+    options["ad_mode"] = options.get("ad_mode", None)
+    assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
+    options["orbital_rotation"] = options.get("orbital_rotation", True)
+    options["do_sr"] = options.get("do_sr", True)
+    options["walker_type"] = options.get("walker_type", "rhf")
+    options["symmetry"] = options.get("symmetry", False)
+    options["save_walkers"] = options.get("save_walkers", False)
+    options["trial"] = options.get("trial", "cisd")
+    options["ene0"] = options.get("ene0", 0.0)
+    options["free_projection"] = options.get("free_projection", False)
+    options["n_batch"] = options.get("n_batch", 1)
+    #options["orbE"] = options.get("orbE",0)
+    options['maxError'] = options.get('maxError',1e-3)
+    options["use_gpu"] = options.get("use_gpu", False)
 
     if options["use_gpu"]:
         config.afqmc_config["use_gpu"] = True
@@ -536,30 +560,6 @@ def prep_lnoccsd_afqmc(options=None,prjlo=True,
     nelec_sp = ((nelec + abs(ms)) // 2, (nelec - abs(ms)) // 2)
 
     norb = nmo
-
-    options["dt"] = options.get("dt", 0.01)
-    options["n_exp_terms"] = options.get("n_exp_terms",6)
-    options["n_walkers"] = options.get("n_walkers", 50)
-    options["n_prop_steps"] = options.get("n_prop_steps", 50)
-    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
-    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
-    options["n_blocks"] = options.get("n_blocks", 50)
-    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-    options["n_eql"] = options.get("n_eql", 1)
-    options["ad_mode"] = options.get("ad_mode", None)
-    assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
-    options["orbital_rotation"] = options.get("orbital_rotation", True)
-    options["do_sr"] = options.get("do_sr", True)
-    options["walker_type"] = options.get("walker_type", "rhf")
-    options["symmetry"] = options.get("symmetry", False)
-    options["save_walkers"] = options.get("save_walkers", False)
-    options["trial"] = options.get("trial", "cisd")
-    options["ene0"] = options.get("ene0", 0.0)
-    options["free_projection"] = options.get("free_projection", False)
-    options["n_batch"] = options.get("n_batch", 1)
-    #options["orbE"] = options.get("orbE",0)
-    options['maxError'] = options.get('maxError',1e-3)
-    options["use_gpu"] = options.get("use_gpu", False)
 
     try:
         with h5py.File("observable.h5", "r") as fh5:
@@ -1132,6 +1132,10 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
     
     if run_frg_list is None:
         run_frg_list = range(nfrag)
+    
+    from jax import random
+    seeds = random.randint(random.PRNGKey(options["seed"]),
+                        shape=(nfrag,), minval=0, maxval=100000*nfrag)
 
     for ifrag in run_frg_list:
         print(f'########### running fragment {ifrag+1} ##########')
@@ -1181,6 +1185,7 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
         prjlo = fdot(orbfragloc.T, s1e, orbactocc) ### overlap between the lo and each active occ in its fragment
         #print('# lo projection on its active occupied fragment subspace', prjlo)
 
+        options["seed"] = seeds[ifrag]
         prep_lno_amp_chol_file(
             mf,orbfrag,options,
             norb_act=(nactocc+nactvir),nelec_act=nactocc*2,
