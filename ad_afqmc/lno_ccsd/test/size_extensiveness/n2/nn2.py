@@ -43,5 +43,5 @@ options = {'n_eql': 3,
             }
 
 
-thresh = 1.00e-06
-lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,2,options,1e-6,8,mp2=True)
+thresh = 1.00e-05
+lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,2,options,1e-5,8,mp2=True)

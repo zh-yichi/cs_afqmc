@@ -54,6 +54,7 @@ def prep_afqmc(
     basis_coeff: Optional[np.ndarray] = None,
     norb_frozen: int = 0,
     chol_cut: float = 1e-5,
+    use_df: bool = False,
     integrals: Optional[dict] = None,
     mo_file = "mo_coeff.npz",
     amp_file = "amplitudes.npz",
@@ -145,9 +146,10 @@ def prep_afqmc(
 
     else:
         DFbas = None
-        if getattr(mf, "with_df", None) is not None:
-            print('# Decomposing ERI with DF')
-            DFbas = mf.with_df.auxmol.basis  # type: ignore
+        if use_df:
+            if getattr(mf, "with_df", None) is not None:
+                print('# Decomposing ERI with DF')
+                DFbas = mf.with_df.auxmol.basis  # type: ignore
         h1e, chol, nelec, enuc = generate_integrals(
             mol, mf.get_hcore(), basis_coeff, chol_cut, DFbas=DFbas
         )

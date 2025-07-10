@@ -285,7 +285,7 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=No
             the CCSD(T) energy is 0 unless 'ccsd_t' is set to True.
     '''
     log = logger.new_logger(mf if log is None else log)
-    cput1 = (logger.process_clock(), logger.perf_counter())
+    # cput1 = (logger.process_clock(), logger.perf_counter())
 
     maskocc = mf.mo_occ>1e-10
     nmo = mf.mo_occ.size
@@ -308,16 +308,16 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=No
     orbactocc = mo_coeff[:, maskact& maskocc]
     orbactvir = mo_coeff[:, maskact&~maskocc]
     orbfrzvir = mo_coeff[:,~maskact&~maskocc]
-    nfrzocc, nactocc, nactvir, nfrzvir = [orb.shape[1]
+    _, nactocc, nactvir, _ = [orb.shape[1]
                                           for orb in [orbfrzocc,orbactocc,
                                                       orbactvir,orbfrzvir]]
-    #import pdb;pdb.set_trace()
-    nlo = lo_coeff.shape[1]
+    # import pdb;pdb.set_trace()
+    # nlo = lo_coeff.shape[1]
     s1e = mf.get_ovlp() if eris is None else eris.s1e
     prjlo = fdot(lo_coeff.T, s1e, orbactocc)
 
-    log.debug('    impsol:  %d LOs  %d/%d MOs  %d occ  %d vir',
-              nlo, nactocc+nactvir, nmo, nactocc, nactvir)
+    # log.debug('    impsol:  %d LOs  %d/%d MOs  %d occ  %d vir',
+            #   nlo, nactocc+nactvir, nmo, nactocc, nactvir)
 
     # solve impurity problem
     from pyscf.cc import CCSD
@@ -343,30 +343,26 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=No
         ovov = imp_eris.ovov[()]
     oovv = ovov.reshape(nactocc,nactvir,nactocc,nactvir).transpose(0,2,1,3)
     ovov = None
-    cput1 = log.timer_debug1('imp sol - eri    ', *cput1)
+    # cput1 = log.timer_debug1('imp sol - eri    ', *cput1)
     # MP2 fragment energy
     t1, t2 = mcc.init_amps(eris=imp_eris)[1:]
-    cput1 = log.timer_debug1('imp sol - mp2 amp', *cput1)
-    elcorr_pt2 = ccsd.get_fragment_energy(oovv, t2, prjlo)
+    # cput1 = log.timer_debug1('imp sol - mp2 amp', *cput1)
+    # elcorr_pt2 = ccsd.get_fragment_energy(oovv, t2, prjlo)
   
-    cput1 = log.timer_debug1('imp sol - mp2 ene', *cput1)
+    # cput1 = log.timer_debug1('imp sol - mp2 ene', *cput1)
     # CCSD fragment energy
     t1, t2 = mcc.kernel(eris=imp_eris, t1=t1, t2=t2)[1:]
-    cput1 = log.timer_debug1('imp sol - cc  amp', *cput1)
+    # cput1 = log.timer_debug1('imp sol - cc  amp', *cput1)
     t2 += ccsd.einsum('ia,jb->ijab',t1,t1)
     elcorr_cc = ccsd.get_fragment_energy(oovv, t2, prjlo)
-    cput1 = log.timer_debug1('imp sol - cc  ene', *cput1)
+    # cput1 = log.timer_debug1('imp sol - cc  ene', *cput1)
     if ccsd_t:
         from ad_afqmc.lno.cc.ccsd_t import kernel as CCSD_T
         t2 -= ccsd.einsum('ia,jb->ijab',t1,t1)   # restore t2
         elcorr_cc_t = CCSD_T(mcc, imp_eris, prjlo, t1=t1, t2=t2, verbose=verbose_imp)
-        cput1 = log.timer_debug1('imp sol - cc  (T)', *cput1)
+        # cput1 = log.timer_debug1('imp sol - cc  (T)', *cput1)
     else:
         elcorr_cc_t = 0.
-
-    # frag_msg = '  '.join([f'E_corr(MP2) = {elcorr_pt2:.15g}',
-    #                       f'E_corr(CCSD) = {elcorr_cc:.15g}',
-    #                       f'E_corr(CCSD(T)) = {elcorr_cc_t:.15g}'])
 
     oovv = imp_eris = mcc = None
 
@@ -392,7 +388,8 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
                            option_file='options.bin',
                            mo_file="mo_coeff.npz",
                            amp_file="amplitudes.npz",
-                           chol_file="FCIDUMP_chol"):
+                           chol_file="FCIDUMP_chol"
+                           ):
     
     
     with open(option_file, 'wb') as f:
@@ -444,12 +441,14 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     h1e, enuc = mc.get_h1eff()
 
     nbasis = h1e.shape[-1]
-    print(f'# frozen orbitals are {norb_frozen}')
     if isinstance(norb_frozen, (int, float)) and norb_frozen == 0:
         norb_frozen = []
+    elif isinstance(norb_frozen, int):
+        norb_frozen = np.arange(norb_frozen)
+    print(f'# frozen orbitals: {norb_frozen}')
     act = np.array([i for i in range(mol.nao) if i not in norb_frozen])
-    print(f'# local active orbitals are {act}') #yichi
-    print(f'# local active space size {len(act)}') #yichi
+    print(f'# local active orbitals: {act}') #yichi
+    print(f'# local active space size: {len(act)}') #yichi
     e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False) # in mo representation
     print(f'# loc_eris shape: {e.shape}') #yichi
     # add e = pyscf_interface.df(mol_mf,e) for selected loc_mos
@@ -457,7 +456,7 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     print(f'# chol shape: {chol.shape}') #yichi
 
     print("# Finished calculating Cholesky integrals\n")
-    print('# Size of the correlation space:')
+    print('# Size of the correlation space')
     print(f'# Number of electrons: {nelec}')
     print(f'# Number of basis functions: {nbasis}')
     print(f'# Number of Cholesky vectors: {chol.shape[0]}\n')
@@ -1200,7 +1199,7 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
             s1e = mf.get_ovlp() if eris is None else eris.s1e
             can_prjlo = fdot(orbfragloc.T, s1e, can_orbfrag[:, maskact& maskocc])
             mcc = CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
-            # print(f'######{can_orbfrag.shape,orbfrag.shape}######')
+            
             mcc.ao2mo = ccsd.ccsd_ao2mo.__get__(mcc, mcc.__class__)
             mcc._s1e = s1e
             if eris is not None:
@@ -1244,15 +1243,14 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
             if mp2:
                 print(f"lno-mp2 orb_corr: {elcorr_pt2:.6f}",file=out_file)
             print(f"lno-ccsd orb_corr: {ecorr_ccsd:.6f}",file=out_file)
+            print(f"number of active orbitals: {nactocc+nactvir}",file=out_file)
+            print(f"number of active electrons: {nactocc*2}",file=out_file)
 
     with open('results.out', 'w') as out_file:
-        print('# frag \t err \t hf_orb_cr \t err \t ccsd_orb_cr \t err \t e_afqmc_orb_cr \t err \t e_mp2_orb_corr \t e_ccsd_orb_corr',file=out_file)
+        print('# frag \t err \t hf_orb_cr \t err \t ccsd_orb_cr \t err \t e_afqmc_orb_cr \t err \t e_mp2_orb_corr \t e_ccsd_orb_corr \t n_act_orb \t n_act_orb',file=out_file)
         for ifrag in range(nfrag):
             with open(f"frg_{ifrag+1}.out","r") as read_file:
                 for line in read_file:
-                    # if "lno-ccsd-afqmc elec_orb_cr" in line:
-                    #     elec_orb_cr = line.split()[2]
-                    #     elec_orb_cr_err = line.split()[4]
                     if "lno-ccsd-afqmc hf_orb_cr" in line:
                         hf_orb_cr = line.split()[2]
                         hf_orb_cr_err = line.split()[4]
@@ -1269,7 +1267,11 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
                         e_mp2_orb_cr = '  None  '
                     if "lno-ccsd orb_corr" in line:
                         e_ccsd_orb_corr = line.split()[2]
-                print(f'{ifrag+1:3d} \t {hf_orb_cr} \t {hf_orb_cr_err} \t {ccsd_orb_cr} \t {ccsd_orb_cr_err} \t {tot_orb_cr} \t {tot_orb_cr_err} \t {e_mp2_orb_cr} \t {e_ccsd_orb_corr}', file=out_file)
+                    if "number of active orbitals" in line:
+                        nactorb = line.split()[4]
+                    if "number of active electrons" in line:
+                        nactelec = line.split()[4]
+                print(f'{ifrag+1:3d} \t {hf_orb_cr} \t {hf_orb_cr_err} \t {ccsd_orb_cr} \t {ccsd_orb_cr_err} \t {tot_orb_cr} \t {tot_orb_cr_err} \t {e_mp2_orb_cr} \t {e_ccsd_orb_corr} \t {nactorb} \t {nactelec}', file=out_file)
 
     data = []
     with open('results.out', 'r') as read_file:
@@ -1280,7 +1282,7 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
                 # elec_orb_cr = line.split()[1]
                 # elec_orb_cr_err = line.split()[2]
                 # print(elec_orb_cr, elec_orb_cr_err)
-    data = np.array(data.reshape(nfrag,9))
+    data = np.array(data.reshape(nfrag,11))
     # elec_orb_cr = np.array(data[:,1],dtype='float32')
     # elec_orb_cr_err = np.array(data[:,2],dtype='float32')
     hf_orb_cr = np.array(data[:,1],dtype='float32')
@@ -1291,8 +1293,8 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
     tot_orb_cr_err = np.array(data[:,6],dtype='float32')
     e_mp2_orb_cr = np.array(data[:,7],dtype='float32')
     e_ccsd_orb_cr = np.array(data[:,8],dtype='float32')
-    # elec_cr = sum(elec_orb_cr)
-    # elec_cr_err = np.sqrt(sum(elec_orb_cr_err**2))
+    n_orb = np.array(data[:,9],dtype='int32')
+    n_elec = np.array(data[:,10],dtype='int32')
     hf_cr = sum(hf_orb_cr)
     hf_cr_err = np.sqrt(sum(hf_orb_cr_err**2))
     ccsd_cr = sum(ccsd_orb_cr)
@@ -1301,6 +1303,8 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
     tot_cr_err = np.sqrt(sum(tot_orb_cr_err**2))
     e_mp2_corr = sum(e_mp2_orb_cr)
     e_ccsd_corr = sum(e_ccsd_orb_cr)
+    n_orb_ave = np.mean(n_orb)
+    n_elec_ave = np.mean(n_elec)
 
     if mp2:
         from pyscf import mp
@@ -1334,4 +1338,6 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
         if mp2:
             out_file.write(f'# mp2_corrected tot_afqmc_cr {mp2_corrected_tot_cr}\n')
         out_file.write(f'# lno-thresh {thresh_pno}\n')
+        out_file.write(f'# average number of orbitals {n_orb_ave} \n')
+        out_file.write(f'# average number of electrons  {n_elec_ave}\n')
     return None
