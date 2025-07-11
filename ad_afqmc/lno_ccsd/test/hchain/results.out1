@@ -1,0 +1,14 @@
+# frag 	 err 	 hf_orb_cr 	 err 	 ccsd_orb_cr 	 err 	 e_afqmc_orb_cr 	 err 	 e_mp2_orb_corr 	 e_ccsd_orb_corr 	 n_act_orb 	 n_act_orb
+  1 	 -0.036922 	 0.000514 	 -0.010433 	 0.000474 	 -0.047355 	 0.000067 	 -0.027124 	 -0.047638 	 6 	 6
+  2 	 -0.039615 	 0.000579 	 -0.009717 	 0.000536 	 -0.049332 	 0.000086 	 -0.027950 	 -0.049890 	 6 	 6
+  3 	 -0.038643 	 0.000607 	 -0.010587 	 0.000563 	 -0.049230 	 0.000085 	 -0.027950 	 -0.049890 	 6 	 6
+# final results 
+# hf_cr -0.115180 +/- 0.000984
+# ccsd_cr -0.030737 +/- 0.000910
+# tot_afqmc_cr -0.145917 +/- 0.000138
+# e_mp2_corr -0.083024
+# e_ccsd_corr -0.147418
+# mp2_corrected tot_afqmc_cr -0.145916
+# lno-thresh [0.0, 0.0]
+# average number of orbitals 6.0 
+# average number of electrons  6.0

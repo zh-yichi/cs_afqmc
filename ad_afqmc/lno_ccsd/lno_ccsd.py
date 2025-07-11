@@ -265,7 +265,7 @@ def frg_ccsd_orb_cr(
     return energies.reshape(n_walkers)
 
 def cc_impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=None,
-                   log=None, verbose_imp=0):
+                   log=None, verbose_imp=4):
     r''' Solve impurity problem and calculate local correlation energy.
 
     Args:
@@ -351,16 +351,15 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, ccsd_t=False, eris=None, frozen=No
   
     # cput1 = log.timer_debug1('imp sol - mp2 ene', *cput1)
     # CCSD fragment energy
-    t1, t2 = mcc.kernel(eris=imp_eris, t1=t1, t2=t2)[1:]
-    # cput1 = log.timer_debug1('imp sol - cc  amp', *cput1)
-    t2 += ccsd.einsum('ia,jb->ijab',t1,t1)
+    mcc.kernel(eris=imp_eris, t1=t1, t2=t2)
+    t1, t2 = mcc.t1, mcc.t2
+    # t2 += ccsd.einsum('ia,jb->ijab',t1,t1)
     elcorr_cc = ccsd.get_fragment_energy(oovv, t2, prjlo)
     # cput1 = log.timer_debug1('imp sol - cc  ene', *cput1)
     if ccsd_t:
         from ad_afqmc.lno.cc.ccsd_t import kernel as CCSD_T
         t2 -= ccsd.einsum('ia,jb->ijab',t1,t1)   # restore t2
         elcorr_cc_t = CCSD_T(mcc, imp_eris, prjlo, t1=t1, t2=t2, verbose=verbose_imp)
-        # cput1 = log.timer_debug1('imp sol - cc  (T)', *cput1)
     else:
         elcorr_cc_t = 0.
 
@@ -642,6 +641,7 @@ def prep_lnoccsd_afqmc(options=None,prjlo=True,
     if rank == 0:
         print(f"# norb: {norb}")
         print(f"# nelec: {nelec_sp}")
+        print(f"# nchol: {nchol}")
         print("#")
         for op in options:
             if options[op] is not None:
@@ -1067,16 +1067,16 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
     # frag_lolist = lno_cc.frag_lolist
     s1e = lno_cc._scf.get_ovlp()
 
-    lno_qmc = LNOAFQMC(mf, thresh=thresh, frozen=frozen)
-    lno_qmc.thresh_occ = thresh_occ
-    lno_qmc.thresh_vir = thresh_vir
-    lno_qmc.nblocks = options["n_blocks"]
-    lno_qmc.nwalk_per_proc = options["n_walkers"]
-    lno_qmc.nproc = nproc
-    lno_qmc.lo_type = lo_type
-    lno_qmc.no_type = no_type
-    lno_qmc.frag_lolist = frag_lolist
-    lno_qmc.chol_cut = chol_cut
+    # lno_qmc = LNOAFQMC(mf, thresh=thresh, frozen=frozen)
+    # lno_qmc.thresh_occ = thresh_occ
+    # lno_qmc.thresh_vir = thresh_vir
+    # lno_qmc.nblocks = options["n_blocks"]
+    # lno_qmc.nwalk_per_proc = options["n_walkers"]
+    # lno_qmc.nproc = nproc
+    # lno_qmc.lo_type = lo_type
+    # lno_qmc.no_type = no_type
+    # lno_qmc.frag_lolist = frag_lolist
+    # lno_qmc.chol_cut = chol_cut
 
     # NO type
     # no_type = 'ie'
@@ -1135,6 +1135,11 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
     from jax import random
     seeds = random.randint(random.PRNGKey(options["seed"]),
                         shape=(nfrag,), minval=0, maxval=100000*nfrag)
+    
+    # non df mean-field opject
+    mf2 = scf.RHF(mf.mol)
+    mf2.kernel()
+    #e0 = mf2.e_tot
 
     for ifrag in run_frg_list:
         print(f'########### running fragment {ifrag+1} ##########')
@@ -1186,10 +1191,10 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut,nproc,run_frg_list=None
 
         options["seed"] = seeds[ifrag]
         prep_lno_amp_chol_file(
-            mf,orbfrag,options,
+            mf2,orbfrag,options,
             norb_act=(nactocc+nactvir),nelec_act=nactocc*2,
             prjlo=prjlo,norb_frozen=frzfrag,
-            t1=t1,t2=t2
+            t1=t1,t2=t2,chol_cut=chol_cut
                     )
         
         #MP2 correction 
