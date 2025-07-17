@@ -8,8 +8,8 @@ config.update("jax_enable_x64", True)
 
 print = partial(print, flush=True)
 
-a = 1.2
-nH = 6
+a = 1.
+nH = 4
 atoms = ""
 for i in range(nH):
     atoms += f"H {i*a} 0 0 \n"
@@ -25,19 +25,13 @@ et = mycc.ccsd_t()
 print(f"ccsd energy is {mycc.e_tot}")
 print(f"ccsd_t energy is {mycc.e_tot+et}")
 
-# fci
-# cisolver = fci.FCI(mf)
-# fci_ene, fci_vec = cisolver.kernel()
-# print(f"fci_ene: {fci_ene}", flush=True)
 
-# ad afqmc
-# pyscf_interface.prep_afqmc(mycc,chol_cut=1e-5)
 options = {
-    "n_eql": 5,
+    "n_eql": 4,
     "n_ene_blocks": 1,
     "n_sr_blocks": 20,
-    "n_blocks": 20,
-    "n_walkers": 30,
+    "n_blocks": 40,
+    "n_walkers": 50,
     "seed": 98,
     "trial": "cisd",
     "walker_type": "rhf",
@@ -56,7 +50,7 @@ t2 = mycc.t2
 from ad_afqmc.lno_ccsd import lno_ccsd
 lno_ccsd.prep_lno_amp_chol_file(mf,mo_coeff,options,norb_act=norb_act,nelec_act=nelec_act,
                                 prjlo=[],norb_frozen=nfrozen,t1=t1,t2=t2,
-                                chol_cut=1e-6,
+                                df=True,chol_cut=1e-6,
                                 option_file='options.bin',
                                 mo_file="mo_coeff.npz",
                                 amp_file="amplitudes.npz",
@@ -66,14 +60,14 @@ lno_ccsd.prep_lno_amp_chol_file(mf,mo_coeff,options,norb_act=norb_act,nelec_act=
 from mpi4py import MPI
 
 MPI.Finalize()
-run_afqmc.run_afqmc(options=options, nproc=8)
+run_afqmc.run_afqmc(options=options, nproc=5)
 #INFO: ******************** input file end ********************
 
 
 System: uname_result(system='Linux', node='yichi-thinkpad', release='4.4.0-26100-Microsoft', version='#1882-Microsoft Fri Jan 01 08:00:00 PST 2016', machine='x86_64')  Threads 12
 Python 3.10.16 | packaged by conda-forge | (main, Dec  5 2024, 14:16:10) [GCC 13.3.0]
 numpy 1.24.3  scipy 1.14.1  h5py 3.12.1
-Date: Thu Jul 10 16:22:46 2025
+Date: Thu Jul 17 13:19:40 2025
 PySCF version 2.8.0
 PySCF path  /home/yichi/research/software/lno_pyscf
 GIT HEAD (branch master) ef75f4190e4de208685670651dc6c467f72b6794
@@ -81,27 +75,25 @@ GIT HEAD (branch master) ef75f4190e4de208685670651dc6c467f72b6794
 [ENV] PYSCF_EXT_PATH /home/yichi/research/software/pyscf
 [CONFIG] conf_file None
 [INPUT] verbose = 4
-[INPUT] num. atoms = 6
-[INPUT] num. electrons = 6
+[INPUT] num. atoms = 4
+[INPUT] num. electrons = 4
 [INPUT] charge = 0
 [INPUT] spin (= nelec alpha-beta = 2S) = 0
 [INPUT] symmetry False subgroup None
 [INPUT] Mole.unit = angstrom
 [INPUT] Symbol           X                Y                Z      unit          X                Y                Z       unit  Magmom
 [INPUT]  1 H      0.000000000000   0.000000000000   0.000000000000 AA    0.000000000000   0.000000000000   0.000000000000 Bohr   0.0
-[INPUT]  2 H      1.200000000000   0.000000000000   0.000000000000 AA    2.267671349478   0.000000000000   0.000000000000 Bohr   0.0
-[INPUT]  3 H      2.400000000000   0.000000000000   0.000000000000 AA    4.535342698956   0.000000000000   0.000000000000 Bohr   0.0
-[INPUT]  4 H      3.600000000000   0.000000000000   0.000000000000 AA    6.803014048434   0.000000000000   0.000000000000 Bohr   0.0
-[INPUT]  5 H      4.800000000000   0.000000000000   0.000000000000 AA    9.070685397912   0.000000000000   0.000000000000 Bohr   0.0
-[INPUT]  6 H      6.000000000000   0.000000000000   0.000000000000 AA   11.338356747390   0.000000000000   0.000000000000 Bohr   0.0
+[INPUT]  2 H      1.000000000000   0.000000000000   0.000000000000 AA    1.889726124565   0.000000000000   0.000000000000 Bohr   0.0
+[INPUT]  3 H      2.000000000000   0.000000000000   0.000000000000 AA    3.779452249130   0.000000000000   0.000000000000 Bohr   0.0
+[INPUT]  4 H      3.000000000000   0.000000000000   0.000000000000 AA    5.669178373695   0.000000000000   0.000000000000 Bohr   0.0
 
-nuclear repulsion = 3.83653477917
-number of shells = 6
-number of NR pGTOs = 36
-number of NR cGTOs = 6
+nuclear repulsion = 2.29310124732
+number of shells = 4
+number of NR pGTOs = 24
+number of NR cGTOs = 4
 basis = sto6g
 ecp = {}
-CPU time:         1.20
+CPU time:         0.73
 
 
 ******** <class 'pyscf.df.df_jk.DFRHF'> ********
@@ -117,7 +109,7 @@ SCF conv_tol = 1e-09
 SCF conv_tol_grad = None
 SCF max_cycles = 50
 direct_scf = False
-chkfile to save SCF result = /tmp/tmp324u6p1f
+chkfile to save SCF result = /tmp/tmpf1_prut4
 max_memory 4000 MB (current use 133 MB)
 Set gradient conv threshold to 3.16228e-05
 Initial guess from minao.
@@ -128,26 +120,24 @@ ETB for H: l = 0, exps = 0.200224856 * 2^n , n = 0..8
 
 WARN: Even tempered Gaussians are generated as DF auxbasis for  H
 
-init E= -2.15436985373602
-  HOMO = -0.193395110847765  LUMO = 0.0588368750957234
-cycle= 1 E= -3.0187580285706  delta_E= -0.864  |g|= 0.0961  |ddm|= 1.71
-  HOMO = -0.29859877617503  LUMO = 0.139878906878896
-cycle= 2 E= -3.02727595024051  delta_E= -0.00852  |g|= 0.039  |ddm|= 0.231
-  HOMO = -0.30831189388155  LUMO = 0.157867355349025
-cycle= 3 E= -3.02900002534928  delta_E= -0.00172  |g|= 0.00594  |ddm|= 0.128
-  HOMO = -0.311382601853025  LUMO = 0.157904336814352
-cycle= 4 E= -3.02903169616537  delta_E= -3.17e-05  |g|= 0.000257  |ddm|= 0.021
-  HOMO = -0.311122509880181  LUMO = 0.157767726473016
-cycle= 5 E= -3.02903176240085  delta_E= -6.62e-08  |g|= 2.8e-05  |ddm|= 0.000982
-  HOMO = -0.311156230036596  LUMO = 0.157788768121159
-cycle= 6 E= -3.02903176328447  delta_E= -8.84e-10  |g|= 4.83e-07  |ddm|= 0.000106
-  HOMO = -0.311155765898424  LUMO = 0.157788434095071
-Extra cycle  E= -3.02903176328468  delta_E= -2.12e-13  |g|= 1.93e-07  |ddm|= 1.09e-06
-converged SCF energy = -3.02903176328468
+init E= -1.5636069122609
+  HOMO = -0.268012327574771  LUMO = 0.204392854914837
+cycle= 1 E= -2.11052372851126  delta_E= -0.547  |g|= 0.0896  |ddm|= 1.36
+  HOMO = -0.384501914529815  LUMO = 0.293379797644188
+cycle= 2 E= -2.11464613736379  delta_E= -0.00412  |g|= 0.0241  |ddm|= 0.17
+  HOMO = -0.387888256004138  LUMO = 0.303664032774174
+cycle= 3 E= -2.11503710764019  delta_E= -0.000391  |g|= 0.00353  |ddm|= 0.0514
+  HOMO = -0.389373507194992  LUMO = 0.303838079777913
+cycle= 4 E= -2.11504499060308  delta_E= -7.88e-06  |g|= 1.21e-05  |ddm|= 0.00907
+  HOMO = -0.389361718625647  LUMO = 0.303832498262422
+cycle= 5 E= -2.11504499066634  delta_E= -6.33e-11  |g|= 5.37e-06  |ddm|= 1.67e-05
+  HOMO = -0.389352569628568  LUMO = 0.303828665318665
+Extra cycle  E= -2.11504499068051  delta_E= -1.42e-11  |g|= 1.35e-06  |ddm|= 1.02e-05
+converged SCF energy = -2.11504499068051
 
 ******** <class 'pyscf.cc.dfccsd.RCCSD'> ********
 CC2 = 0
-CCSD nocc = 3, nmo = 6
+CCSD nocc = 2, nmo = 4
 max_cycle = 50
 direct = 0
 conv_tol = 1e-07
@@ -156,53 +146,50 @@ diis_space = 6
 diis_start_cycle = 0
 diis_start_energy_diff = 1e+09
 max_memory 4000 MB (current use 139 MB)
-Init t2, MP2 energy = -3.11205523686365  E_corr(MP2) -0.0830234735789608
-Init E_corr(RCCSD) = -0.0830234735789861
-cycle = 1  E_corr(RCCSD) = -0.116221361083109  dE = -0.0331978875  norm(t1,t2) = 0.0901733
-cycle = 2  E_corr(RCCSD) = -0.131628150205837  dE = -0.0154067891  norm(t1,t2) = 0.0497395
-cycle = 3  E_corr(RCCSD) = -0.146199363364753  dE = -0.0145712132  norm(t1,t2) = 0.0270954
-cycle = 4  E_corr(RCCSD) = -0.147358186607422  dE = -0.00115882324  norm(t1,t2) = 0.00799035
-cycle = 5  E_corr(RCCSD) = -0.147252039625517  dE = 0.000106146982  norm(t1,t2) = 0.00455878
-cycle = 6  E_corr(RCCSD) = -0.147517487162657  dE = -0.000265447537  norm(t1,t2) = 0.00114487
-cycle = 7  E_corr(RCCSD) = -0.147446854250239  dE = 7.06329124e-05  norm(t1,t2) = 0.000435026
-cycle = 8  E_corr(RCCSD) = -0.147409595994725  dE = 3.72582555e-05  norm(t1,t2) = 0.000145328
-cycle = 9  E_corr(RCCSD) = -0.147410960862962  dE = -1.36486824e-06  norm(t1,t2) = 5.74814e-05
-cycle = 10  E_corr(RCCSD) = -0.147420788502303  dE = -9.82763934e-06  norm(t1,t2) = 2.50655e-05
-cycle = 11  E_corr(RCCSD) = -0.147421572824588  dE = -7.84322285e-07  norm(t1,t2) = 2.71168e-06
-cycle = 12  E_corr(RCCSD) = -0.147421453997374  dE = 1.18827214e-07  norm(t1,t2) = 7.63388e-07
-cycle = 13  E_corr(RCCSD) = -0.147421465169954  dE = -1.11725793e-08  norm(t1,t2) = 2.91375e-07
+Init t2, MP2 energy = -2.15607298422598  E_corr(MP2) -0.0410279935454645
+Init E_corr(RCCSD) = -0.0410279935463436
+cycle = 1  E_corr(RCCSD) = -0.0568208358638093  dE = -0.0157928423  norm(t1,t2) = 0.0563568
+cycle = 2  E_corr(RCCSD) = -0.0634981732540784  dE = -0.00667733739  norm(t1,t2) = 0.027268
+cycle = 3  E_corr(RCCSD) = -0.0690283559534064  dE = -0.0055301827  norm(t1,t2) = 0.0136693
+cycle = 4  E_corr(RCCSD) = -0.0689755205293532  dE = 5.28354241e-05  norm(t1,t2) = 0.00273069
+cycle = 5  E_corr(RCCSD) = -0.0690245201104617  dE = -4.89995811e-05  norm(t1,t2) = 0.00029374
+cycle = 6  E_corr(RCCSD) = -0.0690280525319372  dE = -3.53242148e-06  norm(t1,t2) = 1.53653e-05
+cycle = 7  E_corr(RCCSD) = -0.0690260669046519  dE = 1.98562729e-06  norm(t1,t2) = 4.27713e-06
+cycle = 8  E_corr(RCCSD) = -0.0690262961432199  dE = -2.29238568e-07  norm(t1,t2) = 7.71667e-07
+cycle = 9  E_corr(RCCSD) = -0.0690262886290929  dE = 7.514127e-09  norm(t1,t2) = 3.86122e-08
 RCCSD converged
-E(RCCSD) = -3.176453228454638  E_corr = -0.1474214651699538
-RCCSD(T) correction = -0.0009341165417992
-ccsd energy is -3.1764532284546383
-ccsd_t energy is -3.1773873449964376
+E(RCCSD) = -2.184071279309607  E_corr = -0.06902628862909292
+RCCSD(T) correction = -6.4033696029388e-05
+ccsd energy is -2.184071279309607
+ccsd_t energy is -2.1841353130056365
 # Generating Cholesky Integrals
 # frozen orbitals: []
-# local active orbitals: [0 1 2 3 4 5]
-# local active space size: 6
-# loc_eris shape: (36, 36)
-# chol shape: (15, 36)
+# local active orbitals: [0 1 2 3]
+# local active space size: 4
+# using density fitting
+# Decomposing ERI with DF
+# chol shape: (36, 16)
 # Finished calculating Cholesky integrals
 
 # Size of the correlation space
-# Number of electrons: (3, 3)
-# Number of basis functions: 6
-# Number of Cholesky vectors: 15
+# Number of electrons: (2, 2)
+# Number of basis functions: 4
+# Number of DF vectors: 36
 
 # Hostname: yichi-thinkpad
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 8
+# Number of MPI ranks: 5
 #
-# norb: 6
-# nelec: (3, 3)
+# norb: 4
+# nelec: (2, 2)
 #
-# n_eql: 5
+# n_eql: 4
 # n_ene_blocks: 1
 # n_sr_blocks: 20
-# n_blocks: 20
-# n_walkers: 30
+# n_blocks: 40
+# n_walkers: 50
 # seed: 98
 # trial: cisd
 # walker_type: rhf
@@ -222,39 +209,38 @@ ccsd_t energy is -3.1773873449964376
 #
 # Equilibration sweeps:
 #   Iter        Block energy      Walltime
-#     0      -3.172902146e+00     4.51e+00 
-#     1      -3.172141314e+00     1.28e+01 
-#     2      -3.171700716e+00     1.95e+01 
-#     3      -3.172201395e+00     2.11e+01 
-#     4      -3.171764851e+00     2.27e+01 
-#     5      -3.173124552e+00     2.43e+01 
+#     0      -2.184071271e+00     6.95e+00 
+#     1      -2.184047699e+00     2.18e+01 
+#     2      -2.184026718e+00     3.49e+01 
+#     3      -2.184070587e+00     3.91e+01 
+#     4      -2.183951139e+00     4.34e+01 
 #
 # Sampling sweeps:
 #  Iter        Mean energy          Stochastic error       Walltime
-     0      -3.171789633e+00        6.371785297e-04        3.02e+01 
-     2      -3.172271520e+00        4.246618050e-04        3.15e+01 
-     4      -3.171928118e+00        3.125497582e-04        3.29e+01 
-     6      -3.172155576e+00        2.875867754e-04        3.43e+01 
-     8      -3.172006554e+00        2.383688069e-04        3.57e+01 
-    10      -3.172152805e+00        2.659608620e-04        3.71e+01 
-    12      -3.172071449e+00        2.379013416e-04        3.85e+01 
-    14      -3.172125592e+00        2.149120350e-04        3.98e+01 
-    16      -3.172156736e+00        1.994689273e-04        4.12e+01 
-    18      -3.172230256e+00        1.964115309e-04        4.26e+01 
+     0      -2.184088102e+00                -              5.34e+01 
+     4      -2.184060089e+00        4.751176422e-05        6.05e+01 
+     8      -2.184059791e+00        4.323626398e-05        6.76e+01 
+    12      -2.184053669e+00        3.431179759e-05        7.47e+01 
+    16      -2.184093584e+00        3.438177283e-05        8.20e+01 
+    20      -2.184078976e+00        2.937622880e-05        8.91e+01 
+    24      -2.184073278e+00        2.678128460e-05        9.63e+01 
+    28      -2.184063228e+00        2.393013728e-05        1.03e+02 
+    32      -2.184070353e+00        2.395822650e-05        1.10e+02 
+    36      -2.184070200e+00        2.242547086e-05        1.17e+02 
 #
 # Number of large deviations: 0
 # Number of outliers in post: 0 
 #
-# Mean: -3.17222480e+00
+# Mean: -2.18407477e+00
 # Block size    # of blocks         Mean                Error
-      1              160       -3.17222480e+00       1.797272e-04
-      2               80       -3.17222480e+00       1.887713e-04
-      5               32       -3.17222480e+00       1.714233e-04
-     10               16       -3.17222480e+00       1.259678e-04
-     20                8       -3.17222480e+00       1.446931e-04
-     50                3       -3.17223989e+00       2.131564e-04
-# Stocahstic error estimate: 1.887713e-04
+      1              200       -2.18407477e+00       2.113810e-05
+      2              100       -2.18407477e+00       1.924024e-05
+      5               40       -2.18407477e+00       2.000435e-05
+     10               20       -2.18407477e+00       2.352631e-05
+     20               10       -2.18407477e+00       2.712369e-05
+     50                4       -2.18407477e+00       3.168730e-05
+# Stocahstic error estimate: 2.113810e-05
 #
-AFQMC energy: -3.1722 +/- 0.0002
+AFQMC energy: -2.18407 +/- 0.00002
 
-ph_afqmc walltime: 43.32299566268921
+ph_afqmc walltime: 122.32406973838806
