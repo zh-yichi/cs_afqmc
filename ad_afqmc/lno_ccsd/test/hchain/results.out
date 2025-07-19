@@ -1,14 +1,20 @@
-# frag 	 err 	 hf_orb_cr 	 err 	 ccsd_orb_cr 	 err 	 e_afqmc_orb_cr 	 err 	 e_mp2_orb_corr 	 e_ccsd_orb_corr 	 n_orb 	 n_elec
-  1 	 -0.023221 	 0.000243 	 -0.001759 	 0.000257 	 -0.024980 	 0.000046 	 -0.016534 	 -0.025331 	 4 	 4
-  2 	 -0.039030 	 0.000528 	 -0.005038 	 0.000541 	 -0.044068 	 0.000057 	 -0.024494 	 -0.043693 	 4 	 4
+# frag  hf_orb_cr  err  olp_ratio  err  ccsd_orb_cr0  err  ccsd_orb_cr1  err  ccsd_orb_cr2  err ccsd_orb_cr  err  afqmc_orb_corr  err  mp2_orb_corr  ccsd_orb_corr  n_orb  n_elec  time
+  1  -0.029734  0.000255  0.907755  0.000609  0.244200  0.002480  -0.446016  0.004559  0.198171  0.002318  -0.003645  0.000251  -0.033379  0.000018  -0.020742  -0.033204  6  6  293.69
+  2  -0.030001  None  0.908312  0.000592  0.238583  None  -0.438619  None  0.195544  None  -0.004491  None  -0.034493  0.000022  -0.020872  -0.034405  6  6  286.43
+  3  -0.031201  0.000310  0.906401  0.000881  0.250414  0.002696  -0.460488  0.004978  0.206715  0.002554  -0.003358  0.000297  -0.034559  0.000026  -0.020872  -0.034405  6  6  286.95
 # final results 
-# mean-field energy: -2.1150449907
-# hf_cr: -0.062251 +/- 0.000581
-# ccsd_cr: -0.006797 +/- 0.000599
-# lno_afqmc_corr: -0.069048 +/- 0.000073
-# e_mp2_corr: -0.041028
-# e_ccsd_corr: -0.069024
-# mp2_corrected lno_afqmc_corr: -0.069048
-# lno-thresh [9.999999999999999e-06, 1e-06]
-# number of orbitals: average 4.0 maxium 4
-# number of electrons: average 4.0 maxium 4
+# mean-field energy: -3.1590017532
+# hf_cr: -0.090936 +/- 0.000401
+# average olp_ratio: 0.907489 +/- 0.000707
+# ccsd_cr0: 0.733197 +/- 0.003663
+# ccsd_cr1: -1.345123 +/- 0.006750
+# ccsd_cr2: 0.600430 +/- 0.003449
+# ccsd_cr: -0.011494 +/- 0.000389
+# lno_afqmc_corr: -0.102431 +/- 0.000039
+# e_mp2_corr: -0.062486
+# e_ccsd_corr: -0.102014
+# mp2_corrected lno_afqmc_corr: -0.102431
+# lno-thresh [1e-06, 1e-07]
+# number of orbitals: average 6.00 maxium 6
+# number of electrons: average 6.00 maxium 6
+# total run time: 867.07

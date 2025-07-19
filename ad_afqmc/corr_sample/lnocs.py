@@ -52,8 +52,8 @@ def pre_lnocs(options,mf,mo_coeff,lo_coeff,frozen=None,eris=None,chol_cut=1e-6,
     print('# Generating Cholesky Integrals')
     nbasis = mf.mol.nao
     act_idx = [i for i in range(nbasis) if i not in norb_frozen]
-    _, chol, _, _ = \
-        pyscf_interface.generate_integrals(mol,mf.get_hcore(),mo_coeff[:,act_idx],chol_cut,DFbas=mf.with_df.auxmol.basis)
+    _, chol, _, _ = pyscf_interface.generate_integrals(
+            mol,mf.get_hcore(),mo_coeff[:,act_idx],chol_cut,DFbas=mf.with_df.auxmol.basis)
     # nbasis = h1e.shape[-1]
     # nelec = mol.nelec
     mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
@@ -71,7 +71,7 @@ def pre_lnocs(options,mf,mo_coeff,lo_coeff,frozen=None,eris=None,chol_cut=1e-6,
     print(f'# local active space size {len(act_idx)}') #yichi
     print(f'# chol shape: {chol.shape}') #yichi
 
-    nbasis = h1e.shape[-1]
+    # nbasis = h1e.shape[-1]
     print("# Finished calculating Cholesky integrals\n")
     print('# Size of the correlation space:')
     print(f'# Number of electrons: {nelec}')
