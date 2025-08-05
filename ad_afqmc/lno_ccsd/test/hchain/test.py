@@ -20,7 +20,7 @@ options = {'n_eql': 4,
             'n_ene_blocks': 1,
             'n_sr_blocks': 20,
             'n_blocks': 40,
-            'n_walkers': 50,
+            'n_walkers': 40,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'cisd',
@@ -30,5 +30,5 @@ options = {'n_eql': 4,
             }
 
 
-thresh = 1e-7
-lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5,mp2=True)
+thresh = 1e-4
+lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5,mp2=True,full_cisd=True)

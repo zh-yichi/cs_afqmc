@@ -236,22 +236,146 @@ def frg_ccsd_cr(
         trial: wavefunctions,
         eps :float = 1e-5) -> jax.Array:
     
-    # n_walkers = walkers.shape[0]
-    # # nocc = walkers.shape[2]
-    # batch_size = n_walkers // trial.n_batch
-
-    # def scanned_fun(carry, walker_batch):
     ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr \
         = vmap(_frg_ccsd_cr, in_axes=(0, None, None, None, None))(
         walkers, ham_data, wave_data, trial, eps
     )
-        # return carry, (ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr)
 
-    # _, energies = lax.scan(
-    #     scanned_fun,
-    #     None,
-    #     walkers.reshape(trial.n_batch, batch_size, trial.norb, -1),
-    # )
+    return ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr
+
+# calculate the overlap of a full cisd wavefunction (in MO) with a walker (in NO)
+@jax.jit
+def no2mo(mo_coeff,s1e,no_coeff):
+    prj = mo_coeff.T@s1e@no_coeff
+    return prj
+
+@jax.jit
+def prj_walker(p_frzocc,p_act,walker):
+    walker_act = p_act@walker
+    walker_new = jnp.hstack((p_frzocc,walker_act))
+    return walker_new
+
+@jax.jit
+def cisd_walker_overlap_ratio(walker,ci1,ci2):
+    nocc = walker.shape[1]
+    GF = (walker.dot(jnp.linalg.inv(walker[: nocc, :]))).T
+    # o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
+    o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
+    o2 = 2 * jnp.einsum(
+        "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]
+    ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
+    return 1/(1.0 + 2 * o1 + o2)
+
+@partial(jit, static_argnums=(3,))
+def _frg_hf_cr2(rot_h1, rot_chol, walker, trial, wave_data):
+    '''hf orbital correlation energy multiplies the overlap ratio'''
+    m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
+    nocc = rot_h1.shape[0]
+    _calc_green = wavefunctions.rhf(
+        trial.norb,trial.nelec,n_batch=trial.n_batch)._calc_green
+    green_walker = _calc_green(walker, wave_data)
+    f = jnp.einsum('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+                    green_walker.T[nocc:,:nocc], optimize='optimal')
+    c = vmap(jnp.trace)(f)
+    eneo2Jt = jnp.einsum('Gxk,xk,G->',f,m,c)*2 
+    eneo2ext = jnp.einsum('Gxy,Gyk,xk->',f,f,m)
+    hf_orb_en = eneo2Jt - eneo2ext
+    
+    full_ci1, full_ci2 = wave_data["full_ci1"], wave_data["full_ci2"]
+    p_frzocc,p_act = wave_data["no2mo_frzocc"], wave_data["no2mo_act"]
+    walker_t = prj_walker(p_frzocc,p_act,walker)
+    olp_ratio = cisd_walker_overlap_ratio(walker_t,full_ci1,full_ci2)
+
+    hf_orb_cr = jnp.real(olp_ratio*hf_orb_en)
+    return hf_orb_cr, jnp.abs(olp_ratio)
+
+@partial(jit, static_argnums=(3,))
+def frg_hf_cr2(walkers,ham_data,wave_data,trial):
+    hf_orb_cr, olp_ratio = vmap(_frg_hf_cr2, in_axes=(None, None, 0, None, None))(
+        ham_data['rot_h1'], ham_data['rot_chol'], walkers, trial, wave_data)
+    return hf_orb_cr, olp_ratio
+
+@jax.jit
+def cisd_walker_olp(walker,ci1,ci2):
+    nocc = walker.shape[1]
+    GF = (walker.dot(jnp.linalg.inv(walker[: nocc, :]))).T
+    o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
+    o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
+    o2 = 2 * jnp.einsum(
+        "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]
+    ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
+    return (1.0 + 2 * o1 + o2) * o0
+
+@partial(jit, static_argnums=(3,))
+def _frg_ccsd_cr2(
+    walker: jax.Array,
+    ham_data: dict,
+    wave_data: dict,
+    trial: wavefunctions,
+    eps :float = 1e-5
+):
+    '''
+    one and two-body energy of a walker with ccsd trial wavefunction
+    without the hf part
+    '''
+
+    norb = trial.norb
+    chol = ham_data["chol"].reshape(-1, norb, norb)
+    h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+    # v1 the one-body energy from the reordering of the 
+    # two-body operators into non-normal ordered form
+    v0 = 0.5 * jnp.einsum("gik,gjk->ij",
+                            chol.reshape(-1, norb, norb),
+                            chol.reshape(-1, norb, norb),
+                            optimize="optimal")
+    h1_mod = h1 - v0 
+
+    full_ci1, full_ci2 = wave_data["full_ci1"], wave_data["full_ci2"]
+    p_frzocc,p_act = wave_data["no2mo_frzocc"], wave_data["no2mo_act"]
+    walker_t = prj_walker(p_frzocc,p_act,walker)
+    ccsd_olp = cisd_walker_olp(walker_t,full_ci1,full_ci2)
+    
+    # zero body
+    h0_E0 = ham_data["h0"]-ham_data["E0"]
+    mod_olp = _frg_modified_ccsd_olp_restricted(walker,wave_data)
+
+    x = 0.0
+    # one body
+    f1 = lambda a: _frg_olp_exp1(a,h1_mod,walker,wave_data)
+    _, d_overlap = jvp(f1, [x], [1.0])
+
+    # two body
+    def scanned_fun(carry, c):
+        eps, walker, wave_data = carry
+        return carry, _frg_olp_exp2(eps,c,walker,wave_data)
+
+    _, overlap_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
+    _, overlap_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
+    _, overlap_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
+    d_2_overlap = (overlap_p - 2.0 * overlap_0 + overlap_m) / eps / eps
+
+    ccsd_cr0 = jnp.real(h0_E0*mod_olp/ccsd_olp)
+    ccsd_cr1 = jnp.real(d_overlap/ccsd_olp)
+    ccsd_cr2 = jnp.real(0.5*jnp.sum(d_2_overlap)/ccsd_olp)
+
+    ccsd_cr = jnp.real(
+        (h0_E0*mod_olp + d_overlap + jnp.sum(d_2_overlap) / 2.0) / ccsd_olp)
+
+    return ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr
+
+@partial(jit, static_argnums=(3,))
+def frg_ccsd_cr2(
+        walkers: jax.Array,
+        ham_data: dict,
+        wave_data: dict,
+        trial: wavefunctions,
+        eps :float = 1e-5) -> jax.Array:
+    
+    ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr \
+        = vmap(_frg_ccsd_cr2, in_axes=(0, None, None, None, None))(
+        walkers, ham_data, wave_data, trial, eps
+    )
+
     return ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr
 
 def cc_impurity_solve(mf, mo_coeff, lo_coeff, eris=None, frozen=None,
@@ -274,7 +398,7 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, eris=None, frozen=None,
             Local correlation energy at MP2, CCSD, and CCSD(T) level. Note that
             the CCSD(T) energy is 0 unless 'ccsd_t' is set to True.
     '''
-    log = logger.new_logger(mf if log is None else log)
+    # log = logger.new_logger(mf if log is None else log)
     # cput1 = (logger.process_clock(), logger.perf_counter())
 
     maskocc = mf.mo_occ>1e-10
@@ -364,7 +488,8 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
                            option_file='options.bin',
                            mo_file="mo_coeff.npz",
                            amp_file="amplitudes.npz",
-                           chol_file="FCIDUMP_chol"
+                           chol_file="FCIDUMP_chol",
+                           full_cisd=False,
                            ):
     
     
@@ -400,10 +525,16 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
         )
         
     elif options["trial"] == "cisd":
-        ci2 = t2 + np.einsum("ia,jb->ijab", np.array(t1), np.array(t1))
+        ci1 = np.array(t1)        
+        ci2 = t2 + np.einsum("ia,jb->ijab", ci1, ci1)
         ci2 = ci2.transpose(0, 2, 1, 3)
-        ci1 = np.array(t1)
-        np.savez(amp_file, ci1=ci1, ci2=ci2)
+        if full_cisd:
+            content = dict(np.load(amp_file))
+            content["ci1"] = ci1
+            content["ci2"] = ci2
+            np.savez(amp_file, **content)
+        else:
+            np.savez(amp_file, ci1=ci1, ci2=ci2)
 
     mol = mf.mol
     # calculate cholesky vectors
@@ -455,9 +586,10 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
 
     # write mo coefficients
     trial_coeffs = np.empty((2, nbasis, nbasis))
-    overlap = mf.get_ovlp(mol)
+    # overlap = mf.get_ovlp(mol)
     if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
         uhfCoeffs = np.empty((nbasis, 2 * nbasis))
+        overlap = mf.get_ovlp(mol)
         if isinstance(mf, scf.uhf.UHF):
             q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[0][:, norb_frozen:]))
             uhfCoeffs[:, :nbasis] = q
@@ -474,7 +606,7 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
 
     elif isinstance(mf, scf.rhf.RHF):
         #q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[:, norb_frozen:]))
-        q = np.eye(mol.nao- len(norb_frozen)) # atomic orbital
+        q = np.eye(mol.nao- len(norb_frozen)) # in mo basis
         trial_coeffs[0] = q
         trial_coeffs[1] = q
         np.savez(mo_file,mo_coeff=trial_coeffs,prjlo=prjlo)
@@ -486,6 +618,7 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
 
 
 def prep_lnoccsd_afqmc(options=None,prjlo=True,
+                       full_cisd = False,
                        option_file="options.bin",
                        mo_file="mo_coeff.npz",
                        amp_file="amplitudes.npz",
@@ -518,8 +651,6 @@ def prep_lnoccsd_afqmc(options=None,prjlo=True,
     options["free_projection"] = options.get("free_projection", False)
     options["n_batch"] = options.get("n_batch", 1)
     options["ene0"] = options.get("ene0",0)
-    # options["orbE"] = options.get("orbE",0)
-    # options['maxError'] = options.get('maxError',1e-3)
     options["use_gpu"] = options.get("use_gpu", False)
 
     if options["use_gpu"]:
@@ -584,8 +715,18 @@ def prep_lnoccsd_afqmc(options=None,prjlo=True,
     amplitudes = np.load(amp_file)
     ci1 = jnp.array(amplitudes["ci1"])
     ci2 = jnp.array(amplitudes["ci2"])
-    trial_wave_data = {"ci1": ci1, "ci2": ci2}
-    wave_data.update(trial_wave_data)
+    wave_data.update({"ci1": ci1, "ci2": ci2})
+    if full_cisd:
+        full_ci1 = jnp.array(amplitudes["full_ci1"])
+        full_ci2 = jnp.array(amplitudes["full_ci2"])
+        no2mo_frzocc = jnp.array(amplitudes["no2mo_frzocc"])
+        no2mo_act = jnp.array(amplitudes["no2mo_act"])
+        wave_data.update(
+            {"full_ci1":full_ci1,
+             "full_ci2":full_ci2,
+             "no2mo_frzocc":no2mo_frzocc,
+             "no2mo_act":no2mo_act})
+        
     trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
     
     if options["walker_type"] == "rhf":
@@ -995,6 +1136,65 @@ def block_orb(prop_data: dict,
                           blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
                           blk_ccsd_orb_cr,blk_orb_cr)
 
+@partial(jit, static_argnums=(2,3,5))
+def block_orb2(prop_data: dict,
+              ham_data: dict,
+              prop: propagation.propagator,
+              trial: wave_function,
+              wave_data: dict,
+              sampler: sampling.sampler):
+        """Block scan function. Propagation and orbital_i energy calculation."""
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        fields = random.normal(
+            subkey,
+            shape=(
+                sampler.n_prop_steps,
+                prop.n_walkers,
+                ham_data["chol"].shape[0],
+            ),
+        )
+        # propgate n_prop_steps x dt
+        _step_scan_wrapper = lambda x, y: sampler._step_scan(
+            x, y, ham_data, prop, trial, wave_data
+        )
+        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+            prop_data["weights"]
+        )
+        prop_data = prop.orthonormalize_walkers(prop_data)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+        hf_orb_cr,olp_ratio = frg_hf_cr2(prop_data["walkers"],ham_data,wave_data,trial)
+        ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,ccsd_orb_cr \
+            = frg_ccsd_cr2(prop_data["walkers"], ham_data, 
+                                        wave_data, trial,1e-5)
+        energy_samples = jnp.real(
+            trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+        )
+        energy_samples = jnp.where(
+            jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+            prop_data["e_estimate"],
+            energy_samples,
+        )
+
+        blk_wt = jnp.sum(prop_data["weights"])
+        blk_energy = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
+        blk_hf_orb_cr = jnp.sum(hf_orb_cr * prop_data["weights"]) / blk_wt
+        blk_olp_ratio = jnp.sum(olp_ratio * prop_data["weights"]) / blk_wt
+        blk_ccsd_orb_cr0 = jnp.sum(ccsd_orb_cr0 * prop_data["weights"]) / blk_wt
+        blk_ccsd_orb_cr1 = jnp.sum(ccsd_orb_cr1 * prop_data["weights"]) / blk_wt
+        blk_ccsd_orb_cr2 = jnp.sum(ccsd_orb_cr2 * prop_data["weights"]) / blk_wt
+        blk_ccsd_orb_cr = jnp.sum(ccsd_orb_cr * prop_data["weights"]) / blk_wt
+        prop_data["pop_control_ene_shift"] = (
+            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_energy
+        )
+        blk_orb_cr = blk_hf_orb_cr+blk_ccsd_orb_cr
+
+        return prop_data,(blk_energy,blk_wt,
+                          blk_hf_orb_cr,blk_olp_ratio,
+                          blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+                          blk_ccsd_orb_cr,blk_orb_cr)
+
 @partial(jit, static_argnums=(1, 3, 5))
 def propagate_phaseless_orb(
     ham_data: dict,
@@ -1032,7 +1232,46 @@ def propagate_phaseless_orb(
 
     return prop_data, (energy,wt,hf_orb_cr,olp_ratio,
                        ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,
-                       ccsd_orb_cr,orb_cr) 
+                       ccsd_orb_cr,orb_cr)
+
+@partial(jit, static_argnums=(1, 3, 5))
+def propagate_phaseless_orb2(
+    ham_data: dict,
+    prop: propagation.propagator,
+    prop_data: dict,
+    trial: wave_function,
+    wave_data: dict,
+    sampler: sampling.sampler,
+) -> Tuple[jax.Array, dict]:
+    def _sr_block_scan_wrapper(x,_):
+        return _sr_block_scan_orb2(x, ham_data, prop, trial, wave_data, sampler)
+
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["n_killed_walkers"] = 0
+    prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+    prop_data,(blk_energy,blk_wt,
+               blk_hf_orb_cr,blk_olp_ratio,
+               blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+               blk_ccsd_orb_cr,blk_orb_cr) \
+        = lax.scan(
+        _sr_block_scan_wrapper, prop_data, xs=None, length=sampler.n_sr_blocks
+    )
+    prop_data["n_killed_walkers"] /= (
+        sampler.n_sr_blocks * sampler.n_ene_blocks * prop.n_walkers
+    )
+    wt = jnp.sum(blk_wt)
+    energy = jnp.sum(blk_energy * blk_wt) / wt
+    hf_orb_cr = jnp.sum(blk_hf_orb_cr * blk_wt) / wt
+    olp_ratio = jnp.sum(blk_olp_ratio * blk_wt) / wt
+    ccsd_orb_cr0 = jnp.sum(blk_ccsd_orb_cr0 * blk_wt) / wt
+    ccsd_orb_cr1 = jnp.sum(blk_ccsd_orb_cr1 * blk_wt) / wt
+    ccsd_orb_cr2 = jnp.sum(blk_ccsd_orb_cr2 * blk_wt) / wt
+    ccsd_orb_cr = jnp.sum(blk_ccsd_orb_cr * blk_wt) / wt
+    orb_cr = jnp.sum(blk_orb_cr * blk_wt) / wt
+
+    return prop_data, (energy,wt,hf_orb_cr,olp_ratio,
+                       ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,
+                       ccsd_orb_cr,orb_cr)
 
 @partial(jit, static_argnums=(2,3,5))
 def _sr_block_scan_orb(
@@ -1062,6 +1301,34 @@ def _sr_block_scan_orb(
                        blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
                        blk_ccsd_orb_cr,blk_orb_cr)
 
+@partial(jit, static_argnums=(2,3,5))
+def _sr_block_scan_orb2(
+    prop_data: dict,
+    ham_data: dict,
+    prop: propagation.propagator,
+    trial: wave_function,
+    wave_data: dict,
+    sampler: sampling.sampler,
+) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+    def _block_scan_wrapper(x,_):
+        return block_orb2(x,ham_data,prop,trial,wave_data,sampler)
+    
+    # propagate n_ene_blocks then do sr
+    prop_data, (blk_energy,blk_wt,
+                blk_hf_orb_cr,blk_olp_ratio,
+                blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+                blk_ccsd_orb_cr,blk_orb_cr) \
+        = lax.scan(
+        _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
+    )
+    prop_data = prop.stochastic_reconfiguration_local(prop_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+    return prop_data, (blk_energy,blk_wt,
+                       blk_hf_orb_cr,blk_olp_ratio,
+                       blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+                       blk_ccsd_orb_cr,blk_orb_cr)
+
 import sys, os
 from ad_afqmc.lno.cc import LNOCCSD
 # from ad_afqmc.lno.afqmc import LNOAFQMC
@@ -1073,8 +1340,8 @@ def get_fragment_energy(oovv, t2, prj):
     m = fdot(prj.T, prj)
     return lib.einsum('ijab,kjab,ik->',t2,2*oovv-oovv.transpose(0,1,3,2),m)
 
-def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,
-                       df=True,nproc=None,run_frg_list=None,mp2=False):
+def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
+                       run_frg_list=None,df=True,mp2=False,full_cisd=False):
     '''
     mf: pyscf mean-field object
     thresh: lno thresh
@@ -1084,6 +1351,16 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,
     nproc: number of processors
     run_frg_list: list of the fragments to run
     '''
+    from pyscf import cc
+    if full_cisd:
+        mycc = cc.CCSD(mf)
+        mycc.kernel()[0]
+        t1 = mycc.t1
+        t2 = mycc.t2
+        ci2 = t2 + jnp.einsum("ia,jb->ijab", jnp.array(t1), jnp.array(t1))
+        ci2 = ci2.transpose(0, 2, 1, 3)
+        ci1 = jnp.array(t1)
+        np.savez("amplitudes.npz", full_ci1=ci1, full_ci2=ci2)
 
     lo_type = 'pm'
     no_type = 'ie' # cim
@@ -1185,6 +1462,19 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,
                                                     frag_target_nvir=frag_target_nvir,
                                                     canonicalize=False)
 
+        if full_cisd:
+            content = dict(np.load("amplitudes.npz"))
+            mol = mf.mol
+            nocc = mol.nelectron // 2 
+            nao = mol.nao
+            actfrag = np.array([i for i in range(nao) if i not in frzfrag])
+            frzocc = np.array([i for i in range(nocc) if i in frzfrag])
+            #actocc = np.array([i for i in range(nocc) if i in actfrag])
+            no2mo_prj = no2mo(mf.mo_coeff,s1e,orbfrag)
+            content["no2mo_frzocc"] = no2mo_prj[:, frzocc]
+            content["no2mo_act"] = no2mo_prj[:, actfrag]
+            np.savez("amplitudes.npz", **content)
+
         ecorr_ccsd,t1,t2,prjlo,nactocc,nactvir,maskact,maskocc \
             = cc_impurity_solve(mf,orbfrag,orbfragloc,frozen=frzfrag,eris=eris,log=log)
  
@@ -1201,12 +1491,13 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,
             mf,orbfrag,options,
             norb_act=norb_act,nelec_act=nelec_act,
             prjlo=prjlo,norb_frozen=frzfrag,
-            t1=t1,t2=t2,df=df,chol_cut=chol_cut)
+            t1=t1,t2=t2,df=df,chol_cut=chol_cut,full_cisd=full_cisd
+            )
         
         #MP2 correction 
         if mp2:
             log.info('# running fragment MP2')
-            can_prjlo = fdot(orbfragloc.T, s1e, can_orbfrag[:, maskact& maskocc])
+            can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:, maskact& maskocc])
 
             # if df:
             #     from pyscf.cc import dfccsd
@@ -1249,7 +1540,10 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,
                 mpi_prefix += f"-np {nproc} "
         path = os.path.abspath(__file__)
         dir_path = os.path.dirname(path)
-        script = f"{dir_path}/run_lnocc_frg.py"
+        if full_cisd:
+            script = f"{dir_path}/run_lnocc_frg_full_cisd.py"
+        else:    
+            script = f"{dir_path}/run_lnocc_frg.py"
         os.system(
             f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} |tee frg_{ifrag+1}.out"
         )
@@ -1409,4 +1703,67 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,
         out_file.write(f'# number of orbitals: average {n_orb_ave:.2f} maxium {max_norb}\n')
         out_file.write(f'# number of electrons: average {n_elec_ave:.2f} maxium {max_nelec}\n')
         out_file.write(f'# total run time: {tot_time:.2f}\n')
+    return None
+
+def sum_results(n_results):
+    with open('sum_results.out', 'w') as out_file:
+        print("# thresh(occ,vir) \t afqmc_corr \t   err\t\tmp2_afqmc_corr \t ccsd_corr \t"
+            "   hf_cr  \t   err  \t ccsd_cr0 \t   err  \t  ccsd_cr1   \t   err \t      "
+            "   ccsd_cr2   \t   err  \t"
+            "   ccsd_cr   \t   err \t       ave_olp_ratio \t   err \t    "
+            "   ave_norb  max_norb ave_nelec  max_nelec  run_time",file=out_file)
+        for i in range(n_results):
+            with open(f"results.out{i+1}","r") as read_file:
+                for line in read_file:
+                    if "lno-thresh" in line:
+                        thresh_occ = line.split()[-2]
+                        thresh_vir = line.split()[-1]
+                        thresh_occ = float(thresh_occ.strip('[],'))
+                        thresh_vir = float(thresh_vir.strip('[],'))
+                    if "lno_afqmc_corr:" in line:
+                        if "mp2" in line:
+                            lno_afqmc_mp2_corr = line.split()[-1]
+                        else:
+                            lno_afqmc_corr = line.split()[-3]
+                            lno_afqmc_corr_err = line.split()[-1]
+                    if "e_ccsd_corr:" in line:
+                        lno_ccsd_corr = line.split()[-1]
+                    if "hf_cr:" in line:
+                        hf_cr = line.split()[-3]
+                        hf_cr_err = line.split()[-1]
+                    if "ccsd_cr0:" in line:
+                        ccsd_cr0 = line.split()[-3]
+                        ccsd_cr0_err = line.split()[-1]
+                    if "ccsd_cr1:" in line:
+                        ccsd_cr1 = line.split()[-3]
+                        ccsd_cr1_err = line.split()[-1]
+                    if "ccsd_cr2:" in line:
+                        ccsd_cr2 = line.split()[-3]
+                        ccsd_cr2_err = line.split()[-1]
+                    if "ccsd_cr:" in line:
+                        ccsd_cr = line.split()[-3]
+                        ccsd_cr_err = line.split()[-1]
+                    if "olp_ratio:" in line:
+                        olp_ratio = line.split()[-3]
+                        olp_ratio_err = line.split()[-1]
+                    if "orbitals:" in line:
+                        ave_norb = line.split()[-3]
+                        max_norb = line.split()[-1]
+                    if "electrons:" in line:
+                        ave_nelec = line.split()[-3]
+                        max_nelec = line.split()[-1]
+                    if "time:" in line:
+                        run_time = line.split()[-1]
+            print(f"  {thresh_occ,thresh_vir} \t"
+                  f" {lno_afqmc_corr} \t {lno_afqmc_corr_err} \t"
+                  f" {lno_afqmc_mp2_corr} \t {lno_ccsd_corr} \t"
+                  f" {hf_cr} \t {hf_cr_err} \t"
+                  f" {ccsd_cr0} \t {ccsd_cr0_err} \t"
+                  f" {ccsd_cr1} \t {ccsd_cr1_err} \t"
+                  f" {ccsd_cr2} \t {ccsd_cr2_err} \t"
+                  f" {ccsd_cr} \t {ccsd_cr_err} \t"
+                  f" {olp_ratio} \t {olp_ratio_err} \t"
+                  f" {ave_norb}  \t {max_norb} \t"
+                  f" {ave_nelec} \t {max_nelec} \t"
+                  f" {run_time}",file=out_file)
     return None

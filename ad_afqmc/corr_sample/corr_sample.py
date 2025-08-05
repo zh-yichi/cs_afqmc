@@ -490,9 +490,9 @@ def en_samples(prop_data,ham_data,prop,trial,wave_data):
     )
     return energy_samples
 
-def orb_en_samples(prop_data,ham_data,prop,trial,wave_data,orbE):
+def orb_en_samples(prop_data,ham_data,trial,wave_data):
     orb_en_samples = jnp.real(
-        trial.calc_orbenergy(prop_data['walkers'],ham_data,wave_data,orbE)
+        trial.calc_orbenergy(prop_data['walkers'],ham_data,wave_data,0)
         )
     # orbE_samples = jnp.where(jnp.abs(energy_samples - prop_data['pop_control_ene_shift']) 
     #                      > jnp.sqrt(2./prop.dt), prop_data['pop_control_ene_shift'],
@@ -697,8 +697,8 @@ def lno_cs_steps_scan(steps,
         cs_prop_data = (prop_data1,prop_data2)
         loc_en_sp1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
         loc_en_sp2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
-        loc_orb_en_sp1 = orb_en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1,orbE1)
-        loc_orb_en_sp2 = orb_en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2,orbE2)
+        loc_orb_en_sp1 = orb_en_samples(prop_data1,ham_data1,trial1,wave_data1)
+        loc_orb_en_sp2 = orb_en_samples(prop_data2,ham_data2,trial2,wave_data2)
         loc_wt_sp1 = prop_data1["weights"]
         loc_wt1 = sum(loc_wt_sp1)
         loc_wt_sp2 = prop_data2["weights"]

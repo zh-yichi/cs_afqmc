@@ -15,17 +15,6 @@ with open("option1.bin", "rb") as f:
 with open("option2.bin", "rb") as f:
     options2 = pickle.load(f)
 
-# with open("files.bin", "rb") as f:
-#     files = pickle.load(f)
-
-# options["dt"] = options.get("dt", 0.01)
-# options["n_exp_terms"] = options.get("n_exp_terms",6)
-# options["n_walkers"] = options.get("n_walkers", 50)
-# options["n_runs"] = options.get("n_runs", 100)
-# options["rlx_steps"] = options.get("rlx_steps", 0)
-# options["prop_steps"] = options.get("prop_steps", 10)
-# options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-
 nwalkers = 30
 options1["n_walkers"] = nwalkers
 options2["n_walkers"] = nwalkers
@@ -45,20 +34,6 @@ mo_file2='mo2.npz'
 chol_file2='chol2'
 amp_file2='amp2'
 
-# mo_file1=files["mo1"]
-# chol_file1=files["chol1"]
-# amp_file1=files["amp1"]
-# mo_file2=files["mo2"]
-# chol_file2=files["chol2"]
-# amp_file2=files["amp2"]
-
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--use_gpu", action="store_true")
-#     args = parser.parse_args()
-
-#     if args.use_gpu:
-#         config.afqmc_config["use_gpu"] = True
 
 if use_gpu:
     config.afqmc_config["use_gpu"] = True

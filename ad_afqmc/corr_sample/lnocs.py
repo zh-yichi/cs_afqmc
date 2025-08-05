@@ -9,14 +9,13 @@ _fdot = np.dot
 fdot = lambda *args: reduce(_fdot, args)
 
 
-def pre_lnocs(options,mf,mo_coeff,lo_coeff,frozen=None,eris=None,chol_cut=1e-6,
-              option_file='options.bin',mo_file='mo.npz',chol_file='FCIDUMP'):
+def prep_lnocs_files(options,mf,mo_coeff,lo_coeff,frozen=None,
+                     option_file='options.bin',
+                     mo_file='mo_coeff.npz',
+                     chol_file='FCIDUMP_chol'):
     
-    print("# Preparing LNO-AFQMC calculation")
+    print("# Preparing CS-LNO-AFQMC calculation")
     mol = mf.mol
-    # frozen = frzfrag2
-    # choose the orbital basis
-    # mo_coeff = orbfrag2
     maskocc = mf.mo_occ>1e-10
     nmo = mf.mo_occ.size
     # Convert frozen to 0 bc PySCF solvers do not support frozen=None or empty list
@@ -40,38 +39,31 @@ def pre_lnocs(options,mf,mo_coeff,lo_coeff,frozen=None,eris=None,chol_cut=1e-6,
     nelec_act = nactocc*2
     norb_frozen = frozen
 
-    # lo_coeff = orbfragloc2
-    s1e = mf.get_ovlp() if eris is None else eris.s1e
-    prjlo = fdot(lo_coeff.T, s1e, orbactocc)
-    options["prjlo"] = prjlo
+    # s1e = mf.get_ovlp()
+    # prjlo = fdot(lo_coeff.T, s1e, orbactocc)
+    # options["prjlo"] = prjlo
     import pickle
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
 
     # calculate cholesky integrals
     print('# Generating Cholesky Integrals')
-    nbasis = mf.mol.nao
-    act_idx = [i for i in range(nbasis) if i not in norb_frozen]
+    nao = mol.nao
+    act_idx = [i for i in range(nao) if i not in norb_frozen]
     _, chol, _, _ = pyscf_interface.generate_integrals(
-            mol,mf.get_hcore(),mo_coeff[:,act_idx],chol_cut,DFbas=mf.with_df.auxmol.basis)
-    # nbasis = h1e.shape[-1]
-    # nelec = mol.nelec
+            mol,mf.get_hcore(),mo_coeff[:,act_idx],DFbas=mf.with_df.auxmol.basis)
+
     mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
     mc.frozen = norb_frozen
     nelec = mc.nelecas
     mc.mo_coeff = mo_coeff
     h1e, enuc = mc.get_h1eff()
 
-    # nbasis = mo_coeff.shape[-1]
-    # act = [i for i in range(nbasis) if i not in norb_frozen]
-    # e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
-    # chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
-
     print(f'# local active orbitals are {act_idx}') #yichi
     print(f'# local active space size {len(act_idx)}') #yichi
     print(f'# chol shape: {chol.shape}') #yichi
 
-    # nbasis = h1e.shape[-1]
+    nbasis = h1e.shape[-1]
     print("# Finished calculating Cholesky integrals\n")
     print('# Size of the correlation space:')
     print(f'# Number of electrons: {nelec}')
@@ -84,12 +76,13 @@ def pre_lnocs(options,mf,mo_coeff,lo_coeff,frozen=None,eris=None,chol_cut=1e-6,
 
     # write mo coefficients
     trial_coeffs = np.empty((2, nbasis, nbasis))
-    # overlap = mf.get_ovlp(mol)
-    #q, r = np.linalg.qr(mo_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[:, norb_frozen:]))
     q = np.eye(mol.nao- len(norb_frozen))
     trial_coeffs[0] = q
     trial_coeffs[1] = q
-    np.savez(mo_file,mo_coeff=trial_coeffs)
+    s1e = mf.get_ovlp()
+    prjlo = fdot(lo_coeff.T, s1e, orbactocc)
+    # np.savez(mo_file,mo_coeff=trial_coeffs)
+    np.savez(mo_file,mo_coeff=trial_coeffs,prjlo=prjlo)
     pyscf_interface.write_dqmc(h1e,h1e_mod,chol,sum(nelec),nbasis,enuc,ms=mol.spin,
                                filename=chol_file,mo_coeffs=trial_coeffs)
     
@@ -117,9 +110,11 @@ def run_lnocs_afqmc(nproc=None,use_gpu=False):
 
 
 def run_cs_frags(mf1,mf2,frozen,options,nproc=None,
-                 chol_cut=1e-5,lno_thresh=1e-5,
-                 no_type='ie',lo_type="pm"):
+                 chol_cut=1e-6,lno_thresh=1e-5):
     
+    no_type='ie'
+    lo_type="pm"
+
     mfcc1 = LNOAFQMC(mf1,thresh=lno_thresh,frozen=frozen)
     mfcc1.thresh_occ = lno_thresh*10
     mfcc1.thresh_vir = lno_thresh
@@ -134,7 +129,6 @@ def run_cs_frags(mf1,mf2,frozen,options,nproc=None,
 
     eris1 = mfcc1.ao2mo()
     orbloc1 = mfcc1.get_lo(lo_type=lo_type)
-    # frag_atmlist1=None
     frag_lolist1 = [[i] for i in range(orbloc1.shape[1])]
     frag_nonvlist1 = mfcc1.frag_nonvlist
     nfrag1 = len(frag_lolist1)
@@ -142,7 +136,6 @@ def run_cs_frags(mf1,mf2,frozen,options,nproc=None,
 
     eris2 = mfcc2.ao2mo()
     orbloc2 = mfcc2.get_lo(lo_type=lo_type)
-    # frag_atmlist2=None
     frag_lolist2 = [[i] for i in range(orbloc2.shape[1])]
     frag_nonvlist2 = mfcc2.frag_nonvlist
     nfrag2 = len(frag_lolist2)
@@ -170,18 +163,18 @@ def run_cs_frags(mf1,mf2,frozen,options,nproc=None,
         frozen_mask2 = mfcc2.get_frozen_mask()
         
         frzfrag1, orbfrag1, _ = lno.make_fpno1(mfcc1,eris1,orbfragloc1,no_type,
-                                                        THRESH_INTERNAL,thresh_pno1,
-                                                        frozen_mask=frozen_mask1,
-                                                        frag_target_nocc=frag_target_nocc1,
-                                                        frag_target_nvir=frag_target_nvir1,
-                                                        canonicalize=False)
+                                               THRESH_INTERNAL,thresh_pno1,
+                                               frozen_mask=frozen_mask1,
+                                               frag_target_nocc=frag_target_nocc1,
+                                               frag_target_nvir=frag_target_nvir1,
+                                               canonicalize=False)
         
         frzfrag2, orbfrag2, _ = lno.make_fpno1(mfcc2,eris2,orbfragloc2,no_type,
-                                                        THRESH_INTERNAL, thresh_pno2,
-                                                        frozen_mask=frozen_mask2,
-                                                        frag_target_nocc=frag_target_nocc2,
-                                                        frag_target_nvir=frag_target_nvir2,
-                                                        canonicalize=False)
+                                                THRESH_INTERNAL, thresh_pno2,
+                                                frozen_mask=frozen_mask2,
+                                                frag_target_nocc=frag_target_nocc2,
+                                                frag_target_nvir=frag_target_nvir2,
+                                                canonicalize=False)
         
         #take the larger active space
         if len(frzfrag1) > len(frzfrag2):
@@ -189,10 +182,10 @@ def run_cs_frags(mf1,mf2,frozen,options,nproc=None,
         else:
             frzfrag = frzfrag1
 
-        pre_lnocs(options,mf1,orbfrag1,orbfragloc1,frozen=frzfrag,eris=eris1,chol_cut=chol_cut,
-                  option_file='option1.bin',mo_file='mo1.npz',chol_file='chol1')
-        pre_lnocs(options,mf2,orbfrag2,orbfragloc2,frozen=frzfrag,eris=eris2,chol_cut=chol_cut,
-                  option_file='option2.bin',mo_file='mo2.npz',chol_file='chol2')
+        prep_lnocs_files(options,mf1,orbfrag1,orbfragloc1,frozen=frzfrag,eris=eris1,
+                  option_file='option.bin',mo_file='mo1.npz',chol_file='chol1')
+        prep_lnocs_files(options,mf2,orbfrag2,orbfragloc2,frozen=frzfrag,eris=eris2,
+                  option_file='option.bin',mo_file='mo2.npz',chol_file='chol2')
         
         use_gpu = options["use_gpu"]
         run_lnocs_afqmc(nproc,use_gpu)

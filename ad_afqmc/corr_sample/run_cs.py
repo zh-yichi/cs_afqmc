@@ -1,7 +1,7 @@
 from functools import partial
 from jax import random
 #from jax import numpy as jnp
-import argparse
+# import argparse
 import pickle
 #from mpi4py import MPI
 import numpy as np
@@ -11,27 +11,8 @@ import time
 
 print = partial(print, flush=True)
 
-with open("options.bin", "rb") as f:
-    options = pickle.load(f)
-
 with open("files.bin", "rb") as f:
     files = pickle.load(f)
-
-options["dt"] = options.get("dt", 0.01)
-options["n_exp_terms"] = options.get("n_exp_terms",6)
-options["n_walkers"] = options.get("n_walkers", 50)
-options["n_runs"] = options.get("n_runs", 100)
-options["rlx_steps"] = options.get("rlx_steps", 0)
-options["prop_steps"] = options.get("prop_steps", 10)
-options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-
-nwalkers = options["n_walkers"]
-dt = options["dt"]
-seed = options["seed"]
-rlx_steps = options["rlx_steps"]
-prop_steps = options["prop_steps"]
-n_runs = options["n_runs"]
-use_gpu = options["use_gpu"]
 
 mo_file1=files["mo1"]
 chol_file1=files["chol1"]
@@ -40,15 +21,27 @@ mo_file2=files["mo2"]
 chol_file2=files["chol2"]
 amp_file2=files["amp2"]
 
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--use_gpu", action="store_true")
-#     args = parser.parse_args()
+ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
+    = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
+ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
+    = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
-#     if args.use_gpu:
-#         config.afqmc_config["use_gpu"] = True
+# options["dt"] = options.get("dt", 0.01)
+# options["n_exp_terms"] = options.get("n_exp_terms",6)
+# options["n_walkers"] = options.get("n_walkers", 50)
+options["n_runs"] = options.get("n_runs", 100)
+options["rlx_steps"] = options.get("rlx_steps", 0)
+options["prop_steps"] = options.get("prop_steps", 10)
+# options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
 
-if use_gpu:
+nwalkers = options["n_walkers"]
+seed = options["seed"]
+rlx_steps = options["rlx_steps"]
+prop_steps = options["prop_steps"]
+n_runs = options["n_runs"]
+
+
+if options["use_gpu"]:
     config.afqmc_config["use_gpu"] = True
 
 config.setup_jax()
@@ -60,9 +53,9 @@ rank = comm.Get_rank()  # Process rank
 size = comm.Get_size()  # Total number of processes
 
 ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
-    = mpi_jax._prep_afqmc(options,mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
+    = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
 ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
-    = mpi_jax._prep_afqmc(options,mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
+    = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
 prop_data1_init, ham_data1_init = \
     corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, seed, MPI)
@@ -140,12 +133,14 @@ comm.Barrier()
 comm.Barrier()
 if rank == 0:
     print()
-    print(f'# multiple independent post relaxation propagation with step size {dt}s')
+    print(f'# post relaxation propagation independent runs')
     if options["corr_samp"]:
         print('# correlated sampling')
     else: print('# uncorrelated sampling')
 
-    print(f'# tot_walkers: {nwalkers*size}, propagation steps: {prop_steps}, number of independent runs: {n_runs}')
+    print(f'# tot_walkers: {nwalkers*size}')
+    print(f'# propagation steps: {prop_steps}')
+    print(f'number of independent runs: {n_runs}')
     print('# step' 
           '\t system1_en \t error' 
           '\t \t system2_en \t error'

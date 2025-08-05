@@ -45,5 +45,5 @@ options = {
     "use_gpu": False,
     "free_proj": False,
 }
-from ad_afqmc.corr_sample_test import lnocs
+from ad_afqmc.corr_sample import lnocs
 lnocs.run_cs_frags(mf1,mf2,2,options,nproc=10, lno_thresh=1e-4)
