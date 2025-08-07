@@ -105,6 +105,31 @@ def _frg_modified_ccsd_olp_restricted(walker: jax.Array, wave_data: dict) -> com
     # olp_i = jnp.einsum("i,i->", olp, pick_i)
     return olp
 
+@jax.jit
+def _frg_modified_ccsd_olp_restricted2(walker: jax.Array, wave_data: dict) -> complex:
+    '''
+    <psi_ccsd|walker>=<psi_0|walker>+C_ia^*G_ia+C_iajb^*(G_iaG_jb-G_ibG_ja)
+    modified CCSD overlap returns the second and the third term
+    that is, the overlap of the walker with the CCSD wavefunction
+    without the hartree-fock part
+    and skip one sum over the occ
+    '''
+    # prjlo = wave_data["prjlo"].reshape(walker.shape[1])
+    m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
+    nocc, ci1, ci2 = walker.shape[1], wave_data["full_ci1"], wave_data["full_ci2"]
+    gf = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
+    o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
+    # pick_i = jnp.where(abs(prjlo) > 1e-6, 1, 0)
+    # o1 = jnp.einsum("ia,ia->i", ci1, gf[:, nocc:])
+    # o2 = 2 * jnp.einsum("iajb,ia,jb->i", ci2, gf[:, nocc:], gf[:, nocc:]) \
+    #     - jnp.einsum("iajb,ib,ja->i", ci2, gf[:, nocc:], gf[:, nocc:])
+    o1 = jnp.einsum("ia,ka,ik->", ci1, gf[:, nocc:],m)
+    o2 = 2 * jnp.einsum("iajb,ka,jb,ik->", ci2, gf[:, nocc:], gf[:, nocc:],m) \
+        - jnp.einsum("iajb,kb,ja,ik->", ci2, gf[:, nocc:], gf[:, nocc:],m)
+    olp = (2*o1+o2)*o0
+    # olp_i = jnp.einsum("i,i->", olp, pick_i)
+    return olp
+
 @partial(jit, static_argnums=(2,))
 def frg_modified_ccsd_olp_restricted(walkers: jax.Array, wave_data: dict, trial) -> jax.Array:
     n_batch = trial.n_batch
@@ -378,8 +403,7 @@ def frg_ccsd_cr2(
 
     return ccsd_cr0,ccsd_cr1,ccsd_cr2,ccsd_cr
 
-def cc_impurity_solve(mf, mo_coeff, lo_coeff, eris=None, frozen=None,
-                   log=None, verbose_imp=4):
+def cc_impurity_solve(mf,mo_coeff,lo_coeff,eris=None,frozen=None):
     r''' Solve impurity problem and calculate local correlation energy.
 
     Args:
@@ -431,7 +455,7 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, eris=None, frozen=None,
 
     # solve impurity problem
     from pyscf.cc import CCSD
-    mcc = CCSD(mf, mo_coeff=mo_coeff, frozen=frozen).set(verbose=verbose_imp)
+    mcc = CCSD(mf, mo_coeff=mo_coeff, frozen=frozen) #.set(verbose=verbose_imp)
     mcc.ao2mo = ccsd.ccsd_ao2mo.__get__(mcc, mcc.__class__)
     mcc._s1e = s1e
     if eris is not None:
@@ -461,12 +485,13 @@ def cc_impurity_solve(mf, mo_coeff, lo_coeff, eris=None, frozen=None,
     mcc.kernel(eris=imp_eris, t1=t1, t2=t2)
     t1, t2 = mcc.t1, mcc.t2
     t2 += ccsd.einsum('ia,jb->ijab',t1,t1)
-    elcorr_cc = ccsd.get_fragment_energy(oovv, t2, prjlo)
+    ecorr_cc = ccsd.get_fragment_energy(oovv, t2, prjlo)
+    t2 -= ccsd.einsum('ia,jb->ijab',t1,t1) 
 
     oovv = imp_eris = mcc = None
-    t2 -= ccsd.einsum('ia,jb->ijab',t1,t1)   # restore t2
+    # ci2 = ci2.transpose(0, 2, 1, 3)
 
-    return elcorr_cc,t1,t2,prjlo,nactocc,nactvir,maskact,maskocc
+    return ecorr_cc,t1,t2
 
 def write_dqmc(E0,hcore,hcore_mod,chol,nelec,nmo,enuc,ms=0,
     filename="FCIDUMP_chol",mo_coeffs=None):
@@ -483,13 +508,12 @@ def write_dqmc(E0,hcore,hcore_mod,chol,nelec,nmo,enuc,ms=0,
             fh5["mo_coeffs_dn"] = mo_coeffs[1]
 
 def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
-                           prjlo=[],norb_frozen=[],t1=None,t2=None,
+                           prjlo=[],norb_frozen=[],ci1=None,ci2=None,
                            df=True,chol_cut=1e-6,
                            option_file='options.bin',
                            mo_file="mo_coeff.npz",
                            amp_file="amplitudes.npz",
                            chol_file="FCIDUMP_chol",
-                           full_cisd=False,
                            ):
     
     
@@ -504,37 +528,37 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
         mf = mf_cc
 
     #     if isinstance(cc, UCCSD):
-    if options["trial"] == "ucisd":
-        ci2aa = t2[0] + 2 * np.einsum("ia,jb->ijab", t1[0], t1[0])
-        ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
-        ci2aa = ci2aa.transpose(0, 2, 1, 3)
-        ci2bb = t2[2] + 2 * np.einsum("ia,jb->ijab", t1[1], t1[1])
-        ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
-        ci2bb = ci2bb.transpose(0, 2, 1, 3)
-        ci2ab = t2[1] + np.einsum("ia,jb->ijab", t1[0], t1[1])
-        ci2ab = ci2ab.transpose(0, 2, 1, 3)
-        ci1a = np.array(t1[0])
-        ci1b = np.array(t1[1])
-        np.savez(
-            amp_file,
-            ci1a=ci1a,
-            ci1b=ci1b,
-            ci2aa=ci2aa,
-            ci2ab=ci2ab,
-            ci2bb=ci2bb,
-        )
+    # if options["trial"] == "ucisd":
+    #     ci2aa = t2[0] + 2 * np.einsum("ia,jb->ijab", t1[0], t1[0])
+    #     ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
+    #     ci2aa = ci2aa.transpose(0, 2, 1, 3)
+    #     ci2bb = t2[2] + 2 * np.einsum("ia,jb->ijab", t1[1], t1[1])
+    #     ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
+    #     ci2bb = ci2bb.transpose(0, 2, 1, 3)
+    #     ci2ab = t2[1] + np.einsum("ia,jb->ijab", t1[0], t1[1])
+    #     ci2ab = ci2ab.transpose(0, 2, 1, 3)
+    #     ci1a = np.array(t1[0])
+    #     ci1b = np.array(t1[1])
+    #     np.savez(
+    #         amp_file,
+    #         ci1a=ci1a,
+    #         ci1b=ci1b,
+    #         ci2aa=ci2aa,
+    #         ci2ab=ci2ab,
+    #         ci2bb=ci2bb,
+    #     )
         
-    elif options["trial"] == "cisd":
-        ci1 = np.array(t1)        
-        ci2 = t2 + np.einsum("ia,jb->ijab", ci1, ci1)
-        ci2 = ci2.transpose(0, 2, 1, 3)
-        if full_cisd:
-            content = dict(np.load(amp_file))
-            content["ci1"] = ci1
-            content["ci2"] = ci2
-            np.savez(amp_file, **content)
-        else:
-            np.savez(amp_file, ci1=ci1, ci2=ci2)
+    # elif options["trial"] == "cisd":
+        # ci1 = np.array(t1)        
+        # ci2 = t2 + np.einsum("ia,jb->ijab", ci1, ci1)
+        # ci2 = ci2.transpose(0, 2, 1, 3)
+        # if full_cisd:
+        #     content = dict(np.load(amp_file))
+        #     content["ci1"] = ci1
+        #     content["ci2"] = ci2
+        #     np.savez(amp_file, **content)
+        # else:
+    np.savez(amp_file, ci1=ci1, ci2=ci2)
 
     mol = mf.mol
     # calculate cholesky vectors
@@ -1355,12 +1379,12 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
     if full_cisd:
         mycc = cc.CCSD(mf)
         mycc.kernel()[0]
-        t1 = mycc.t1
-        t2 = mycc.t2
-        ci2 = t2 + jnp.einsum("ia,jb->ijab", jnp.array(t1), jnp.array(t1))
-        ci2 = ci2.transpose(0, 2, 1, 3)
-        ci1 = jnp.array(t1)
-        np.savez("amplitudes.npz", full_ci1=ci1, full_ci2=ci2)
+        # t1 = mycc.t1
+        # t2 = mycc.t2
+        # ci2 = t2 + jnp.einsum("ia,jb->ijab", jnp.array(t1), jnp.array(t1))
+        # ci2 = ci2.transpose(0, 2, 1, 3)
+        # ci1 = jnp.array(t1)
+        #np.savez("amplitudes.npz", full_ci1=ci1, full_ci2=ci2)
 
     lo_type = 'pm'
     no_type = 'ie' # cim
@@ -1461,27 +1485,52 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
                                                     frag_target_nocc=frag_target_nocc,
                                                     frag_target_nvir=frag_target_nvir,
                                                     canonicalize=False)
+        
+        mol = mf.mol
+        nocc = mol.nelectron // 2 
+        nao = mol.nao
+        actfrag = np.array([i for i in range(nao) if i not in frzfrag])
+        # frzocc = np.array([i for i in range(nocc) if i in frzfrag])
+        actocc = np.array([i for i in range(nocc) if i in actfrag])
+        actvir = np.array([i for i in range(nocc,nao) if i in actfrag])
+        nactocc = len(actocc)
+        nactocc = len(actocc)
+        nactvir = len(actvir)
+        prjlo = fdot(orbfragloc.T,s1e,orbfrag[:,actocc])
+
+        print(f'# active orbitals: {actfrag}')
+        print(f'# active occupied orbitals: {actocc}')
+        print(f'# active virtual orbitals: {actvir}')
+        print(f'# frozen orbitals: {frzfrag}')
 
         if full_cisd:
-            content = dict(np.load("amplitudes.npz"))
-            mol = mf.mol
-            nocc = mol.nelectron // 2 
-            nao = mol.nao
-            actfrag = np.array([i for i in range(nao) if i not in frzfrag])
-            frzocc = np.array([i for i in range(nocc) if i in frzfrag])
-            #actocc = np.array([i for i in range(nocc) if i in actfrag])
-            no2mo_prj = no2mo(mf.mo_coeff,s1e,orbfrag)
-            content["no2mo_frzocc"] = no2mo_prj[:, frzocc]
-            content["no2mo_act"] = no2mo_prj[:, actfrag]
-            np.savez("amplitudes.npz", **content)
+            prj_mo2no = no2mo(mf.mo_coeff,s1e,orbfrag).T
+            # prj_oo = prj_mo2no[:nocc,:nocc]
+            # prj_vv = prj_mo2no[nocc:,nocc:]
+            prj_oo_act = prj_mo2no[actocc,:nocc]
+            prj_vv_act = prj_mo2no[actvir,nocc:]
+            full_t1 = mycc.t1
+            full_t2 = mycc.t2
+            # project to active no
+            t1 = np.einsum("ji,jb,ab->ia",prj_oo_act.T,full_t1,prj_vv_act)
+            t2 = np.einsum("ki,lj,klcd,ac,bd->ijab",
+                          prj_oo_act.T,prj_oo_act.T,full_t2,prj_vv_act,prj_vv_act)
 
-        ecorr_ccsd,t1,t2,prjlo,nactocc,nactvir,maskact,maskocc \
-            = cc_impurity_solve(mf,orbfrag,orbfragloc,frozen=frzfrag,eris=eris,log=log)
+            #np.savez("amplitudes.npz",ci1=ci1,ci2=ci2)
+
+        else:
+            ecorr_ccsd,t1,t2 = cc_impurity_solve(
+                    mf,orbfrag,orbfragloc,frozen=frzfrag,eris=eris
+                    )
+            print(f'# lno-ccsd fragment correlation energy: {ecorr_ccsd}')
  
         nelec_act = nactocc*2
         norb_act = nactocc+nactvir
 
-        print(f'# lno-ccsd fragment correlation energy: {ecorr_ccsd}')
+        ci1 = np.array(t1)
+        ci2 = t2 + np.einsum("ia,jb->ijab",ci1,ci1)
+        ci2 = ci2.transpose(0, 2, 1, 3)
+        
         print(f'# number of active electrons: {nelec_act}')
         print(f'# number of active orbitals: {norb_act}')
         print(f'# number of frozen orbitals: {len(frzfrag)}')
@@ -1491,13 +1540,13 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
             mf,orbfrag,options,
             norb_act=norb_act,nelec_act=nelec_act,
             prjlo=prjlo,norb_frozen=frzfrag,
-            t1=t1,t2=t2,df=df,chol_cut=chol_cut,full_cisd=full_cisd
+            ci1=ci1,ci2=ci2,df=df,chol_cut=chol_cut
             )
         
         #MP2 correction 
         if mp2:
             log.info('# running fragment MP2')
-            can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:, maskact& maskocc])
+            can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:,actocc])
 
             # if df:
             #     from pyscf.cc import dfccsd
@@ -1540,10 +1589,10 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
                 mpi_prefix += f"-np {nproc} "
         path = os.path.abspath(__file__)
         dir_path = os.path.dirname(path)
-        if full_cisd:
-            script = f"{dir_path}/run_lnocc_frg_full_cisd.py"
-        else:    
-            script = f"{dir_path}/run_lnocc_frg.py"
+        #if full_cisd:
+        #    script = f"{dir_path}/run_lnocc_frg_full_cisd.py"
+        #else:    
+        script = f"{dir_path}/run_lnocc_frg.py"
         os.system(
             f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} |tee frg_{ifrag+1}.out"
         )
@@ -1551,7 +1600,8 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
         with open(f'frg_{ifrag+1}.out', 'a') as out_file:
             if mp2:
                 print(f"lno-mp2 orb_corr: {elcorr_pt2:.6f}",file=out_file)
-            print(f"lno-ccsd orb_corr: {ecorr_ccsd:.6f}",file=out_file)
+            if not full_cisd:
+                print(f"lno-ccsd orb_corr: {ecorr_ccsd:.6f}",file=out_file)
             print(f"number of active orbitals: {nelec_act}",file=out_file)
             print(f"number of active electrons: {norb_act}",file=out_file)
 
@@ -1592,8 +1642,11 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
                             e_mp2_orb_cr = line.split()[2]
                     else:
                         e_mp2_orb_cr = '  None  '
-                    if "lno-ccsd orb_corr" in line:
-                        e_ccsd_orb_corr = line.split()[2]
+                    if not full_cisd:
+                        if "lno-ccsd orb_corr" in line:
+                            e_ccsd_orb_corr = line.split()[2]
+                    else:
+                        e_ccsd_orb_corr = '  None  '
                     if "number of active orbitals" in line:
                         nactorb = line.split()[4]
                     if "number of active electrons" in line:

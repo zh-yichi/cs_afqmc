@@ -29,6 +29,6 @@ options = {'n_eql': 4,
             'use_gpu': False,
             }
 
-
-thresh = 1e-4
-lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5,mp2=True,full_cisd=True)
+threshs = [1e-4]
+for i,thresh in enumerate(threshs):
+    lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5,mp2=True,full_cisd=False)
