@@ -1364,10 +1364,10 @@ def get_fragment_energy(oovv, t2, prj):
     m = fdot(prj.T, prj)
     return lib.einsum('ijab,kjab,ik->',t2,2*oovv-oovv.transpose(0,1,3,2),m)
 
-def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
-                       run_frg_list=None,df=True,mp2=False,full_cisd=False):
+def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
+                       run_frg_list=None,df=True,mp2=True,localize=True):
     '''
-    mf: pyscf mean-field object
+    mfcc: pyscf mean-field object
     thresh: lno thresh
     frozen: frozen orbitals
     options: afqmc options
@@ -1375,16 +1375,15 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
     nproc: number of processors
     run_frg_list: list of the fragments to run
     '''
-    from pyscf import cc
-    if full_cisd:
-        mycc = cc.CCSD(mf)
-        mycc.kernel()[0]
-        # t1 = mycc.t1
-        # t2 = mycc.t2
-        # ci2 = t2 + jnp.einsum("ia,jb->ijab", jnp.array(t1), jnp.array(t1))
-        # ci2 = ci2.transpose(0, 2, 1, 3)
-        # ci1 = jnp.array(t1)
-        #np.savez("amplitudes.npz", full_ci1=ci1, full_ci2=ci2)
+
+    from pyscf.cc.ccsd import CCSD
+    from pyscf.cc.uccsd import UCCSD
+    if isinstance(mfcc, (CCSD, UCCSD)):
+        full_cisd = True
+        mf = mfcc._scf
+    else:
+        full_cisd = False
+        mf = mfcc
 
     lo_type = 'pm'
     no_type = 'ie' # cim
@@ -1414,24 +1413,27 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
     log.info('no_type = %s', no_type)
 
     # LO construction
-    orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
+    # orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
     orbactocc = lno_cc.split_mo()[1] # non-localized active occ
-    m = fdot(orbloc.T, s1e, orbactocc)
-    lospanerr = abs(fdot(m.T, m) - np.eye(m.shape[1])).max()
-    if lospanerr > 1e-10:
-        log.error('LOs do not fully span the occupied space! '
-                    'Max|<occ|LO><LO|occ>| = %e', lospanerr)
-        raise RuntimeError
-
-    # check 2: Span(LO) == Span(occ)
-    occspanerr = abs(fdot(m, m.T) - np.eye(m.shape[0])).max()
-    if occspanerr < 1e-10:
-        log.info('LOs span exactly the occupied space.')
-        if no_type not in ['ir','ie']:
-            log.error('"no_type" must be "ir" or "ie".')
-            raise ValueError
+    if localize:
+        orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
+        m = fdot(orbloc.T, s1e, orbactocc)
+        lospanerr = abs(fdot(m.T, m) - np.eye(m.shape[1])).max()
+        if lospanerr > 1e-10:
+            log.error('LOs do not fully span the occupied space! '
+                        'Max|<occ|LO><LO|occ>| = %e', lospanerr)
+            raise RuntimeError
+        # check 2: Span(LO) == Span(occ)
+        occspanerr = abs(fdot(m, m.T) - np.eye(m.shape[0])).max()
+        if occspanerr < 1e-10:
+            log.info('LOs span exactly the occupied space.')
+            if no_type not in ['ir','ie']:
+                log.error('"no_type" must be "ir" or "ie".')
+                raise ValueError
+        else:
+            log.info('LOs span occupied space plus some virtual space.')
     else:
-        log.info('LOs span occupied space plus some virtual space.')
+        orbloc = orbactocc
 
     # LO assignment to fragments
 
@@ -1509,8 +1511,8 @@ def run_lno_ccsd_afqmc(mf,thresh,frozen,options,chol_cut=1e-6,nproc=None,
             # prj_vv = prj_mo2no[nocc:,nocc:]
             prj_oo_act = prj_mo2no[actocc,:nocc]
             prj_vv_act = prj_mo2no[actvir,nocc:]
-            full_t1 = mycc.t1
-            full_t2 = mycc.t2
+            full_t1 = mfcc.t1
+            full_t2 = mfcc.t2
             # project to active no
             t1 = np.einsum("ji,jb,ab->ia",prj_oo_act.T,full_t1,prj_vv_act)
             t2 = np.einsum("ki,lj,klcd,ac,bd->ijab",
