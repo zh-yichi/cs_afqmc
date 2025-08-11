@@ -19,13 +19,13 @@ mf.kernel()
 mycc = cc.CCSD(mf)
 mycc.kernel()
 
-mycc._scf
+
 options = {'n_eql': 4,
-           'n_prop_steps': 40,
+           'n_prop_steps': 10,
             'n_ene_blocks': 1,
-            'n_sr_blocks': 20,
+            'n_sr_blocks': 10,
             'n_blocks': 20,
-            'n_walkers': 30,
+            'n_walkers': 10,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'cisd',
@@ -34,9 +34,9 @@ options = {'n_eql': 4,
             'use_gpu': False,
             }
 
-threshs = [1e-3,1e-4,1e-5,1e-6]
+threshs = [1e-5,1e-6]
 for i,thresh in enumerate(threshs):
-    lno_ccsd.run_lno_ccsd_afqmc(mycc,thresh,[],options,nproc=8,mp2=True,localize=False)
+    lno_ccsd.run_lno_ccsd_afqmc(mycc,thresh,[],options,nproc=5)
     os.system(f'mv results.out results.out{i+1}')
 
 lno_ccsd.sum_results(len(threshs))
