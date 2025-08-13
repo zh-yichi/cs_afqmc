@@ -2,19 +2,19 @@
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 5
+# Number of MPI ranks: 6
 #
-# norb: 14
-# nelec: (2, 2)
-# nchol: 92
+# norb: 3
+# nelec: (1, 1)
+# nchol: 8
 #
 # n_eql: 4
 # n_prop_steps: 10
 # n_ene_blocks: 1
 # n_sr_blocks: 10
-# n_blocks: 20
+# n_blocks: 10
 # n_walkers: 10
-# seed: 96
+# seed: 95
 # walker_type: rhf
 # trial: cisd
 # dt: 0.005
@@ -32,3 +32,72 @@
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
+# afqmc propagation with ccsd trial using 60 walkers
+# appraching equilibrium of the Markov Chain
+# step  energy  hf_orb_cr  ccsd_orb_cr  orb_corr  time
+    0  -2.104953  0.000000  -0.013651  -0.013651  2.56 
+    1  -2.104953  -0.004046  -0.009605  -0.013651  12.17 
+    2  -2.104953  -0.008086  -0.005565  -0.013651  18.40 
+    3  -2.104952  -0.010201  -0.003450  -0.013651  18.42 
+    4  -2.104953  -0.012300  -0.001352  -0.013651  18.44 
+# Sampling sweeps:
+# iter  energy  err  hf_orb_cr  err  olp_ratio  ccsd_orb_cr  err  tot_orb_cr  err  time
+     0  -2.104953    None    -0.010095    None    -0.003557    None    -0.013651  0.000000  18.49
+     1  -2.104953    None    -0.011233  0.001576  -0.002418  0.001577  -0.013651  0.000000  24.41
+     2  -2.104953    None    -0.012520  0.001289  -0.001131  0.001289  -0.013651  0.000000  30.14
+     3  -2.104953    None    -0.014173  0.001407  0.000522  0.001407  -0.013651  0.000000  30.16
+     4  -2.104953    None    -0.015410  0.001367  0.001759  0.001367  -0.013651  0.000000  30.18
+     5  -2.104953    None    -0.015098  0.001213  0.001447  0.001213  -0.013651  0.000000  30.20
+     6  -2.104953    None    -0.015077  0.001060  0.001426  0.001060  -0.013651  0.000000  30.23
+     7  -2.104953    None    -0.015045  0.000951  0.001394  0.000951  -0.013651  0.000000  30.25
+     8  -2.104953    None    -0.014777  0.000856  0.001126  0.000856  -0.013651  0.000000  30.27
+     9  -2.104953    None    -0.014577  0.000781  0.000926  0.000781  -0.013651  0.000000  30.29
+# Number of outliers in post: 0 
+#
+# Mean: -2.10495257e+00
+# Block size    # of blocks         Mean                Error
+      1               60       -2.10495257e+00       0.000000e+00
+      2               30       -2.10495257e+00       0.000000e+00
+      5               12       -2.10495257e+00       0.000000e+00
+     10                6       -2.10495257e+00       0.000000e+00
+     20                3       -2.10495257e+00       0.000000e+00
+#
+# Mean: -1.45773668e-02
+# Block size    # of blocks         Mean                Error
+      1               60       -1.45773668e-02       7.808367e-04
+      2               30       -1.45773668e-02       7.364968e-04
+      5               12       -1.45773668e-02       9.209281e-04
+     10                6       -1.45773668e-02       1.273040e-03
+     20                3       -1.45773668e-02       1.247974e-03
+# Stocahstic error estimate: 7.808367e-04
+#
+#
+# Mean: 9.26223564e-04
+# Block size    # of blocks         Mean                Error
+      1               60       9.26223564e-04       7.808395e-04
+      2               30       9.26223564e-04       7.365004e-04
+      5               12       9.26223564e-04       9.209321e-04
+     10                6       9.26223564e-04       1.273046e-03
+     20                3       9.26223564e-04       1.247978e-03
+# Stocahstic error estimate: 7.808395e-04
+#
+#
+# Mean: -1.36511433e-02
+# Block size    # of blocks         Mean                Error
+      1               60       -1.36511433e-02       6.946156e-09
+      2               30       -1.36511433e-02       7.729575e-09
+      5               12       -1.36511433e-02       6.594231e-09
+     10                6       -1.36511433e-02       8.626590e-09
+     20                3       -1.36511433e-02       9.759534e-09
+# Stocahstic error estimate: 7.729575e-09
+#
+Final Results:
+lno-ccsd-afqmc energy: -2.104953 +/-   None  
+lno-ccsd-afqmc hf_orb_cr: -0.014577 +/- 0.000781
+lno-ccsd-afqmc ccsd_orb_cr: 0.000926 +/- 0.000781
+lno-ccsd-afqmc tot_orb_corr: -0.013651 +/- 0.000000
+total run time: 30.30
+lno-mp2 orb_corr: -0.010183
+lno-ccsd orb_corr: -0.013651
+number of active electrons: 2
+number of active orbitals: 3

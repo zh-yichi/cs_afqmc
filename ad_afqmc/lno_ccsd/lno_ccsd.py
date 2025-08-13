@@ -509,7 +509,7 @@ def write_dqmc(E0,hcore,hcore_mod,chol,nelec,nmo,enuc,ms=0,
 
 def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
                            prjlo=[],norb_frozen=[],ci1=None,ci2=None,
-                           df=True,chol_cut=1e-6,
+                           use_df_vecs=True,chol_cut=1e-6,
                            option_file='options.bin',
                            mo_file="mo_coeff.npz",
                            amp_file="amplitudes.npz",
@@ -582,26 +582,33 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     print(f'# local active space size: {len(act)}') #yichi
     
     #### use df vectors or do cholesky decomposition ###
-    if df:
-        print('# using density fitting')
-        _, chol, _, _ = pyscf_interface.generate_integrals(
-            mol,mf.get_hcore(),mo_coeff[:,act],DFbas=mf.with_df.auxmol.basis)
+    if getattr(mf, "with_df", None) is not None:
+        if use_df_vecs:
+            print('# use DF vectors as Cholesky vectors')
+            _, chol, _, _ = pyscf_interface.generate_integrals(
+                mol,mf.get_hcore(),mo_coeff[:,act],DFbas=mf.with_df.auxmol.basis)
+        else:
+            print("# composing ERIs from DF vectors")
+            from pyscf import df
+            chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
+            chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
+            chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
+            eri_ao_df = np.einsum('lpq,lrs->pqrs', chol_df, chol_df)
+            #eri_df.reshape((nao*nao, nao*nao))
+            print("# decomposing ERIs to Cholesky vectors")
+            print(f"# Cholesky cutoff is: {chol_cut}")
+            eri_mo_df = ao2mo.kernel(eri_ao_df,mo_coeff[:,act],compact=False)
+            eri_mo_df = eri_mo_df.reshape(nbasis**2,nbasis**2)
+            chol = pyscf_interface.modified_cholesky(eri_mo_df,max_error=chol_cut)
     else:
-        e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False) # in mo representation
-        # print(f'# loc_eris shape: {e.shape}') #yichi
-        # add e = pyscf_interface.df(mol_mf,e) for selected loc_mos
-        chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut) # in mo representation
+        eri_mo = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
+        chol = pyscf_interface.modified_cholesky(eri_mo,max_error=chol_cut)
     
-    print(f'# chol shape: {chol.shape}') #yichi
     print("# Finished calculating Cholesky integrals\n")
     print('# Size of the correlation space')
     print(f'# Number of electrons: {nelec}')
     print(f'# Number of basis functions: {nbasis}')
-    
-    if df:
-        print(f'# Number of DF vectors: {chol.shape[0]}\n')
-    else:
-        print(f'# Number of Cholesky vectors: {chol.shape[0]}\n')
+    print(f'# Number of Cholesky vectors: {chol.shape[0]}\n')
     
     chol = chol.reshape((-1, nbasis, nbasis))
     v0 = 0.5 * np.einsum('nik,njk->ij', chol, chol, optimize='optimal')
@@ -1418,7 +1425,7 @@ def get_fragment_energy(oovv, t2, prj):
     return lib.einsum('ijab,kjab,ik->',t2,2*oovv-oovv.transpose(0,1,3,2),m)
 
 def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
-                       run_frg_list=None,df=True,mp2=True,localize=True):
+                       run_frg_list=None,use_df_vecs=True,mp2=True,localize=True):
     '''
     mfcc: pyscf mean-field object
     thresh: lno thresh
@@ -1522,9 +1529,9 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
                         shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
     
     # non df mean-field object
-    if not df:
-        mf = scf.RHF(mf.mol)
-        mf.kernel()
+    # if not df:
+    #     mf = scf.RHF(mf.mol)
+    #     mf.kernel()
 
     for ifrag in run_frg_list:
         print(f'\n########### running fragment {ifrag+1} ##########')
@@ -1595,7 +1602,8 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
             mf,orbfrag,options,
             norb_act=norb_act,nelec_act=nelec_act,
             prjlo=prjlo,norb_frozen=frzfrag,
-            ci1=ci1,ci2=ci2,df=df,chol_cut=chol_cut
+            ci1=ci1,ci2=ci2,use_df_vecs=use_df_vecs,
+            chol_cut=chol_cut
             )
         
         #MP2 correction 
