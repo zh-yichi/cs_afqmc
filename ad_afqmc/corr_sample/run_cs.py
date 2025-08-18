@@ -21,9 +21,9 @@ mo_file2=files["mo2"]
 chol_file2=files["chol2"]
 amp_file2=files["amp2"]
 
-ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
+ham_data1, ham1, prop1, trial1, wave_data1, sampler, observable1, options, _ \
     = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
-ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
+ham_data2, ham2, prop2, trial2, wave_data2, _, observable2, options, _ \
     = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
 # options["dt"] = options.get("dt", 0.01)

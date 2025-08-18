@@ -1,0 +1,102 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 3
+# nelec: (1, 1)
+#
+# dt: 0.005
+# n_exp_terms: 6
+# n_walkers: 30
+# n_runs: 50
+# rlx_steps: 0
+# prop_steps: 10
+# n_prop_steps: 10
+# seed: 542
+# walker_type: rhf
+# trial: rhf
+# use_gpu: False
+# free_proj: False
+# n_ene_blocks: 50
+# n_sr_blocks: 50
+# n_blocks: 50
+# orbital_rotation: True
+# do_sr: False
+# symmetry: False
+# save_walkers: False
+# free_projection: False
+# n_batch: 1
+# ene0: 0.0
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 3
+# nelec: (1, 1)
+#
+# dt: 0.005
+# n_exp_terms: 6
+# n_walkers: 30
+# n_runs: 50
+# rlx_steps: 0
+# prop_steps: 10
+# n_prop_steps: 10
+# seed: 542
+# walker_type: rhf
+# trial: rhf
+# use_gpu: False
+# free_proj: False
+# n_ene_blocks: 50
+# n_sr_blocks: 50
+# n_blocks: 50
+# orbital_rotation: True
+# do_sr: False
+# symmetry: False
+# save_walkers: False
+# free_projection: False
+# n_batch: 1
+# ene0: 0.0
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# initial energy: -10.484890
+# initial energy: -10.361013
+# relaxation using 150 walkers
+# rlx_step 	 system1_en 	 system2_en 	 en_diff 	 orb1_en 	 orb2_en 	 orb_en_diff
+    0	 	 -10.484890	 -10.361013	 -0.123878	 0.000000	 0.000000	 0.000000
+# relaxation time: 6.75
+
+# tot_walkers: 150, propagation steps: 10, number of independent runs: 50
+# step	   orb1_en 	 error	 	 orb2_en 	 error	 	 orb_en_diff 	 error
+  1	 -0.001381 	 0.000022	 -0.001378 	 0.000022	 -0.000003 	 0.000000
+  2	 -0.002587 	 0.000046	 -0.002582 	 0.000046	 -0.000005 	 0.000000
+  3	 -0.003746 	 0.000057	 -0.003739 	 0.000057	 -0.000008 	 0.000000
+  4	 -0.004886 	 0.000070	 -0.004877 	 0.000070	 -0.000010 	 0.000000
+  5	 -0.005893 	 0.000075	 -0.005882 	 0.000074	 -0.000011 	 0.000000
+  6	 -0.007050 	 0.000106	 -0.007036 	 0.000105	 -0.000013 	 0.000001
+  7	 -0.007999 	 0.000122	 -0.007984 	 0.000122	 -0.000015 	 0.000001
+  8	 -0.008831 	 0.000143	 -0.008814 	 0.000142	 -0.000016 	 0.000001
+  9	 -0.009714 	 0.000163	 -0.009696 	 0.000163	 -0.000018 	 0.000001
+  10	 -0.010433 	 0.000181	 -0.010414 	 0.000180	 -0.000019 	 0.000001
+# final result
+# orbital energy 1: -0.010433 +\- 0.000181
+# orbital energy 2: -0.010414 +\- 0.000180
+# correlated d_energy: -0.000019 +\- 0.000001
+# total run time: 29.82
+# lno-mp2 orb_corr1: -0.014666
+# lno-mp2 orb_corr2: -0.014660

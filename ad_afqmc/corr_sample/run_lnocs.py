@@ -5,6 +5,7 @@ from jax import random
 import numpy as np
 from ad_afqmc.corr_sample import corr_sample
 from ad_afqmc import mpi_jax, config
+from ad_afqmc.corr_sample import lnocs
 import time
 
 print = partial(print, flush=True)
@@ -24,32 +25,35 @@ mo_file2='mo2.npz'
 chol_file2='chol2'
 amp_file2='amp2'
 
-ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
-    = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
-ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
-    = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
+# import pickle
+# with open("options.bin", "rb") as f:
+#     options = pickle.load(f)
 
-nwalkers = options["n_walkers"]
+ham_data1, ham1, prop1, trial1, wave_data1, sampler, observable1, options, _ \
+    = lnocs.prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
+ham_data2, ham2, prop2, trial2, wave_data2, _, observable2, options, _ \
+    = lnocs.prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
+
 seed = options["seed"]
-rlx_steps = options.get["rlx_steps",5]
-prop_steps = options.get["prop_steps",20]
-n_runs = options.get["n_runs",100]
+nwalkers = options["n_walkers"]
+rlx_steps = options["rlx_steps"]
+prop_steps = options["prop_steps"]
+n_runs = options["n_runs"]
 
 if options['use_gpu']:
     config.afqmc_config["use_gpu"] = True
 
 config.setup_jax()
 MPI = config.setup_comm()
-
 init_time = time.time()
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()  # Process rank
 size = comm.Get_size()  # Total number of processes
 
-ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
-    = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
-ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
-    = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
+# ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
+#     = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
+# ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
+#     = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
 prop_data1_init, ham_data1_init = \
     corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, seed, MPI)
@@ -59,22 +63,23 @@ prop_data2_init, ham_data2_init = \
 ### relaxation ###
 comm.Barrier()
 if rank == 0:
-    if options["trial"] == "rhf":
-        print(f'# relaxation from mean-field object using {nwalkers*size} walkers')
-    if options["trial"] == "cisd":
-        print(f'# relaxation from ccsd object using {nwalkers*size} walkers')
+
+    print(f'# relaxation using {nwalkers*size} walkers')
     print('# rlx_step \t system1_en \t system2_en \t en_diff \t orb1_en \t orb2_en \t orb_en_diff')
-    print(f'    {0}'
+    print(f'   {0:2d}'
           f'\t \t {prop_data1_init["e_estimate"]:.6f}' 
           f'\t {prop_data2_init["e_estimate"]:.6f}'
-          f'\t {prop_data1_init["e_estimate"]-prop_data2_init["e_estimate"]:.6f}')
+          f'\t {prop_data1_init["e_estimate"]-prop_data2_init["e_estimate"]:.6f}'
+          f'\t {0:.6f}'
+          f'\t {0:.6f}'
+          f'\t {0:.6f}')
 comm.Barrier()
 
 (prop_data1_rlx,prop_data2_rlx),(loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
     = corr_sample.lno_cs_steps_scan(rlx_steps,
                                     prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
-                                    prop_data2_init,ham_data2_init,prop2,trial2,wave_data2
-                                    )
+                                    prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,
+                                    sampler)
 
 comm.Barrier()
 if rank == 0:
@@ -150,11 +155,8 @@ if rank == 0:
     # else: print('# uncorrelated sampling')
 
     print(f'# tot_walkers: {nwalkers*size}, propagation steps: {prop_steps}, number of independent runs: {n_runs}')
-    print('# step' 
-        #   '\t system1_en \t error' 
-        #   '\t \t system2_en \t error'
-        #   '\t \t energy_diff \t error'
-          '\t orb1_en \t error' 
+    print('# step'
+          '\t   orb1_en \t error' 
           '\t \t orb2_en \t error'
           '\t \t orb_en_diff \t error')
     
@@ -168,7 +170,7 @@ _,loc_orb_en1,loc_wt1,_,loc_orb_en2,loc_wt2 \
     = corr_sample.lno_cs_seeds_scan(seeds,prop_steps,
                                     prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
                                     prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2,
-                                    MPI)
+                                    sampler,MPI)
 # else:
 #     seeds = random.randint(random.PRNGKey(options["seed"]),
 #                         shape=(n_runs,2), minval=0, maxval=10000*n_runs)
@@ -258,6 +260,10 @@ if rank == 0:
               f'\t {orb_en_mean2:.6f} \t {orb_en_err2:.6f}'
               f'\t {orb_en_diff_mean:.6f} \t {orb_en_diff_mean_err:.6f}')
 
+    print(f'# final result')
+    print(f'# orbital energy 1: {orb_en_mean1:.6f} +\- {orb_en_err1:.6f}')
+    print(f'# orbital energy 2: {orb_en_mean2:.6f} +\- {orb_en_err2:.6f}')
+    print(f'# correlated d_energy: {orb_en_diff_mean:.6f} +\- {orb_en_diff_mean_err:.6f}')
     end_time = time.time()
     print(f'# total run time: {end_time - init_time:.2f}')
 comm.Barrier()

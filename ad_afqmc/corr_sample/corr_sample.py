@@ -453,7 +453,7 @@ def mk_cs_frag(ifrag,mf1,mf2,frozen,options,
         
     return None #can_orbfrag1,can_orbfrag2 for mp2
 
-sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
+# sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 
 def init_prop(ham_data, ham, prop, trial, wave_data, seed, MPI):
     comm = MPI.COMM_WORLD
@@ -478,7 +478,7 @@ def init_prop(ham_data, ham, prop, trial, wave_data, seed, MPI):
     
     return prop_data, ham_data
 
-
+# @partial(jit, static_argnums=(2,3))
 def en_samples(prop_data,ham_data,prop,trial,wave_data):
     energy_samples = jnp.real(
         trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
@@ -490,6 +490,7 @@ def en_samples(prop_data,ham_data,prop,trial,wave_data):
     )
     return energy_samples
 
+# @partial(jit, static_argnums=(2))
 def orb_en_samples(prop_data,ham_data,trial,wave_data):
     orb_en_samples = jnp.real(
         trial.calc_orbenergy(prop_data['walkers'],ham_data,wave_data,0)
@@ -499,6 +500,7 @@ def orb_en_samples(prop_data,ham_data,trial,wave_data):
     #                      orbE_samples)
     return orb_en_samples
 
+# @partial(jit, static_argnums=(2,3))
 def block_en_weight(prop_data,ham_data,prop,trial,wave_data):
 
     energy_samples = en_samples(prop_data,ham_data,prop,wave_data,trial)
@@ -508,7 +510,7 @@ def block_en_weight(prop_data,ham_data,prop,trial,wave_data):
     return block_energy, block_weight
 
 
-@partial(jit, static_argnums=(3,4))
+@partial(jit, static_argnums=(3,4,6))
 def field_block_scan(
         prop_data: dict,
         fields,
@@ -516,6 +518,7 @@ def field_block_scan(
         prop: propagator,
         trial: wave_function,
         wave_data: dict,
+        sampler: sampling.sampler,
         ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
     """Block scan function for a given field"""
     # with open("options.pkl", "rb") as file:
@@ -534,7 +537,7 @@ def field_block_scan(
     #     # #block_weight = jnp.sum(prop_data["overlaps"])
     # else:
         # print("phaseless propagation")
-    _step_scan_wrapper = lambda x, y: sampler_eq._step_scan(
+    _step_scan_wrapper = lambda x, y: sampler._step_scan(
         x, y, ham_data, prop, trial, wave_data
     )
     prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
@@ -550,7 +553,7 @@ def field_block_scan(
     )
     return prop_data
 
-
+@partial(jit, static_argnums=(2))
 def corr_otler_rm(prop_data1, prop_data2, z_thresh = 5):
 
     # problem for overlap as a measure
@@ -589,7 +592,7 @@ def corr_otler_rm(prop_data1, prop_data2, z_thresh = 5):
     return prop_data1, prop_data2
 
 
-@partial(jit, static_argnums=(2,3,7,8))
+@partial(jit, static_argnums=(2,3,7,8,10))
 def cs_block_scan(
         prop_data1: dict,
         ham_data1: dict,
@@ -600,72 +603,79 @@ def cs_block_scan(
         ham_data2: dict,
         prop2: propagator,
         trial2: wave_function,
-        wave_data2: dict):
+        wave_data2: dict,
+        sampler: sampling.sampler,
+        ):
     '''correlated sampling of two blocks of walkers over the same field'''
     prop_data1["key"], subkey1 = random.split(prop_data1["key"])
     fields = random.normal(
         subkey1,
         shape=(
-            sampler_eq.n_prop_steps,
+            sampler.n_prop_steps,
             prop1.n_walkers,
             ham_data1["chol"].shape[0],
         )
     )
-    prop_data1 = field_block_scan(prop_data1,fields,ham_data1,prop1,trial1,wave_data1)
-    prop_data2 = field_block_scan(prop_data2,fields,ham_data2,prop2,trial2,wave_data2)
+    prop_data1 = field_block_scan(
+        prop_data1,fields,ham_data1,prop1,trial1,wave_data1,sampler)
+    prop_data2 = field_block_scan(
+        prop_data2,fields,ham_data2,prop2,trial2,wave_data2,sampler)
     
     prop_data1, prop_data2 = corr_otler_rm(prop_data1, prop_data2)
 
     return prop_data1, prop_data2
 
-@partial(jit, static_argnums=(2,3,7,8))
-def ucs_block_scan(
-        prop_data1: dict,
-        ham_data1: dict,
-        prop1: propagator,
-        trial1: wave_function,
-        wave_data1: dict,
-        prop_data2: dict,
-        ham_data2: dict,
-        prop2: propagator,
-        trial2: wave_function,
-        wave_data2: dict):
-    '''correlated sampling of two blocks over the same field'''
-    prop_data1["key"], subkey1 = random.split(prop_data1["key"])
-    fields1 = random.normal(
-        subkey1,
-        shape=(
-            sampler_eq.n_prop_steps,
-            prop1.n_walkers,
-            ham_data1["chol"].shape[0],
-        )
-    )
-    prop_data1 = field_block_scan(prop_data1,fields1,ham_data1,prop1,trial1,wave_data1)
+# @partial(jit, static_argnums=(2,3,7,8,10))
+# def ucs_block_scan(
+#         prop_data1: dict,
+#         ham_data1: dict,
+#         prop1: propagator,
+#         trial1: wave_function,
+#         wave_data1: dict,
+#         prop_data2: dict,
+#         ham_data2: dict,
+#         prop2: propagator,
+#         trial2: wave_function,
+#         wave_data2: dict,
+#         sampler: sampling.sampler):
+#     '''correlated sampling of two blocks over the same field'''
+#     prop_data1["key"], subkey1 = random.split(prop_data1["key"])
+#     fields1 = random.normal(
+#         subkey1,
+#         shape=(
+#             sampler.n_prop_steps,
+#             prop1.n_walkers,
+#             ham_data1["chol"].shape[0],
+#         )
+#     )
+#     prop_data1 = field_block_scan(prop_data1,fields1,ham_data1,prop1,trial1,wave_data1)
 
-    prop_data2["key"], subkey2 = random.split(prop_data2["key"])
-    fields2 = random.normal(
-        subkey2,
-        shape=(
-            sampler_eq.n_prop_steps,
-            prop2.n_walkers,
-            ham_data2["chol"].shape[0],
-        )
-    )
-    prop_data2 = field_block_scan(prop_data2,fields2,ham_data2,prop2,trial2,wave_data2)
+#     prop_data2["key"], subkey2 = random.split(prop_data2["key"])
+#     fields2 = random.normal(
+#         subkey2,
+#         shape=(
+#             sampler.n_prop_steps,
+#             prop2.n_walkers,
+#             ham_data2["chol"].shape[0],
+#         )
+#     )
+#     prop_data2 = field_block_scan(prop_data2,fields2,ham_data2,prop2,trial2,wave_data2)
 
-    return prop_data1, prop_data2
+#     return prop_data1, prop_data2
 
-@partial(jit, static_argnums=(0,3,4,8,9))
+@partial(jit, static_argnums=(0,3,4,8,9,11))
 def cs_steps_scan(steps,
                   prop_data1,ham_data1,prop1,trial1,wave_data1,
-                  prop_data2,ham_data2,prop2,trial2,wave_data2
-                  ):
+                  prop_data2,ham_data2,prop2,trial2,wave_data2,
+                  sampler,):
 
     cs_prop_data = (prop_data1,prop_data2)
     def cs_step(cs_prop_data,_):
         prop_data1,prop_data2= cs_prop_data
-        prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
-                                              prop_data2,ham_data2,prop2,trial2,wave_data2)
+        prop_data1,prop_data2 = cs_block_scan(
+            prop_data1,ham_data1,prop1,trial1,wave_data1,
+            prop_data2,ham_data2,prop2,trial2,wave_data2,
+            sampler)
         cs_prop_data = (prop_data1,prop_data2)
         loc_en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
         loc_en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
@@ -683,17 +693,19 @@ def cs_steps_scan(steps,
         = jax.lax.scan(cs_step,cs_prop_data,xs=None,length=steps)
     return cs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
 
-@partial(jit, static_argnums=(0,3,4,9,10))
+@partial(jit, static_argnums=(0,3,4,8,9,11))
 def lno_cs_steps_scan(steps,
-                      prop_data1,ham_data1,prop1,trial1,wave_data1,orbE1,
-                      prop_data2,ham_data2,prop2,trial2,wave_data2,orbE2,
-                      ):
+                      prop_data1,ham_data1,prop1,trial1,wave_data1,
+                      prop_data2,ham_data2,prop2,trial2,wave_data2,
+                      sampler):
 
     cs_prop_data = (prop_data1,prop_data2)
     def lno_cs_step(cs_prop_data,_):
         prop_data1,prop_data2= cs_prop_data
-        prop_data1,prop_data2 = cs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
-                                              prop_data2,ham_data2,prop2,trial2,wave_data2)
+        prop_data1,prop_data2 = cs_block_scan(
+            prop_data1,ham_data1,prop1,trial1,wave_data1,
+            prop_data2,ham_data2,prop2,trial2,wave_data2,
+            sampler)
         cs_prop_data = (prop_data1,prop_data2)
         loc_en_sp1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
         loc_en_sp2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
@@ -718,39 +730,39 @@ def lno_cs_steps_scan(steps,
     return cs_prop_data, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2)
 
 
-@partial(jit, static_argnums=(0,3,4,8,9))
-def ucs_steps_scan(steps,
-                  prop_data1,ham_data1,prop1,trial1,wave_data1,
-                  prop_data2,ham_data2,prop2,trial2,wave_data2
-                  ):
+# @partial(jit, static_argnums=(0,3,4,8,9))
+# def ucs_steps_scan(steps,
+#                   prop_data1,ham_data1,prop1,trial1,wave_data1,
+#                   prop_data2,ham_data2,prop2,trial2,wave_data2
+#                   ):
 
-    ucs_prop_data = (prop_data1,prop_data2)
-    def ucs_step(ucs_prop_data,_):
-        prop_data1,prop_data2= ucs_prop_data
-        prop_data1,prop_data2 = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
-                                               prop_data2,ham_data2,prop2,trial2,wave_data2)
-        ucs_prop_data = (prop_data1,prop_data2)
-        loc_en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
-        loc_en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
-        loc_weight_sample1 = prop_data1["weights"]
-        loc_weight1 = jnp.sum(loc_weight_sample1)
-        loc_weight_sample2 = prop_data2["weights"]
-        loc_weight2 = jnp.sum(loc_weight_sample2)
-        loc_en_sample1 = loc_en_samples1*loc_weight_sample1
-        loc_en_sample2 = loc_en_samples2*loc_weight_sample2
-        loc_en1 = sum(loc_en_sample1) #not normalized
-        loc_en2 = sum(loc_en_sample2) #not normalized
-        return ucs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
+#     ucs_prop_data = (prop_data1,prop_data2)
+#     def ucs_step(ucs_prop_data,_):
+#         prop_data1,prop_data2= ucs_prop_data
+#         prop_data1,prop_data2 = ucs_block_scan(prop_data1,ham_data1,prop1,trial1,wave_data1,
+#                                                prop_data2,ham_data2,prop2,trial2,wave_data2)
+#         ucs_prop_data = (prop_data1,prop_data2)
+#         loc_en_samples1 = en_samples(prop_data1,ham_data1,prop1,trial1,wave_data1)
+#         loc_en_samples2 = en_samples(prop_data2,ham_data2,prop2,trial2,wave_data2)
+#         loc_weight_sample1 = prop_data1["weights"]
+#         loc_weight1 = jnp.sum(loc_weight_sample1)
+#         loc_weight_sample2 = prop_data2["weights"]
+#         loc_weight2 = jnp.sum(loc_weight_sample2)
+#         loc_en_sample1 = loc_en_samples1*loc_weight_sample1
+#         loc_en_sample2 = loc_en_samples2*loc_weight_sample2
+#         loc_en1 = sum(loc_en_sample1) #not normalized
+#         loc_en2 = sum(loc_en_sample2) #not normalized
+#         return ucs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
 
-    ucs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2) \
-        = jax.lax.scan(ucs_step,ucs_prop_data,xs=None,length=steps)
-    return ucs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
+#     ucs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2) \
+#         = jax.lax.scan(ucs_step,ucs_prop_data,xs=None,length=steps)
+#     return ucs_prop_data, (loc_en1,loc_weight1,loc_en2,loc_weight2)
 
-#@jit
+@partial(jit, static_argnums=(1,4,5,9,10,12,13))
 def scan_seeds(seeds,eq_steps,
                prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
                prop_data2_init,ham_data2_init,prop2,trial2,wave_data2, 
-               MPI):
+               sampler,MPI):
     '''
     do a number of independent runs of given equilirium steps
     for a given array of seeds
@@ -768,7 +780,8 @@ def scan_seeds(seeds,eq_steps,
         _,(loc_en1,loc_weight1,loc_en2,loc_weight2) \
             = cs_steps_scan(eq_steps,
                             prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
-                            prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
+                            prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,
+                            sampler)
         
         return carry, (loc_en1,loc_weight1,loc_en2,loc_weight2)
     
@@ -776,10 +789,11 @@ def scan_seeds(seeds,eq_steps,
 
     return loc_en1,loc_weight1,loc_en2,loc_weight2
 
+@partial(jit, static_argnums=(1,4,5,9,10,12,13))
 def lno_cs_seeds_scan(seeds,eq_steps,
-                      prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,orbE1,
-                      prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,orbE2,
-                      MPI):
+                      prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+                      prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,
+                      sampler,MPI):
     '''
     do a number of independent runs of given equilirium steps
     for a given array of seeds
@@ -796,46 +810,47 @@ def lno_cs_seeds_scan(seeds,eq_steps,
         prop_data1_init["key"] = jax.random.PRNGKey(seed + rank)
         _,(loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
             = lno_cs_steps_scan(eq_steps,
-                                prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,orbE1,
-                                prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,orbE2
-                                )
+                                prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+                                prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,
+                                sampler)
         
         return carry, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2)
     
-    _, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) = jax.lax.scan(lno_cs_seed, None, seeds)
+    _, (loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
+        = jax.lax.scan(lno_cs_seed, None, seeds)
 
     return loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2
 
-def ucs_scan_seeds(seeds,eq_steps,
-                  prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
-                  prop_data2_init,ham_data2_init,prop2,trial2,wave_data2, 
-                  MPI):
-    '''
-    do a number of independent runs of given equilirium steps
-    for a given array of seeds
-    return local energy of system1, local weight of system1
-    and the same for system2.
-    the ensemble energy average for each system should be 
-    loc_en/loc_weight
-    '''
+# def ucs_scan_seeds(seeds,eq_steps,
+#                   prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+#                   prop_data2_init,ham_data2_init,prop2,trial2,wave_data2, 
+#                   MPI):
+#     '''
+#     do a number of independent runs of given equilirium steps
+#     for a given array of seeds
+#     return local energy of system1, local weight of system1
+#     and the same for system2.
+#     the ensemble energy average for each system should be 
+#     loc_en/loc_weight
+#     '''
 
-    comm = MPI.COMM_WORLD
-    rank = comm.Get_rank()
+#     comm = MPI.COMM_WORLD
+#     rank = comm.Get_rank()
 
-    def _seed_ucs(carry,seed):
-        (seed1,seed2) = seed
-        prop_data1_init["key"] = jax.random.PRNGKey(seed1 + rank)
-        prop_data2_init["key"] = jax.random.PRNGKey(seed2 + rank)
-        _,(loc_en1,loc_weight1,loc_en2,loc_weight2) \
-            = ucs_steps_scan(eq_steps,
-                            prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
-                            prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
+#     def _seed_ucs(carry,seed):
+#         (seed1,seed2) = seed
+#         prop_data1_init["key"] = jax.random.PRNGKey(seed1 + rank)
+#         prop_data2_init["key"] = jax.random.PRNGKey(seed2 + rank)
+#         _,(loc_en1,loc_weight1,loc_en2,loc_weight2) \
+#             = ucs_steps_scan(eq_steps,
+#                             prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
+#                             prop_data2_init,ham_data2_init,prop2,trial2,wave_data2)
         
-        return carry, (loc_en1,loc_weight1,loc_en2,loc_weight2)
+#         return carry, (loc_en1,loc_weight1,loc_en2,loc_weight2)
     
-    _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_ucs, None, seeds)
+#     _, (loc_en1,loc_weight1,loc_en2,loc_weight2) = jax.lax.scan(_seed_ucs, None, seeds)
 
-    return loc_en1,loc_weight1,loc_en2,loc_weight2
+#     return loc_en1,loc_weight1,loc_en2,loc_weight2
 
 def run_cs_afqmc(options=None,files=None,script=None,mpi_prefix=None, nproc=None):
     if options is None:

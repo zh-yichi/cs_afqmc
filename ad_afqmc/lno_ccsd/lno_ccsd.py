@@ -581,7 +581,6 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     print(f'# local active orbitals: {act}') #yichi
     print(f'# local active space size: {len(act)}') #yichi
     
-    #### use df vectors or do cholesky decomposition ###
     if getattr(mf, "with_df", None) is not None:
         if use_df_vecs:
             print('# use DF vectors as Cholesky vectors')
@@ -1424,8 +1423,42 @@ def get_fragment_energy(oovv, t2, prj):
     m = fdot(prj.T, prj)
     return lib.einsum('ijab,kjab,ik->',t2,2*oovv-oovv.transpose(0,1,3,2),m)
 
-def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
-                       run_frg_list=None,use_df_vecs=True,mp2=True,localize=True):
+def get_mp2_frg_e(mf,frzfrag,eris,orbfragloc,can_orbfrag):
+
+    mol = mf.mol
+    nocc = mol.nelectron // 2 
+    nao = mol.nao
+    actfrag = np.array([i for i in range(nao) if i not in frzfrag])
+    # frzocc = np.array([i for i in range(nocc) if i in frzfrag])
+    actocc = np.array([i for i in range(nocc) if i in actfrag])
+    actvir = np.array([i for i in range(nocc,nao) if i in actfrag])
+    nactocc = len(actocc)
+    nactocc = len(actocc)
+    nactvir = len(actvir)
+
+    s1e = eris.s1e
+    can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:,actocc])
+    mc = CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
+    mc.ao2mo = ccsd.ccsd_ao2mo.__get__(mc,mc.__class__)
+    mc._s1e = s1e
+    mc._h1e = eris.h1e
+    mc._vhf = eris.vhf
+    imp_eris = mc.ao2mo()
+    if isinstance(imp_eris.ovov, np.ndarray):
+        ovov = imp_eris.ovov
+    else:
+        ovov = imp_eris.ovov[()]
+    oovv = ovov.reshape(nactocc,nactvir,nactocc,nactvir).transpose(0,2,1,3)
+    ovov = None
+    # MP2 fragment energy
+    _, t2 = mc.init_amps(eris=imp_eris)[1:]
+    emp2 = get_fragment_energy(oovv,t2,can_prjlo)
+    
+    return emp2
+
+
+def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,chol_cut=1e-6,nproc=None,
+                       run_frg_list=None,use_df_vecs=False,mp2=True,localize=True):
     '''
     mfcc: pyscf mean-field object
     thresh: lno thresh
@@ -1644,6 +1677,9 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
             gpu_flag = "--use_gpu"
             mpi_prefix = ""
             nproc = None
+            from mpi4py import MPI
+            if not MPI.Is_finalized():
+                MPI.Finalize() # CCSD initializes MPI
         else:
             print(f'# running AFQMC on CPU')
             gpu_flag = ""
@@ -1657,7 +1693,8 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen,options,chol_cut=1e-6,nproc=None,
         #else:    
         script = f"{dir_path}/run_lnocc_frg.py"
         os.system(
-            f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} |tee frg_{ifrag+1}.out"
+            f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
+            f"{mpi_prefix} python {script} {gpu_flag} |tee frg_{ifrag+1}.out"
         )
 
         with open(f'frg_{ifrag+1}.out', 'a') as out_file:
