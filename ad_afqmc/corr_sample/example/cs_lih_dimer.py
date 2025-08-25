@@ -1,10 +1,10 @@
-from ad_afqmc.corr_sample_test import corr_sample
+from ad_afqmc.corr_sample import corr_sample
 
 options = {
     "dt": 0.01,
     "n_exp_terms": 6,
     "n_walkers": 30,
-    "n_runs": 100,
+    "n_runs": 50,
     "rlx_steps": 0,
     "prop_steps": 10,
     "seed": 23,
@@ -24,4 +24,4 @@ files = {
     "amp2":"amp2.npz",
 }
 
-corr_sample.run_cs_afqmc(options,files,nproc=8)
+corr_sample.run_cs_afqmc(options,files,nproc=5)

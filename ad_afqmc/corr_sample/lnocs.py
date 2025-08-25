@@ -312,10 +312,39 @@ def prep_afqmc(options=None,
 #         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} |tee lnocs_afqmc.out"
 #     )
 
+def procrustes_rotation(A,B):
+    # occ Procrustes
+    # min_R|AR-B|F the Frobenius norm
+    # rotate A to match B
+    m = B.T @ A
+    u, _, v = np.linalg.svd(m)
+    pcsts_r = v.T @ u.T
+    Ap = A @ pcsts_r
+
+    return Ap
+
+def f_norm(matrix):
+    # Procrustes rotation minimizes the Frobenius norm
+    return np.sqrt(np.trace(matrix.T @ matrix))
+
+def check_lo_occ(mfcc,orbloc):
+    orbactocc = mfcc.split_mo()[1]
+    s1e = mfcc._scf.get_ovlp()
+    m = orbloc.T @ s1e @ orbactocc
+    lospanerr = abs(m.T @ m - np.eye(m.shape[1])).max()
+    if lospanerr > 1e-10:
+        raise ValueError(
+            'LOs do not fully span the occupied space! Max|<occ|LO><LO|occ>| = %e',
+            lospanerr)
+    return lospanerr < 1e-10
 
 def run_cs_frags(mf1,mf2,frozen=None,options=None,lno_thresh=1e-5,
                  nproc=None,run_frg_list=None,mp2=True):
-    
+
+    print('# all differences are system2 - system1')
+    d_e_mf = mf2.e_tot - mf1.e_tot
+    print(f'mean-field energy difference: {d_e_mf}')
+
     no_type='ie'
     lo_type="pm"
 
@@ -326,15 +355,12 @@ def run_cs_frags(mf1,mf2,frozen=None,options=None,lno_thresh=1e-5,
         thresh_vir = lno_thresh
 
     mfcc1 = LNOAFQMC(mf1,frozen=frozen)
-    # mfcc1.thresh_occ = thresh_occ
-    # mfcc1.thresh_vir = thresh_vir
-
     mfcc2 = LNOAFQMC(mf2,frozen=frozen)
-    # mfcc2.thresh_occ = thresh_occ
-    # mfcc2.thresh_vir = thresh_vir
 
     eris1 = mfcc1.ao2mo()
     orbloc1 = mfcc1.get_lo(lo_type=lo_type)
+    check_lo_occ(mfcc1,orbloc1)
+    
     frag_lolist1 = [[i] for i in range(orbloc1.shape[1])]
     frag_nonvlist1 = mfcc1.frag_nonvlist
     nfrag = len(frag_lolist1)
@@ -342,6 +368,14 @@ def run_cs_frags(mf1,mf2,frozen=None,options=None,lno_thresh=1e-5,
 
     eris2 = mfcc2.ao2mo()
     orbloc2 = mfcc2.get_lo(lo_type=lo_type)
+    norm = f_norm(orbloc2-orbloc1)
+    print(f'# Frobenius norm before Procrustes Rotation {norm}')
+    print('# Performing Procrustes Rotation')
+    orbloc2 = procrustes_rotation(orbloc2,orbloc1)
+    check_lo_occ(mfcc2,orbloc2)
+    norm_p = f_norm(orbloc2-orbloc1)
+    print(f'# Frobenius norm after Procrustes Rotation {norm_p}')
+
     frag_lolist2 = [[i] for i in range(orbloc2.shape[1])]
     frag_nonvlist2 = mfcc2.frag_nonvlist
     nfrag2 = len(frag_lolist2)
@@ -449,7 +483,8 @@ def run_cs_frags(mf1,mf2,frozen=None,options=None,lno_thresh=1e-5,
 def write_cslno_results(frags,mf1,mf2,emp21=None,emp22=None):
     with open('results.out', 'w') as out_file:
         print('# frag' \
-                '  orb_energy1  err  orb_energy2  err' \
+                '  mp2_orb_en1 afqmc_orb_en1  abs_err1' \
+                '  mp2_orb_en2 afqmc_orb_en2  abs_err2' \
                 '  d_orb_energy  cs_err  runtime',file=out_file)
         for ifrag in frags:
             with open(f"cs_frg{ifrag+1}.out","r") as read_file:
@@ -470,11 +505,9 @@ def write_cslno_results(frags,mf1,mf2,emp21=None,emp22=None):
                     if "total run time" in line:
                         runtime = line.split()[4]
                 print(f'{ifrag+1:3d}  '
-                    f'{orb_energy1}  {orb_err1}  '
-                    f'{orb_energy2}  {orb_err2}  '
-                    f'{d_orb_en}  {cs_err}  '
-                    f'{orb_mp21}  {orb_mp22}  '
-                    f'{runtime}', file=out_file)
+                      f'{orb_mp21}  {orb_energy1}  {orb_err1}  '
+                      f'{orb_mp22}  {orb_energy2}  {orb_err2}  '
+                      f'{d_orb_en}  {cs_err}  {runtime}', file=out_file)
                 
     data = []
     with open('results.out', 'r') as read_file:
@@ -484,14 +517,14 @@ def write_cslno_results(frags,mf1,mf2,emp21=None,emp22=None):
                 data[data == 'None'] = '0.000000' 
 
     data = np.array(data.reshape(len(frags),10))
-    orb_en1 = np.array(data[:,1],dtype='float32')
-    orb_err1 = np.array(data[:,2],dtype='float32')
-    orb_en2 = np.array(data[:,3],dtype='float32')
-    orb_err2 = np.array(data[:,4],dtype='float32')
-    d_orb_en = np.array(data[:,5],dtype='float32')
-    cs_err = np.array(data[:,6],dtype='float32')
-    orb_mp21 = np.array(data[:,7],dtype='float32')
-    orb_mp22 = np.array(data[:,8],dtype='float32')
+    orb_mp21 = np.array(data[:,1],dtype='float32')
+    orb_en1 = np.array(data[:,2],dtype='float32')
+    orb_err1 = np.array(data[:,3],dtype='float32')
+    orb_mp22 = np.array(data[:,4],dtype='float32')
+    orb_en2 = np.array(data[:,5],dtype='float32')
+    orb_err2 = np.array(data[:,6],dtype='float32')
+    d_orb_en = np.array(data[:,7],dtype='float32')
+    cs_err = np.array(data[:,8],dtype='float32')
     orb_time = np.array(data[:,9],dtype='float32')
 
     tot_corr1 = sum(orb_en1)
@@ -508,14 +541,19 @@ def write_cslno_results(frags,mf1,mf2,emp21=None,emp22=None):
     mp2_cr2 = emp22-tot_mp22
     d_mp2_cr = mp2_cr2-mp2_cr1
 
+    d_e_mf = mf2.e_tot-mf1.e_tot
+
     with open('results.out', 'a') as out_file:
         out_file.write(f'# final results \n')
         out_file.write(f'# system 1 mf energy: {mf1.e_tot:.10f} \n')
         out_file.write(f'# system 2 mf energy: {mf2.e_tot:.10f} \n')
-        out_file.write(f'# system 1 lno-afqmc-corr: {tot_corr1:.6f} +/- {tot_err1} \n')
-        out_file.write(f'# system 2 lno-afqmc-corr: {tot_corr2:.6f} +/- {tot_err2} \n')
-        out_file.write(f'# cs-system diff_corr: {d_tot_corr:.6f} +/- {cs_tot_err} \n')
-        out_file.write(f'# cs-system diff_corr_mp2: {d_tot_corr+d_mp2_cr:.6f} \n')
+        out_file.write(f'# mean-field energy difference: {d_e_mf:.10f} \n')
+        out_file.write(f'# system 1 lno-afqmc-corr: {tot_corr1:.6f} +/- {tot_err1:.6f} \n')
+        out_file.write(f'# system 2 lno-afqmc-corr: {tot_corr2:.6f} +/- {tot_err2:.6f} \n')
+        out_file.write(f'# cs-system diff_corr: {d_tot_corr:.6f} +/- {cs_tot_err:.6f} \n')
+        out_file.write(f'# mp2 energy difference correction: {d_mp2_cr:.10f} \n')
+        out_file.write(f'# totol cs-system energy difference: '
+                       f'{d_e_mf+d_tot_corr+d_mp2_cr:.6f} +/- {cs_tot_err:.6f} \n')
         out_file.write(f'# total time: {tot_time:.2f} \n')
     
     return None

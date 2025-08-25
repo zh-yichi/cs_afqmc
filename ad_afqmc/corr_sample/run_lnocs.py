@@ -25,9 +25,6 @@ mo_file2='mo2.npz'
 chol_file2='chol2'
 amp_file2='amp2'
 
-# import pickle
-# with open("options.bin", "rb") as f:
-#     options = pickle.load(f)
 
 ham_data1, ham1, prop1, trial1, wave_data1, sampler, observable1, options, _ \
     = lnocs.prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
@@ -50,14 +47,9 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()  # Process rank
 size = comm.Get_size()  # Total number of processes
 
-# ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
-#     = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
-# ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
-#     = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
-
-prop_data1_init, ham_data1_init = \
+prop_data1, ham_data1 = \
     corr_sample.init_prop(ham_data1, ham1, prop1, trial1, wave_data1, seed, MPI)
-prop_data2_init, ham_data2_init = \
+prop_data2, ham_data2 = \
     corr_sample.init_prop(ham_data2, ham2, prop2, trial2, wave_data2, seed, MPI)
 
 ### relaxation ###
@@ -67,18 +59,18 @@ if rank == 0:
     print(f'# relaxation using {nwalkers*size} walkers')
     print('# rlx_step \t system1_en \t system2_en \t en_diff \t orb1_en \t orb2_en \t orb_en_diff')
     print(f'   {0:2d}'
-          f'\t \t {prop_data1_init["e_estimate"]:.6f}' 
-          f'\t {prop_data2_init["e_estimate"]:.6f}'
-          f'\t {prop_data1_init["e_estimate"]-prop_data2_init["e_estimate"]:.6f}'
+          f'\t \t {prop_data1["e_estimate"]:.6f}' 
+          f'\t {prop_data2["e_estimate"]:.6f}'
+          f'\t {prop_data2["e_estimate"]-prop_data1["e_estimate"]:.6f}'
           f'\t {0:.6f}'
           f'\t {0:.6f}'
           f'\t {0:.6f}')
 comm.Barrier()
 
-(prop_data1_rlx,prop_data2_rlx),(loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
+(prop_data1,prop_data2),(loc_en1,loc_orb_en1,loc_wt1,loc_en2,loc_orb_en2,loc_wt2) \
     = corr_sample.lno_cs_steps_scan(rlx_steps,
-                                    prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
-                                    prop_data2_init,ham_data2_init,prop2,trial2,wave_data2,
+                                    prop_data1,ham_data1,prop1,trial1,wave_data1,
+                                    prop_data2,ham_data2,prop2,trial2,wave_data2,
                                     sampler)
 
 comm.Barrier()
@@ -148,18 +140,12 @@ comm.Barrier()
 ### post relaxation propagation ###
 comm.Barrier()
 if rank == 0:
-    print()
-    # print(f'# multiple independent post relaxation propagation with step size {dt}s')
-    # if options["corr_samp"]:
-    #     print('# correlated sampling')
-    # else: print('# uncorrelated sampling')
-
+    print('\n')
     print(f'# tot_walkers: {nwalkers*size}, propagation steps: {prop_steps}, number of independent runs: {n_runs}')
     print('# step'
           '\t   orb1_en \t error' 
           '\t \t orb2_en \t error'
           '\t \t orb_en_diff \t error')
-    
 comm.Barrier()
 
 # if options["corr_samp"]:
@@ -168,18 +154,10 @@ seeds = random.randint(random.PRNGKey(seed),
 
 _,loc_orb_en1,loc_wt1,_,loc_orb_en2,loc_wt2 \
     = corr_sample.lno_cs_seeds_scan(seeds,prop_steps,
-                                    prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
-                                    prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2,
+                                    prop_data1,ham_data1,prop1,trial1,wave_data1,
+                                    prop_data2,ham_data2,prop2,trial2,wave_data2,
                                     sampler,MPI)
-# else:
-#     seeds = random.randint(random.PRNGKey(options["seed"]),
-#                         shape=(n_runs,2), minval=0, maxval=10000*n_runs)
 
-#     loc_en1,loc_weight1,loc_en2,loc_weight2 \
-#         = corr_sample.ucs_scan_seeds(seeds,prop_steps,
-#                                      prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
-#                                      prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2, 
-#                                      MPI)
 
 comm.Barrier()
 if rank == 0:
@@ -237,7 +215,7 @@ if rank == 0:
             # en_diff[step,run] = en1[step,run] - en2[step,run]
             orb_en1[step,run] = sum(glb_orb_en1[step,run,:])/sum(glb_wt1[step,run,:])
             orb_en2[step,run] = sum(glb_orb_en2[step,run,:])/sum(glb_wt2[step,run,:])
-            orb_en_diff[step,run] = orb_en1[step,run] - orb_en2[step,run]
+            orb_en_diff[step,run] = orb_en2[step,run] - orb_en1[step,run]
 
         # en_mean1 = en1[step,:].mean()
         # en_mean2 = en2[step,:].mean()

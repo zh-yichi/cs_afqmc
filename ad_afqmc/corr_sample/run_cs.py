@@ -52,9 +52,9 @@ comm = MPI.COMM_WORLD
 rank = comm.Get_rank()  # Process rank
 size = comm.Get_size()  # Total number of processes
 
-ham_data1, ham1, prop1, trial1, wave_data1, sampler1, observable1, options, _ \
+ham_data1, ham1, prop1, trial1, wave_data1, sampler, observable1, options, _ \
     = mpi_jax._prep_afqmc(mo_file=mo_file1,amp_file=amp_file1,chol_file=chol_file1)
-ham_data2, ham2, prop2, trial2, wave_data2, sampler2, observable2, options, _ \
+ham_data2, ham2, prop2, trial2, wave_data2, sampler, observable2, options, _ \
     = mpi_jax._prep_afqmc(mo_file=mo_file2,amp_file=amp_file2,chol_file=chol_file2)
 
 prop_data1_init, ham_data1_init = \
@@ -80,7 +80,7 @@ comm.Barrier()
     = corr_sample.cs_steps_scan(rlx_steps,
                                 prop_data1_init,ham_data1_init,prop1,trial1,wave_data1,
                                 prop_data2_init,ham_data2_init,prop2,trial2,wave_data2, 
-                                )
+                                sampler)
 
 comm.Barrier()
 if rank == 0:
@@ -148,24 +148,24 @@ if rank == 0:
     
 comm.Barrier()
 
-if options["corr_samp"]:
-    seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(n_runs,), minval=0, maxval=1000000*n_runs)
+# if options["corr_samp"]:
+seeds = random.randint(random.PRNGKey(options["seed"]),
+                    shape=(n_runs,), minval=0, maxval=1000000*n_runs)
 
-    loc_en1,loc_weight1,loc_en2,loc_weight2 \
-    = corr_sample.scan_seeds(seeds,prop_steps,
-                             prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
-                             prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2, 
-                             MPI)
-else:
-    seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(n_runs,2), minval=0, maxval=10000*n_runs)
+loc_en1,loc_weight1,loc_en2,loc_weight2 \
+= corr_sample.scan_seeds(seeds,prop_steps,
+                            prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
+                            prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2, 
+                            sampler,MPI)
+# else:
+#     seeds = random.randint(random.PRNGKey(options["seed"]),
+#                         shape=(n_runs,2), minval=0, maxval=10000*n_runs)
 
-    loc_en1,loc_weight1,loc_en2,loc_weight2 \
-        = corr_sample.ucs_scan_seeds(seeds,prop_steps,
-                                     prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
-                                     prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2, 
-                                     MPI)
+#     loc_en1,loc_weight1,loc_en2,loc_weight2 \
+#         = corr_sample.ucs_scan_seeds(seeds,prop_steps,
+#                                      prop_data1_rlx,ham_data1_init,prop1,trial1,wave_data1,
+#                                      prop_data2_rlx,ham_data2_init,prop2,trial2,wave_data2, 
+#                                      MPI)
 
 comm.Barrier()
 if rank == 0:

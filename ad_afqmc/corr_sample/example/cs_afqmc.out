@@ -1,0 +1,153 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 12
+# nelec: (4, 4)
+#
+# dt: 0.01
+# n_exp_terms: 6
+# n_walkers: 30
+# n_runs: 50
+# rlx_steps: 0
+# prop_steps: 10
+# seed: 23
+# walker_type: rhf
+# trial: cisd
+# corr_samp: True
+# use_gpu: False
+# free_proj: False
+# n_prop_steps: 50
+# n_ene_blocks: 50
+# n_sr_blocks: 1
+# n_blocks: 50
+# n_eql: 1
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Number of MPI ranks: 5
+#
+# norb: 12
+# nelec: (4, 4)
+#
+# dt: 0.01
+# n_exp_terms: 6
+# n_walkers: 30
+# n_runs: 50
+# rlx_steps: 0
+# prop_steps: 10
+# seed: 23
+# walker_type: rhf
+# trial: cisd
+# corr_samp: True
+# use_gpu: False
+# free_proj: False
+# n_prop_steps: 50
+# n_ene_blocks: 50
+# n_sr_blocks: 1
+# n_blocks: 50
+# n_eql: 1
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 12
+# nelec: (4, 4)
+#
+# dt: 0.01
+# n_exp_terms: 6
+# n_walkers: 30
+# n_runs: 50
+# rlx_steps: 0
+# prop_steps: 10
+# seed: 23
+# walker_type: rhf
+# trial: cisd
+# corr_samp: True
+# use_gpu: False
+# free_proj: False
+# n_prop_steps: 50
+# n_ene_blocks: 50
+# n_sr_blocks: 1
+# n_blocks: 50
+# n_eql: 1
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Number of MPI ranks: 5
+#
+# norb: 12
+# nelec: (4, 4)
+#
+# dt: 0.01
+# n_exp_terms: 6
+# n_walkers: 30
+# n_runs: 50
+# rlx_steps: 0
+# prop_steps: 10
+# seed: 23
+# walker_type: rhf
+# trial: cisd
+# corr_samp: True
+# use_gpu: False
+# free_proj: False
+# n_prop_steps: 50
+# n_ene_blocks: 50
+# n_sr_blocks: 1
+# n_blocks: 50
+# n_eql: 1
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# initial energy: -15.963045
+# initial energy: -15.944902
+# relaxation from ccsd object using 150 walkers
+# rlx_step 	 system1_en 	 system2_en 	 en_diff
+    0	 	 -15.963045	 -15.944902	 -0.018143
+# relaxation time: 14.45
+
+# post relaxation propagation independent runs
+# correlated sampling
+# tot_walkers: 150
+# propagation steps: 10
+number of independent runs: 50
+# step	 system1_en 	 error	 	 system2_en 	 error	 	 energy_diff 	 error

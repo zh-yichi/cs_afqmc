@@ -1,7 +1,7 @@
 from pyscf import gto, scf
 
 a = 1 
-nH = 20
+nH = 10
 atoms1 = ""
 for i in range(nH):
     atoms1 += f"H {i*a:.5f} 0.00000 0.00000 \n"
@@ -26,7 +26,7 @@ mf2.kernel()
 
 e_mf1 = mf1.e_tot
 e_mf2 = mf2.e_tot
-print(f"mf energy difference: {e_mf1-e_mf2:.8f}")
+print(f"mf energy difference: {e_mf2-e_mf1:.8f}")
 
 options = {
     "dt": 0.005,
@@ -44,4 +44,4 @@ options = {
 }
 
 from ad_afqmc.corr_sample import lnocs
-lnocs.run_cs_frags(mf1,mf2,None,options=options,nproc=5,lno_thresh=1e-3)
+lnocs.run_cs_frags(mf1,mf2,None,options=options,nproc=5,lno_thresh=1e-4)

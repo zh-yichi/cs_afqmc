@@ -1457,8 +1457,9 @@ def get_mp2_frg_e(mf,frzfrag,eris,orbfragloc,can_orbfrag):
     return emp2
 
 
-def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,chol_cut=1e-6,nproc=None,
-                       run_frg_list=None,use_df_vecs=False,mp2=True,localize=True):
+def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
+                       lo_type='boys',chol_cut=1e-6,nproc=None,
+                       run_frg_list=None,use_df_vecs=False,mp2=True):
     '''
     mfcc: pyscf mean-field object
     thresh: lno thresh
@@ -1478,7 +1479,7 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,chol_cut=1e-6,nproc=
         full_cisd = False
         mf = mfcc
 
-    lo_type = 'pm'
+    # lo_type = 'pm'
     no_type = 'ie' # cim
     frag_lolist = '1o'
 
@@ -1497,7 +1498,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,chol_cut=1e-6,nproc=
     lno_cc.lo_type = lo_type
     lno_cc.no_type = no_type
     lno_cc.frag_lolist = frag_lolist
-    lno_cc.ccsd_t = True
     lno_cc.force_outcore_ao2mo = True
 
     frag_atmlist = lno_cc.frag_atmlist
@@ -1508,25 +1508,23 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,chol_cut=1e-6,nproc=
     # LO construction
     # orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
     orbactocc = lno_cc.split_mo()[1] # non-localized active occ
-    if localize:
-        orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
-        m = fdot(orbloc.T, s1e, orbactocc)
-        lospanerr = abs(fdot(m.T, m) - np.eye(m.shape[1])).max()
-        if lospanerr > 1e-10:
-            log.error('LOs do not fully span the occupied space! '
-                        'Max|<occ|LO><LO|occ>| = %e', lospanerr)
-            raise RuntimeError
-        # check 2: Span(LO) == Span(occ)
-        occspanerr = abs(fdot(m, m.T) - np.eye(m.shape[0])).max()
-        if occspanerr < 1e-10:
-            log.info('LOs span exactly the occupied space.')
-            if no_type not in ['ir','ie']:
-                log.error('"no_type" must be "ir" or "ie".')
-                raise ValueError
-        else:
-            log.info('LOs span occupied space plus some virtual space.')
+    # if localize:
+    orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
+    m = fdot(orbloc.T, s1e, orbactocc)
+    lospanerr = abs(fdot(m.T, m) - np.eye(m.shape[1])).max()
+    if lospanerr > 1e-10:
+        log.error('LOs do not fully span the occupied space! '
+                    'Max|<occ|LO><LO|occ>| = %e', lospanerr)
+        raise RuntimeError
+    # check 2: Span(LO) == Span(occ)
+    occspanerr = abs(fdot(m, m.T) - np.eye(m.shape[0])).max()
+    if occspanerr < 1e-10:
+        log.info('LOs span exactly the occupied space.')
+        if no_type not in ['ir','ie']:
+            log.error('"no_type" must be "ir" or "ie".')
+            raise ValueError
     else:
-        orbloc = orbactocc
+        log.info('LOs span occupied space plus some virtual space.')
 
     # LO assignment to fragments
 
@@ -1574,12 +1572,14 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,chol_cut=1e-6,nproc=
         orbfragloc = orbloc[:,fraglo] # the specific local active occ
         frag_target_nocc, frag_target_nvir = frag_nonvlist[ifrag]
         THRESH_INTERNAL = 1e-10
-        frzfrag, orbfrag, can_orbfrag = lno.make_fpno1(lno_cc, eris, orbfragloc, no_type,
-                                                    THRESH_INTERNAL, thresh_pno,
-                                                    frozen_mask=frozen_mask,
-                                                    frag_target_nocc=frag_target_nocc,
-                                                    frag_target_nvir=frag_target_nvir,
-                                                    canonicalize=False)
+        frzfrag, orbfrag, can_orbfrag \
+            = lno.make_fpno1(
+                lno_cc, eris, orbfragloc, no_type,
+                THRESH_INTERNAL, thresh_pno,
+                frozen_mask=frozen_mask,
+                frag_target_nocc=frag_target_nocc,
+                frag_target_nvir=frag_target_nvir,
+                canonicalize=False)
         
         mol = mf.mol
         nocc = mol.nelectron // 2 
