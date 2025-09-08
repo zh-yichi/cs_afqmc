@@ -1,0 +1,2 @@
+# thresh(occ,vir)   mp2_corr  ccsd_corr  afqmc/hf_corr   err   afqmc/ccsd_corr   err   nelec_avg   nelec_max    norb_avg   norb_max    run_time
+ (1.00e-03,1.00e-04) 	 0.000000 	 0.000000 	 -0.132305 	 0.004051 	 -0.131559 	 0.000153 	 -0.10315675  4.67 	 6 	 12.67  	 14 	 129.90

@@ -71,13 +71,13 @@ def _frg_hf_cr(rot_h1, rot_chol, walker, trial, wave_data):
     hf_orb_en = eneo2Jt - eneo2ext
     olp_ratio = _calc_olp_ratio_restricted(walker,wave_data)
     hf_orb_cr = jnp.real(olp_ratio*hf_orb_en)
-    return hf_orb_cr, jnp.abs(olp_ratio)
+    return hf_orb_cr, jnp.real(hf_orb_en)
 
 @partial(jit, static_argnums=(3,))
 def frg_hf_cr(walkers,ham_data,wave_data,trial):
-    hf_orb_cr, olp_ratio = vmap(_frg_hf_cr, in_axes=(None, None, 0, None, None))(
+    hf_orb_cr, hf_orb_en = vmap(_frg_hf_cr, in_axes=(None, None, 0, None, None))(
         ham_data['rot_h1'], ham_data['rot_chol'], walkers, trial, wave_data)
-    return hf_orb_cr, olp_ratio
+    return hf_orb_cr, hf_orb_en
 
 @jax.jit
 def _frg_modified_ccsd_olp_restricted(walker: jax.Array, wave_data: dict) -> complex:
@@ -1198,10 +1198,10 @@ def block_orb(prop_data: dict,
         #h0_e0 = ham_data["h0"]-ham_data["E0"]
         #elec_orb_cr = jnp.real(frg_elec_cr(prop_data["walkers"],trial,wave_data,h0_e0))
 
-        hf_orb_cr,_ = frg_hf_cr(prop_data["walkers"],ham_data,wave_data,trial)
-        ccsd_orb_cr \
-            = frg_ccsd_cr(prop_data["walkers"], ham_data, 
-                                        wave_data, trial,1e-5)
+        hf_orb_cr, hf_orb_en \
+            = frg_hf_cr(prop_data["walkers"],ham_data,wave_data,trial)
+        cc_orb_cr \
+            = frg_ccsd_cr(prop_data["walkers"], ham_data, wave_data, trial,1e-5)
         energy_samples = jnp.real(
             trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
         )
@@ -1212,78 +1212,98 @@ def block_orb(prop_data: dict,
         )
 
         blk_wt = jnp.sum(prop_data["weights"])
-        blk_energy = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
+        blk_en = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
+        blk_hf_orb_en = jnp.sum(hf_orb_en * prop_data["weights"]) / blk_wt
         blk_hf_orb_cr = jnp.sum(hf_orb_cr * prop_data["weights"]) / blk_wt
-        # blk_olp_ratio = jnp.sum(olp_ratio * prop_data["weights"]) / blk_wt
-        # blk_ccsd_orb_cr0 = jnp.sum(ccsd_orb_cr0 * prop_data["weights"]) / blk_wt
-        # blk_ccsd_orb_cr1 = jnp.sum(ccsd_orb_cr1 * prop_data["weights"]) / blk_wt
-        # blk_ccsd_orb_cr2 = jnp.sum(ccsd_orb_cr2 * prop_data["weights"]) / blk_wt
-        blk_ccsd_orb_cr = jnp.sum(ccsd_orb_cr * prop_data["weights"]) / blk_wt
+        blk_cc_orb_cr = jnp.sum(cc_orb_cr * prop_data["weights"]) / blk_wt
+        blk_cc_orb_en = blk_hf_orb_cr+blk_cc_orb_cr
+        
         prop_data["pop_control_ene_shift"] = (
-            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_energy
+            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_en
         )
-        blk_orb_cr = blk_hf_orb_cr+blk_ccsd_orb_cr
 
-        return prop_data,(blk_energy,blk_wt,blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr)
+        return prop_data,(blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en)
+
+# @partial(jit, static_argnums=(2,3,5))
+# def block_orb2(prop_data: dict,
+#               ham_data: dict,
+#               prop: propagation.propagator,
+#               trial: wave_function,
+#               wave_data: dict,
+#               sampler: sampling.sampler):
+#         """Block scan function. Propagation and orbital_i energy calculation."""
+#         prop_data["key"], subkey = random.split(prop_data["key"])
+#         fields = random.normal(
+#             subkey,
+#             shape=(
+#                 sampler.n_prop_steps,
+#                 prop.n_walkers,
+#                 ham_data["chol"].shape[0],
+#             ),
+#         )
+#         # propgate n_prop_steps x dt
+#         _step_scan_wrapper = lambda x, y: sampler._step_scan(
+#             x, y, ham_data, prop, trial, wave_data
+#         )
+#         prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+#         prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+#             prop_data["weights"]
+#         )
+#         prop_data = prop.orthonormalize_walkers(prop_data)
+#         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+#         hf_orb_cr,olp_ratio = frg_hf_cr2(prop_data["walkers"],ham_data,wave_data,trial)
+#         ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,ccsd_orb_cr \
+#             = frg_ccsd_cr2(prop_data["walkers"], ham_data, 
+#                                         wave_data, trial,1e-5)
+#         energy_samples = jnp.real(
+#             trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+#         )
+#         energy_samples = jnp.where(
+#             jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+#             prop_data["e_estimate"],
+#             energy_samples,
+#         )
+
+#         blk_wt = jnp.sum(prop_data["weights"])
+#         blk_energy = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
+#         blk_hf_orb_cr = jnp.sum(hf_orb_cr * prop_data["weights"]) / blk_wt
+#         blk_olp_ratio = jnp.sum(olp_ratio * prop_data["weights"]) / blk_wt
+#         blk_ccsd_orb_cr0 = jnp.sum(ccsd_orb_cr0 * prop_data["weights"]) / blk_wt
+#         blk_ccsd_orb_cr1 = jnp.sum(ccsd_orb_cr1 * prop_data["weights"]) / blk_wt
+#         blk_ccsd_orb_cr2 = jnp.sum(ccsd_orb_cr2 * prop_data["weights"]) / blk_wt
+#         blk_ccsd_orb_cr = jnp.sum(ccsd_orb_cr * prop_data["weights"]) / blk_wt
+#         prop_data["pop_control_ene_shift"] = (
+#             0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_energy
+#         )
+#         blk_orb_cr = blk_hf_orb_cr+blk_ccsd_orb_cr
+
+#         return prop_data,(blk_energy,blk_wt,
+#                           blk_hf_orb_cr,blk_olp_ratio,
+#                           blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+#                           blk_ccsd_orb_cr,blk_orb_cr)
 
 @partial(jit, static_argnums=(2,3,5))
-def block_orb2(prop_data: dict,
-              ham_data: dict,
-              prop: propagation.propagator,
-              trial: wave_function,
-              wave_data: dict,
-              sampler: sampling.sampler):
-        """Block scan function. Propagation and orbital_i energy calculation."""
-        prop_data["key"], subkey = random.split(prop_data["key"])
-        fields = random.normal(
-            subkey,
-            shape=(
-                sampler.n_prop_steps,
-                prop.n_walkers,
-                ham_data["chol"].shape[0],
-            ),
-        )
-        # propgate n_prop_steps x dt
-        _step_scan_wrapper = lambda x, y: sampler._step_scan(
-            x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-        prop_data = prop.orthonormalize_walkers(prop_data)
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+def _sr_block_scan_orb(
+    prop_data: dict,
+    ham_data: dict,
+    prop: propagation.propagator,
+    trial: wave_function,
+    wave_data: dict,
+    sampler: sampling.sampler,
+) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+    def _block_scan_wrapper(x,_):
+        return block_orb(x,ham_data,prop,trial,wave_data,sampler)
+    
+    # propagate n_ene_blocks then do sr
+    prop_data, (blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en) \
+        = lax.scan(
+        _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
+    )
+    prop_data = prop.stochastic_reconfiguration_local(prop_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-        hf_orb_cr,olp_ratio = frg_hf_cr2(prop_data["walkers"],ham_data,wave_data,trial)
-        ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,ccsd_orb_cr \
-            = frg_ccsd_cr2(prop_data["walkers"], ham_data, 
-                                        wave_data, trial,1e-5)
-        energy_samples = jnp.real(
-            trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
-        )
-        energy_samples = jnp.where(
-            jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-            prop_data["e_estimate"],
-            energy_samples,
-        )
-
-        blk_wt = jnp.sum(prop_data["weights"])
-        blk_energy = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
-        blk_hf_orb_cr = jnp.sum(hf_orb_cr * prop_data["weights"]) / blk_wt
-        blk_olp_ratio = jnp.sum(olp_ratio * prop_data["weights"]) / blk_wt
-        blk_ccsd_orb_cr0 = jnp.sum(ccsd_orb_cr0 * prop_data["weights"]) / blk_wt
-        blk_ccsd_orb_cr1 = jnp.sum(ccsd_orb_cr1 * prop_data["weights"]) / blk_wt
-        blk_ccsd_orb_cr2 = jnp.sum(ccsd_orb_cr2 * prop_data["weights"]) / blk_wt
-        blk_ccsd_orb_cr = jnp.sum(ccsd_orb_cr * prop_data["weights"]) / blk_wt
-        prop_data["pop_control_ene_shift"] = (
-            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_energy
-        )
-        blk_orb_cr = blk_hf_orb_cr+blk_ccsd_orb_cr
-
-        return prop_data,(blk_energy,blk_wt,
-                          blk_hf_orb_cr,blk_olp_ratio,
-                          blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
-                          blk_ccsd_orb_cr,blk_orb_cr)
+    return prop_data, (blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en)
 
 @partial(jit, static_argnums=(1, 3, 5))
 def propagate_phaseless_orb(
@@ -1300,8 +1320,7 @@ def propagate_phaseless_orb(
     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    prop_data,(blk_energy,blk_wt,blk_hf_orb_cr,
-               blk_ccsd_orb_cr,blk_orb_cr) \
+    prop_data,(blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en) \
         = lax.scan(
         _sr_block_scan_wrapper, prop_data, xs=None, length=sampler.n_sr_blocks
     )
@@ -1309,107 +1328,78 @@ def propagate_phaseless_orb(
         sampler.n_sr_blocks * sampler.n_ene_blocks * prop.n_walkers
     )
     wt = jnp.sum(blk_wt)
-    energy = jnp.sum(blk_energy * blk_wt) / wt
-    hf_orb_cr = jnp.sum(blk_hf_orb_cr * blk_wt) / wt
-    # olp_ratio = jnp.sum(blk_olp_ratio * blk_wt) / wt
-    # ccsd_orb_cr0 = jnp.sum(blk_ccsd_orb_cr0 * blk_wt) / wt
-    # ccsd_orb_cr1 = jnp.sum(blk_ccsd_orb_cr1 * blk_wt) / wt
-    # ccsd_orb_cr2 = jnp.sum(blk_ccsd_orb_cr2 * blk_wt) / wt
-    ccsd_orb_cr = jnp.sum(blk_ccsd_orb_cr * blk_wt) / wt
-    orb_cr = jnp.sum(blk_orb_cr * blk_wt) / wt
+    en = jnp.sum(blk_en * blk_wt) / wt
+    hf_orb_en = jnp.sum(blk_hf_orb_en * blk_wt) / wt
+    cc_orb_en = jnp.sum(blk_cc_orb_en * blk_wt) / wt
 
-    return prop_data, (energy,wt,hf_orb_cr,ccsd_orb_cr,orb_cr)
+    return prop_data, (en,wt,hf_orb_en,cc_orb_en)
 
-@partial(jit, static_argnums=(1, 3, 5))
-def propagate_phaseless_orb2(
-    ham_data: dict,
-    prop: propagation.propagator,
-    prop_data: dict,
-    trial: wave_function,
-    wave_data: dict,
-    sampler: sampling.sampler,
-) -> Tuple[jax.Array, dict]:
-    def _sr_block_scan_wrapper(x,_):
-        return _sr_block_scan_orb2(x, ham_data, prop, trial, wave_data, sampler)
+# @partial(jit, static_argnums=(1, 3, 5))
+# def propagate_phaseless_orb2(
+#     ham_data: dict,
+#     prop: propagation.propagator,
+#     prop_data: dict,
+#     trial: wave_function,
+#     wave_data: dict,
+#     sampler: sampling.sampler,
+# ) -> Tuple[jax.Array, dict]:
+#     def _sr_block_scan_wrapper(x,_):
+#         return _sr_block_scan_orb2(x, ham_data, prop, trial, wave_data, sampler)
 
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    prop_data["n_killed_walkers"] = 0
-    prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    prop_data,(blk_energy,blk_wt,
-               blk_hf_orb_cr,blk_olp_ratio,
-               blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
-               blk_ccsd_orb_cr,blk_orb_cr) \
-        = lax.scan(
-        _sr_block_scan_wrapper, prop_data, xs=None, length=sampler.n_sr_blocks
-    )
-    prop_data["n_killed_walkers"] /= (
-        sampler.n_sr_blocks * sampler.n_ene_blocks * prop.n_walkers
-    )
-    wt = jnp.sum(blk_wt)
-    energy = jnp.sum(blk_energy * blk_wt) / wt
-    hf_orb_cr = jnp.sum(blk_hf_orb_cr * blk_wt) / wt
-    olp_ratio = jnp.sum(blk_olp_ratio * blk_wt) / wt
-    ccsd_orb_cr0 = jnp.sum(blk_ccsd_orb_cr0 * blk_wt) / wt
-    ccsd_orb_cr1 = jnp.sum(blk_ccsd_orb_cr1 * blk_wt) / wt
-    ccsd_orb_cr2 = jnp.sum(blk_ccsd_orb_cr2 * blk_wt) / wt
-    ccsd_orb_cr = jnp.sum(blk_ccsd_orb_cr * blk_wt) / wt
-    orb_cr = jnp.sum(blk_orb_cr * blk_wt) / wt
+#     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+#     prop_data["n_killed_walkers"] = 0
+#     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+#     prop_data,(blk_energy,blk_wt,
+#                blk_hf_orb_cr,blk_olp_ratio,
+#                blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+#                blk_ccsd_orb_cr,blk_orb_cr) \
+#         = lax.scan(
+#         _sr_block_scan_wrapper, prop_data, xs=None, length=sampler.n_sr_blocks
+#     )
+#     prop_data["n_killed_walkers"] /= (
+#         sampler.n_sr_blocks * sampler.n_ene_blocks * prop.n_walkers
+#     )
+#     wt = jnp.sum(blk_wt)
+#     energy = jnp.sum(blk_energy * blk_wt) / wt
+#     hf_orb_cr = jnp.sum(blk_hf_orb_cr * blk_wt) / wt
+#     olp_ratio = jnp.sum(blk_olp_ratio * blk_wt) / wt
+#     ccsd_orb_cr0 = jnp.sum(blk_ccsd_orb_cr0 * blk_wt) / wt
+#     ccsd_orb_cr1 = jnp.sum(blk_ccsd_orb_cr1 * blk_wt) / wt
+#     ccsd_orb_cr2 = jnp.sum(blk_ccsd_orb_cr2 * blk_wt) / wt
+#     ccsd_orb_cr = jnp.sum(blk_ccsd_orb_cr * blk_wt) / wt
+#     orb_cr = jnp.sum(blk_orb_cr * blk_wt) / wt
 
-    return prop_data, (energy,wt,hf_orb_cr,olp_ratio,
-                       ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,
-                       ccsd_orb_cr,orb_cr)
+#     return prop_data, (energy,wt,hf_orb_cr,olp_ratio,
+#                        ccsd_orb_cr0,ccsd_orb_cr1,ccsd_orb_cr2,
+#                        ccsd_orb_cr,orb_cr)
 
-@partial(jit, static_argnums=(2,3,5))
-def _sr_block_scan_orb(
-    prop_data: dict,
-    ham_data: dict,
-    prop: propagation.propagator,
-    trial: wave_function,
-    wave_data: dict,
-    sampler: sampling.sampler,
-) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-    def _block_scan_wrapper(x,_):
-        return block_orb(x,ham_data,prop,trial,wave_data,sampler)
+# @partial(jit, static_argnums=(2,3,5))
+# def _sr_block_scan_orb2(
+#     prop_data: dict,
+#     ham_data: dict,
+#     prop: propagation.propagator,
+#     trial: wave_function,
+#     wave_data: dict,
+#     sampler: sampling.sampler,
+# ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+#     def _block_scan_wrapper(x,_):
+#         return block_orb2(x,ham_data,prop,trial,wave_data,sampler)
     
-    # propagate n_ene_blocks then do sr
-    prop_data, (blk_energy,blk_wt,blk_hf_orb_cr,
-                blk_ccsd_orb_cr,blk_orb_cr) \
-        = lax.scan(
-        _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
-    )
-    prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+#     # propagate n_ene_blocks then do sr
+#     prop_data, (blk_energy,blk_wt,
+#                 blk_hf_orb_cr,blk_olp_ratio,
+#                 blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+#                 blk_ccsd_orb_cr,blk_orb_cr) \
+#         = lax.scan(
+#         _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
+#     )
+#     prop_data = prop.stochastic_reconfiguration_local(prop_data)
+#     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-    return prop_data, (blk_energy,blk_wt,blk_hf_orb_cr,
-                       blk_ccsd_orb_cr,blk_orb_cr)
-
-@partial(jit, static_argnums=(2,3,5))
-def _sr_block_scan_orb2(
-    prop_data: dict,
-    ham_data: dict,
-    prop: propagation.propagator,
-    trial: wave_function,
-    wave_data: dict,
-    sampler: sampling.sampler,
-) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-    def _block_scan_wrapper(x,_):
-        return block_orb2(x,ham_data,prop,trial,wave_data,sampler)
-    
-    # propagate n_ene_blocks then do sr
-    prop_data, (blk_energy,blk_wt,
-                blk_hf_orb_cr,blk_olp_ratio,
-                blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
-                blk_ccsd_orb_cr,blk_orb_cr) \
-        = lax.scan(
-        _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
-    )
-    prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-
-    return prop_data, (blk_energy,blk_wt,
-                       blk_hf_orb_cr,blk_olp_ratio,
-                       blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
-                       blk_ccsd_orb_cr,blk_orb_cr)
+#     return prop_data, (blk_energy,blk_wt,
+#                        blk_hf_orb_cr,blk_olp_ratio,
+#                        blk_ccsd_orb_cr0,blk_ccsd_orb_cr1,blk_ccsd_orb_cr2,
+#                        blk_ccsd_orb_cr,blk_orb_cr)
 
 import sys, os
 from ad_afqmc.lno.cc import LNOCCSD
@@ -1745,30 +1735,24 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         
         #MP2 correction 
         if mp2:
-            log.info('# running fragment MP2')
+            print('# running fragment MP2')
             can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:,actocc])
 
             from pyscf.cc import CCSD
             mcc = CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
-            
             mcc.ao2mo = ccsd.ccsd_ao2mo.__get__(mcc, mcc.__class__)
             mcc._s1e = s1e
-            # if eris is not None:
-            # mcc._h1e = mf.h1e
-            # mcc._vhf = mf.vhf
             imp_eris = mcc.ao2mo()
-
             if isinstance(imp_eris.ovov, np.ndarray):
                 ovov = imp_eris.ovov
             else:
                 ovov = imp_eris.ovov[()]
             oovv = ovov.reshape(nactocc,nactvir,nactocc,nactvir).transpose(0,2,1,3)
             ovov = None
-            #
-            # MP2 fragment energy
+
             _, t2 = mcc.init_amps(eris=imp_eris)[1:]
-            elcorr_pt2 = get_fragment_energy(oovv, t2, can_prjlo)
-            print(f'# lno-mp2 fragment energy: {elcorr_pt2:.6f}')
+            ecorr_pt2 = get_fragment_energy(oovv, t2, can_prjlo)
+            print(f'# lno-mp2 fragment energy: {ecorr_pt2:.6f}')
 
         # Run AFQMC
         use_gpu = options["use_gpu"]
@@ -1796,52 +1780,51 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
 
         with open(f'frg_{ifrag+1}.out', 'a') as out_file:
             if mp2:
-                print(f"lno-mp2 orb_corr: {elcorr_pt2:.6f}",file=out_file)
+                print(f"lno-mp2 orb_corr: {ecorr_pt2:.6f}",file=out_file)
             if not full_cisd:
                 print(f"lno-ccsd orb_corr: {ecorr_ccsd:.6f}",file=out_file)
             print(f"number of active electrons: {nelec_act}",file=out_file)
             print(f"number of active orbitals: {norb_act}",file=out_file)
 
+    from pyscf import mp
+    mmp = mp.MP2(mf, frozen=frozen)
+    e_mp2 = mmp.kernel()[0]
+
+    frg2result(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2)
+
+    return None
+
+
+#### results analysis ####
+def frg2result(lno_thresh,nfrag,e_mf,e_mp2):
     with open('results.out', 'w') as out_file:
-        print('# frag' \
-              '  hf_orb_cr  err  ccsd_orb_cr  err' \
-              '  afqmc_orb_corr  err' \
-              '  mp2_orb_corr  ccsd_orb_corr' \
-              '  n_orb  n_elec  time',file=out_file)
+        print('# frag  mp2_orb_corr  ccsd_orb_corr' \
+              '  afqmc_hf_orb_en  err  afqmc_cc_orb_en  err' \
+              '  norb  nelec  time',file=out_file)
         for ifrag in range(nfrag):
             with open(f"frg_{ifrag+1}.out","r") as read_file:
                 for line in read_file:
-                    if "lno-ccsd-afqmc hf_orb_cr" in line:
-                        hf_orb_cr = line.split()[2]
-                        hf_orb_cr_err = line.split()[4]
-                    if "lno-ccsd-afqmc ccsd_orb_cr" in line:
-                        ccsd_orb_cr = line.split()[2]
-                        ccsd_orb_cr_err = line.split()[4]
-                    if "lno-ccsd-afqmc tot_orb_corr" in line:
-                        tot_orb_cr = line.split()[2]
-                        tot_orb_cr_err = line.split()[4]
-                    if mp2:
-                        if "lno-mp2 orb_corr" in line:
-                            e_mp2_orb_cr = line.split()[2]
-                    else:
-                        e_mp2_orb_cr = '  None  '
-                    if not full_cisd:
-                        if "lno-ccsd orb_corr" in line:
-                            e_ccsd_orb_corr = line.split()[2]
-                    else:
-                        e_ccsd_orb_corr = '  None  '
+                    if "lno-mp2 orb_corr" in line:
+                        e_mp2_orb_en = line.split()[2]
+                    if "lno-ccsd orb_corr" in line:
+                        e_ccsd_orb_en = line.split()[2]
+                    if "lno-ccsd-afqmc hf_orb_en" in line:
+                        hf_orb_en = line.split()[2]
+                        hf_orb_en_err = line.split()[4]
+                    if "lno-ccsd-afqmc cc_orb_en" in line:
+                        cc_orb_en = line.split()[2]
+                        cc_orb_en_err = line.split()[4]
                     if "number of active orbitals" in line:
-                        nactorb = line.split()[4]
+                        norb = line.split()[4]
                     if "number of active electrons" in line:
-                        nactelec = line.split()[4]
+                        nelec = line.split()[4]
                     if "total run time" in line:
                         tot_time = line.split()[3]
                 print(f'{ifrag+1:3d}  '
-                      f'{hf_orb_cr}  {hf_orb_cr_err}  '
-                      f'{ccsd_orb_cr}  {ccsd_orb_cr_err}  '
-                      f'{tot_orb_cr}  {tot_orb_cr_err}  '
-                      f'{e_mp2_orb_cr}  {e_ccsd_orb_corr}  '
-                      f'{nactorb}  {nactelec}  {tot_time}', file=out_file)
+                      f'{e_mp2_orb_en}  {e_ccsd_orb_en}  '
+                      f'{hf_orb_en}  {hf_orb_en_err}  '
+                      f'{cc_orb_en}  {cc_orb_en_err}  '
+                      f'{norb}  {nelec}  {tot_time}', file=out_file)
 
     data = []
     with open('results.out', 'r') as read_file:
@@ -1850,76 +1833,60 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
                 data = np.hstack((data,line.split()))
                 data[data == 'None'] = '0.000000' 
 
-    data = np.array(data.reshape(nfrag,12))
-    hf_orb_cr = np.array(data[:,1],dtype='float32')
-    hf_orb_cr_err = np.array(data[:,2],dtype='float32')
-    ccsd_orb_cr = np.array(data[:,3],dtype='float32')
-    ccsd_orb_cr_err = np.array(data[:,4],dtype='float32')
-    tot_orb_cr = np.array(data[:,5],dtype='float32')
-    tot_orb_cr_err = np.array(data[:,6],dtype='float32')
-    e_mp2_orb_cr = np.array(data[:,7],dtype='float32')
-    e_ccsd_orb_cr = np.array(data[:,8],dtype='float32')
-    n_orb = np.array(data[:,9],dtype='int32')
-    n_elec = np.array(data[:,10],dtype='int32')
-    tot_time = np.array(data[:,11],dtype='float32')
+    data = np.array(data.reshape(nfrag,10))
+    e_mp2_orb_en = np.array(data[:,1],dtype='float32')
+    e_ccsd_orb_en = np.array(data[:,2],dtype='float32')
+    hf_orb_en = np.array(data[:,3],dtype='float32')
+    hf_orb_en_err = np.array(data[:,4],dtype='float32')
+    cc_orb_en = np.array(data[:,5],dtype='float32')
+    cc_orb_en_err = np.array(data[:,6],dtype='float32')
+    norb = np.array(data[:,7],dtype='int32')
+    nelec = np.array(data[:,8],dtype='int32')
+    tot_time = np.array(data[:,9],dtype='float32')
 
-    hf_cr = sum(hf_orb_cr)
-    hf_cr_err = np.sqrt(sum(hf_orb_cr_err**2))
-    ccsd_cr = sum(ccsd_orb_cr)
-    ccsd_cr_err = np.sqrt(sum(ccsd_orb_cr_err**2))
-    tot_cr = sum(tot_orb_cr)
-    tot_cr_err = np.sqrt(sum(tot_orb_cr_err**2))
-    e_mp2_corr = sum(e_mp2_orb_cr)
-    e_ccsd_corr = sum(e_ccsd_orb_cr)
-    n_orb_ave = np.mean(n_orb)
-    n_elec_ave = np.mean(n_elec)
-    max_norb = max(n_orb)
-    max_nelec = max(n_elec)
+    e_mp2_corr = sum(e_mp2_orb_en)
+    mp2_cr = e_mp2 - e_mp2_corr
+    e_ccsd_corr = sum(e_ccsd_orb_en)
+    afqmc_hf_corr = sum(hf_orb_en)
+    afqmc_hf_corr_err = np.sqrt(sum(hf_orb_en_err**2))
+    afqmc_cc_corr = sum(cc_orb_en)
+    afqmc_cc_corr_err = np.sqrt(sum(cc_orb_en_err**2))
+    norb_avg = np.mean(norb)
+    nelec_avg = np.mean(nelec)
+    norb_max = max(norb)
+    nelec_max = max(nelec)
     tot_time = sum(tot_time)
 
-    if mp2:
-        from pyscf import mp
-        mmp = mp.MP2(mf, frozen=frozen)
-        e_mp2 = mmp.kernel()[0]
-        mp2_corrected_tot_cr = tot_cr + e_mp2 - e_mp2_corr
-        mp2_corrected_tot_cr = f'{mp2_corrected_tot_cr:.6f}'
-
-    hf_cr = f'{hf_cr:.6f}'
-    hf_cr_err = f'{hf_cr_err:.6f}'
-    ccsd_cr = f'{ccsd_cr:.6f}'
-    ccsd_cr_err = f'{ccsd_cr_err:.6f}'
-    tot_cr = f'{tot_cr:.6f}'
-    tot_cr_err = f'{tot_cr_err:.6f}'
-    if mp2:
-        e_mp2_corr = f'{e_mp2_corr:.6f}'
-    else:
-        e_mp2_corr = '  None  '
+    e_mp2_corr = f'{e_mp2_corr:.6f}'
     e_ccsd_corr = f'{e_ccsd_corr:.6f}'
+    afqmc_hf_corr = f'{afqmc_hf_corr:.6f}'
+    afqmc_hf_corr_err = f'{afqmc_hf_corr_err:.6f}'
+    afqmc_cc_corr = f'{afqmc_cc_corr:.6f}'
+    afqmc_cc_corr_err = f'{afqmc_cc_corr_err:.6f}'
 
     with open('results.out', 'a') as out_file:
         out_file.write(f'# final results \n')
-        out_file.write(f'# mean-field energy: {mf.e_tot:.10f}\n')
-        out_file.write(f'# hf_cr: {hf_cr} +/- {hf_cr_err}\n')
-        out_file.write(f'# ccsd_cr: {ccsd_cr} +/- {ccsd_cr_err}\n')
-        out_file.write(f'# lno_afqmc_corr: {tot_cr} +/- {tot_cr_err}\n')
+        out_file.write(f'# mean-field energy: {e_mf:.8f}\n')
+        out_file.write(f'# lno-thresh {lno_thresh}\n')
         out_file.write(f'# e_mp2_corr: {e_mp2_corr}\n')
         out_file.write(f'# e_ccsd_corr: {e_ccsd_corr}\n')
-        if mp2:
-            out_file.write(f'# mp2_corrected lno_afqmc_corr: {mp2_corrected_tot_cr}\n')
-        out_file.write(f'# lno-thresh {thresh_pno}\n')
-        out_file.write(f'# number of orbitals: average {n_orb_ave:.2f} maxium {max_norb}\n')
-        out_file.write(f'# number of electrons: average {n_elec_ave:.2f} maxium {max_nelec}\n')
+        out_file.write(f'# afqmc/hf_corr: {afqmc_hf_corr} +/- {afqmc_hf_corr_err}\n')
+        out_file.write(f'# afqmc/cc_corr: {afqmc_cc_corr} +/- {afqmc_cc_corr_err}\n')
+        out_file.write(f'# mp2_correction: {mp2_cr:.8f}\n')
+        out_file.write(f'# number of orbitals: average {norb_avg:.2f} maxium {norb_max}\n')
+        out_file.write(f'# number of electrons: average {nelec_avg:.2f} maxium {nelec_max}\n')
         out_file.write(f'# total run time: {tot_time:.2f}\n')
+    
     return None
 
 def sum_results(n_results):
     with open('sum_results.out', 'w') as out_file:
         print("# thresh(occ,vir) "
-              "  afqmc_corr   err "
-              "  mp2_afqmc_corr   ccsd_corr "
-              "  hf_cr    err "
-              "  ccsd_cr   err "
-              "  ave_norb   max_norb   ave_nelec   max_nelec"
+              "  mp2_corr  ccsd_corr"
+              "  afqmc/hf_corr   err "
+              "  afqmc/ccsd_corr   err "
+              "  nelec_avg   nelec_max  "
+              "  norb_avg   norb_max  "
               "  run_time",file=out_file)
         for i in range(n_results):
             with open(f"results.out{i+1}","r") as read_file:
@@ -1929,52 +1896,32 @@ def sum_results(n_results):
                         thresh_vir = line.split()[-1]
                         thresh_occ = float(thresh_occ.strip('()[],'))
                         thresh_vir = float(thresh_vir.strip('()[],'))
-                    if "lno_afqmc_corr:" in line:
-                        if "mp2" in line:
-                            lno_afqmc_mp2_corr = line.split()[-1]
-                        else:
-                            lno_afqmc_corr = line.split()[-3]
-                            lno_afqmc_corr_err = line.split()[-1]
+                    if "e_mp2_corr:" in line:
+                        mp2_corr = line.split()[-1]
                     if "e_ccsd_corr:" in line:
-                        lno_ccsd_corr = line.split()[-1]
-                    if "hf_cr:" in line:
-                        hf_cr = line.split()[-3]
-                        hf_cr_err = line.split()[-1]
-                    # if "ccsd_cr0:" in line:
-                    #     ccsd_cr0 = line.split()[-3]
-                    #     ccsd_cr0_err = line.split()[-1]
-                    # if "ccsd_cr1:" in line:
-                    #     ccsd_cr1 = line.split()[-3]
-                    #     ccsd_cr1_err = line.split()[-1]
-                    # if "ccsd_cr2:" in line:
-                    #     ccsd_cr2 = line.split()[-3]
-                    #     ccsd_cr2_err = line.split()[-1]
-                    if "ccsd_cr:" in line:
-                        ccsd_cr = line.split()[-3]
-                        ccsd_cr_err = line.split()[-1]
-                    # if "olp_ratio:" in line:
-                    #     olp_ratio = line.split()[-3]
-                    #     olp_ratio_err = line.split()[-1]
-                    if "orbitals:" in line:
-                        ave_norb = line.split()[-3]
-                        max_norb = line.split()[-1]
+                        ccsd_corr = line.split()[-1]
+                    if "afqmc/hf_corr:" in line:
+                        afqmc_hf_corr = line.split()[-3]
+                        afqmc_hf_corr_err = line.split()[-1]
+                    if "afqmc/cc_corr:" in line:
+                        afqmc_cc_corr = line.split()[-3]
+                        afqmc_cc_corr_err = line.split()[-1]
+                    if "mp2_correction:" in line:
+                        mp2_cr = line.split()[-1]
                     if "electrons:" in line:
-                        ave_nelec = line.split()[-3]
-                        max_nelec = line.split()[-1]
+                        nelec_avg = line.split()[-3]
+                        nelec_max = line.split()[-1]
+                    if "orbitals:" in line:
+                        norb_avg = line.split()[-3]
+                        norb_max = line.split()[-1]
                     if "time:" in line:
                         run_time = line.split()[-1]
             print(f" ({thresh_occ:.2e},{thresh_vir:.2e}) \t"
-                  f" {lno_afqmc_corr} \t {lno_afqmc_corr_err} \t"
-                  f" {lno_afqmc_mp2_corr} \t {lno_ccsd_corr} \t"
-                  f" {hf_cr} \t {hf_cr_err} \t"
-                #   f" {ccsd_cr0} \t {ccsd_cr0_err} \t"
-                #   f" {ccsd_cr1} \t {ccsd_cr1_err} \t"
-                #   f" {ccsd_cr2} \t {ccsd_cr2_err} \t"
-                  f" {ccsd_cr} \t {ccsd_cr_err} \t"
-                #   f" {olp_ratio} \t {olp_ratio_err} \t"
-                  f" {ave_norb}  \t {max_norb} \t"
-                  f" {ave_nelec} \t {max_nelec} \t"
-                  f" {run_time}",file=out_file)
+                  f" {mp2_corr} \t {ccsd_corr} \t"
+                  f" {afqmc_hf_corr} \t {afqmc_hf_corr_err} \t"
+                  f" {afqmc_cc_corr} \t {afqmc_cc_corr_err} \t"
+                  f" {mp2_cr}  {nelec_avg} \t {nelec_max} \t"
+                  f" {norb_avg}  \t {norb_max} \t {run_time}",file=out_file)
     return None
 
 def lno_data(data):

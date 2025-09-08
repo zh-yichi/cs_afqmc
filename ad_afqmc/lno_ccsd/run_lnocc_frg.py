@@ -48,62 +48,53 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 init_time = time.time()
 comm.Barrier()
 if rank == 0:
-    hf_orb_cr_init,_ = lno_ccsd._frg_hf_cr(
+    hf_orb_cr,hf_orb_en = lno_ccsd._frg_hf_cr(
         ham_data['rot_h1'], ham_data['rot_chol'],prop_data["walkers"][0],trial,wave_data)
-    ccsd_orb_cr_init = lno_ccsd._frg_ccsd_cr(
+    cc_orb_cr = lno_ccsd._frg_ccsd_cr(
         prop_data["walkers"][0],ham_data,wave_data,trial,1e-6)
     
-    orb_cr_init = hf_orb_cr_init+ccsd_orb_cr_init
+    cc_orb_en = hf_orb_cr+cc_orb_cr
     e_init = prop_data["e_estimate"]
 
-    print(f'# afqmc propagation with ccsd trial using {options["n_walkers"]*size} walkers')
-    print(f'# appraching equilibrium of the Markov Chain')
-    print('# step  energy  hf_orb_cr' \
-          '  ccsd_orb_cr  orb_corr  time')
+    print(f'# afqmc propagation with {options["n_walkers"]*size} walkers')
+    print(f'# appraching equilibrium')
+    print('# step  energy  hf_orb_en  cc_orb_en  time')
     print(f"  {0:3d}"
           f"  {e_init:.6f}"
-          f"  {hf_orb_cr_init:.6f}"
-          f"  {ccsd_orb_cr_init:.6f}"
-          f"  {orb_cr_init:.6f}"
+          f"  {hf_orb_en:.6f}"
+          f"  {cc_orb_en:.6f}"
           f"  {time.time() - init_time:.2f} "
         )
 comm.Barrier()
 
 for n in range(options["n_eql"]):
-    prop_data, (blk_energy,blk_wt,
-               blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr) \
+    prop_data, (blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en) \
                 = lno_ccsd.propagate_phaseless_orb(
                     ham_data,prop,prop_data,trial,wave_data,sampler)
     
-    blk_energy = np.array([blk_energy], dtype="float32")
+    blk_en = np.array([blk_en], dtype="float32")
     blk_wt = np.array([blk_wt], dtype="float32")
-    blk_hf_orb_cr = np.array([blk_hf_orb_cr], dtype="float32")
-    blk_ccsd_orb_cr = np.array([blk_ccsd_orb_cr], dtype="float32")
-    blk_orb_cr = np.array([blk_orb_cr], dtype="float32")
-    
+    blk_hf_orb_en = np.array([blk_hf_orb_en], dtype="float32")
+    blk_cc_orb_en = np.array([blk_cc_orb_en], dtype="float32")    
 
-    blk_wt_energy = np.array(
-        [blk_energy * blk_wt], dtype="float32"
+    blk_wt_en = np.array(
+        [blk_en * blk_wt], dtype="float32"
     )
-    blk_wt_hf_orb_cr = np.array(
-        [blk_hf_orb_cr * blk_wt], dtype="float32"
+    blk_wt_hf_orb_en = np.array(
+        [blk_hf_orb_en * blk_wt], dtype="float32"
     )
-    blk_wt_ccsd_orb_cr = np.array(
-        [blk_ccsd_orb_cr * blk_wt], dtype="float32"
-    )
-    blk_wt_orb_cr = np.array(
-        [blk_orb_cr * blk_wt], dtype="float32"
+    blk_wt_cc_orb_en = np.array(
+        [blk_cc_orb_en * blk_wt], dtype="float32"
     )
 
-    tot_wt_energy = np.zeros(1, dtype="float32")
+    tot_wt_en = np.zeros(1, dtype="float32")
     tot_wt = np.zeros(1, dtype="float32")
-    tot_wt_hf_orb_cr = np.zeros(1, dtype="float32")
-    tot_wt_ccsd_orb_cr = np.zeros(1, dtype="float32")
-    tot_wt_orb_cr = np.zeros(1, dtype="float32")
+    tot_wt_hf_orb_en = np.zeros(1, dtype="float32")
+    tot_wt_cc_orb_en = np.zeros(1, dtype="float32")
 
     comm.Reduce(
-            [blk_wt_energy, MPI.FLOAT],
-            [tot_wt_energy, MPI.FLOAT],
+            [blk_wt_en, MPI.FLOAT],
+            [tot_wt_en, MPI.FLOAT],
             op=MPI.SUM,
             root=0,
         )
@@ -114,42 +105,34 @@ for n in range(options["n_eql"]):
         root=0,
     )
     comm.Reduce(
-            [blk_wt_hf_orb_cr, MPI.FLOAT],
-            [tot_wt_hf_orb_cr, MPI.FLOAT],
+            [blk_wt_hf_orb_en, MPI.FLOAT],
+            [tot_wt_hf_orb_en, MPI.FLOAT],
             op=MPI.SUM,
             root=0,
         )
     comm.Reduce(
-            [blk_wt_ccsd_orb_cr, MPI.FLOAT],
-            [tot_wt_ccsd_orb_cr, MPI.FLOAT],
-            op=MPI.SUM,
-            root=0,
-        )
-    comm.Reduce(
-            [blk_wt_orb_cr, MPI.FLOAT],
-            [tot_wt_orb_cr, MPI.FLOAT],
+            [blk_wt_cc_orb_en, MPI.FLOAT],
+            [tot_wt_cc_orb_en, MPI.FLOAT],
             op=MPI.SUM,
             root=0,
         )
 
     comm.Barrier()
     if rank == 0:
-        blk_energy = tot_wt_energy / tot_wt
+        blk_en = tot_wt_en / tot_wt
         blk_wt = tot_wt
-        blk_hf_orb_cr = tot_wt_hf_orb_cr / tot_wt
-        blk_ccsd_orb_cr = tot_wt_ccsd_orb_cr / tot_wt
-        blk_orb_cr = tot_wt_orb_cr / tot_wt
+        blk_hf_orb_en = tot_wt_hf_orb_en / tot_wt
+        blk_cc_orb_en = tot_wt_cc_orb_en / tot_wt
 
-    comm.Bcast(blk_energy, root=0)
+    comm.Bcast(blk_en, root=0)
     comm.Bcast(blk_wt, root=0)
-    comm.Bcast(blk_hf_orb_cr, root=0)
-    comm.Bcast(blk_ccsd_orb_cr, root=0)
-    comm.Bcast(blk_orb_cr, root=0)
+    comm.Bcast(blk_hf_orb_en, root=0)
+    comm.Bcast(blk_cc_orb_en, root=0)
     
     prop_data = propagator.orthonormalize_walkers(prop_data)
     prop_data = propagator.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
-         0.9 * prop_data["e_estimate"] + 0.1 * blk_energy[0]
+         0.9 * prop_data["e_estimate"] + 0.1 * blk_en[0]
          )
     comm.Barrier()
 
@@ -157,162 +140,131 @@ for n in range(options["n_eql"]):
     if rank == 0:
         print(
             f"  {n+1:3d}"
-            f"  {blk_energy[0]:.6f}"
-            f"  {blk_hf_orb_cr[0]:.6f}"
-            f"  {blk_ccsd_orb_cr[0]:.6f}"
-            f"  {blk_orb_cr[0]:.6f}"
+            f"  {blk_en[0]:.6f}"
+            f"  {blk_hf_orb_en[0]:.6f}"
+            f"  {blk_cc_orb_en[0]:.6f}"
             f"  {time.time() - init_time:.2f} "
         )
     comm.Barrier()
 
-
-glb_blk_energy = None
+glb_blk_en = None
 glb_blk_wt = None
-glb_blk_hf_orb_cr = None
-glb_blk_ccsd_orb_cr = None
-glb_blk_orb_cr = None
+glb_blk_hf_orb_en = None
+glb_blk_cc_orb_en = None
 
 if rank == 0:
-    glb_blk_energy = np.zeros(size * sampler.n_blocks)
+    glb_blk_en = np.zeros(size * sampler.n_blocks)
     glb_blk_wt = np.zeros(size * sampler.n_blocks)
-    glb_blk_hf_orb_cr = np.zeros(size * sampler.n_blocks)
-    glb_blk_ccsd_orb_cr = np.zeros(size * sampler.n_blocks)
-    glb_blk_orb_cr = np.zeros(size * sampler.n_blocks)
-
-
+    glb_blk_hf_orb_en = np.zeros(size * sampler.n_blocks)
+    glb_blk_cc_orb_en = np.zeros(size * sampler.n_blocks)
+    
 comm.Barrier()
-# init_time = time.time()
 if rank == 0:
     print("# Sampling sweeps:")
-    print("# iter  energy  err  hf_orb_cr  err  "\
-          "olp_ratio  ccsd_orb_cr  err  "\
-            "tot_orb_cr  err  time")
+    print("# iter  energy  err  hf_orb_en  err  cc_orb_cr  err  time")
 comm.Barrier()
 
 for n in range(sampler.n_blocks):
-    prop_data,(blk_energy,blk_wt,
-               blk_hf_orb_cr,blk_ccsd_orb_cr,blk_orb_cr) \
+    prop_data,(blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en) \
         = lno_ccsd.propagate_phaseless_orb(
             ham_data,prop,prop_data,trial,wave_data,sampler)
 
-    blk_energy = np.array([blk_energy], dtype="float32")
+    blk_en = np.array([blk_en], dtype="float32")
     blk_wt = np.array([blk_wt], dtype="float32")
-    blk_hf_orb_cr = np.array([blk_hf_orb_cr], dtype="float32")
-    blk_ccsd_orb_cr = np.array([blk_ccsd_orb_cr], dtype="float32")
-    blk_orb_cr = np.array([blk_orb_cr], dtype="float32")
+    blk_hf_orb_en = np.array([blk_hf_orb_en], dtype="float32")
+    blk_cc_orb_en = np.array([blk_cc_orb_en], dtype="float32")
 
-    gather_energy = None
+    gather_en = None
     gather_wt = None
-    gather_hf_orb_cr = None
-    gather_ccsd_orb_cr = None
-    gather_orb_cr = None
+    gather_hf_orb_en = None
+    gather_cc_orb_en = None
 
     comm.Barrier()
     if rank == 0:
-        gather_energy = np.zeros(size, dtype="float32")
+        gather_en = np.zeros(size, dtype="float32")
         gather_wt = np.zeros(size, dtype="float32")
-        gather_hf_orb_cr = np.zeros(size, dtype="float32")
-        gather_ccsd_orb_cr = np.zeros(size, dtype="float32")
-        gather_orb_cr = np.zeros(size, dtype="float32")
+        gather_hf_orb_en = np.zeros(size, dtype="float32")
+        gather_cc_orb_en = np.zeros(size, dtype="float32")
     comm.Barrier()
 
-    comm.Gather(blk_energy, gather_energy, root=0)
+    comm.Gather(blk_en, gather_en, root=0)
     comm.Gather(blk_wt, gather_wt, root=0)
-    comm.Gather(blk_hf_orb_cr, gather_hf_orb_cr, root=0)
-    comm.Gather(blk_ccsd_orb_cr, gather_ccsd_orb_cr, root=0)
-    comm.Gather(blk_orb_cr, gather_orb_cr, root=0)
+    comm.Gather(blk_hf_orb_en, gather_hf_orb_en, root=0)
+    comm.Gather(blk_cc_orb_en, gather_cc_orb_en, root=0)
 
     comm.Barrier()
     if rank == 0:
-        glb_blk_energy[n * size : (n + 1) * size] = gather_energy
+        glb_blk_en[n * size : (n + 1) * size] = gather_en
         glb_blk_wt[n * size : (n + 1) * size] = gather_wt
-        glb_blk_hf_orb_cr[n * size : (n + 1) * size] = gather_hf_orb_cr
-        glb_blk_ccsd_orb_cr[n * size : (n + 1) * size] = gather_ccsd_orb_cr
-        glb_blk_orb_cr[n * size : (n + 1) * size] = gather_orb_cr
+        glb_blk_hf_orb_en[n * size : (n + 1) * size] = gather_hf_orb_en
+        glb_blk_cc_orb_en[n * size : (n + 1) * size] = gather_cc_orb_en
 
         assert gather_wt is not None
 
         blk_wt= np.sum(gather_wt)
-        blk_energy = np.sum(gather_wt * gather_energy) / blk_wt
-        # blk_hf_orb_cr = np.sum(gather_wt * gather_hf_orb_cr) / blk_wt
-        # blk_ccsd_orb_cr = np.sum(gather_wt * gather_ccsd_orb_cr) / blk_wt
-        # blk_orb_cr= np.sum(gather_wt * gather_orb_cr) / blk_wt
-
+        blk_en = np.sum(gather_wt * gather_en) / blk_wt
     comm.Barrier()
     
     prop_data = propagator.orthonormalize_walkers(prop_data)
     prop_data = propagator.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_energy
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_en
 
     if n % (max(sampler.n_blocks // 10, 1)) == 0:
         comm.Barrier()
         if rank == 0:
-                energy, energy_err = stat_utils.blocking_analysis(
+                en, en_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_energy[: (n + 1) * size],
+                    glb_blk_en[: (n + 1) * size],
                     neql=0,
                 )
-                hf_orb_cr, hf_orb_cr_err = stat_utils.blocking_analysis(
+                hf_orb_en, hf_orb_en_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_hf_orb_cr[: (n + 1) * size],
+                    glb_blk_hf_orb_en[: (n + 1) * size],
                     neql=0,
                 )
-                ccsd_orb_cr, ccsd_orb_cr_err = stat_utils.blocking_analysis(
+                cc_orb_en, cc_orb_en_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_ccsd_orb_cr[: (n + 1) * size],
-                    neql=0,
-                )
-                orb_cr, orb_cr_err = stat_utils.blocking_analysis(
-                    glb_blk_wt[: (n + 1) * size],
-                    glb_blk_orb_cr[: (n + 1) * size],
+                    glb_blk_cc_orb_en[: (n + 1) * size],
                     neql=0,
                 )
 
-                if energy_err is not None:
-                    energy_err = f"{energy_err:.6f}"
+                if en_err is not None:
+                    en_err = f"{en_err:.6f}"
                 else:
-                    energy_err = f"  {energy_err}  "
-                if hf_orb_cr_err is not None:
-                    hf_orb_cr_err = f"{hf_orb_cr_err:.6f}"
+                    en_err = f"  {en_err}  "
+                if hf_orb_en_err is not None:
+                    hf_orb_en_err = f"{hf_orb_en_err:.6f}"
                 else:
-                    hf_orb_cr_err = f"  {hf_orb_cr_err}  "
-                if ccsd_orb_cr_err is not None:
-                    ccsd_orb_cr_err = f"{ccsd_orb_cr_err:.6f}"
+                    hf_orb_en_err = f"  {hf_orb_en_err}  "
+                if cc_orb_en_err is not None:
+                    cc_orb_en_err = f"{cc_orb_en_err:.6f}"
                 else:
-                    ccsd_orb_cr_err = f"  {ccsd_orb_cr_err}  "
-                if orb_cr_err is not None:
-                    orb_cr_err = f"{orb_cr_err:.6f}"
-                else:
-                    orb_cr_err = f"  {orb_cr_err}  "
+                    cc_orb_en_err = f"  {cc_orb_en_err}  "
 
-                energy = f"{energy:.6f}"
-                hf_orb_cr = f"{hf_orb_cr:.6f}"
-                ccsd_orb_cr = f"{ccsd_orb_cr:.6f}"
-                orb_cr = f"{orb_cr:.6f}"
+                en = f"{en:.6f}"
+                hf_orb_en = f"{hf_orb_en:.6f}"
+                cc_orb_en = f"{cc_orb_en:.6f}"
 
-                print(f"  {n:4d}  {energy}  {energy_err}"
-                      f"  {hf_orb_cr}  {hf_orb_cr_err}  {ccsd_orb_cr}  {ccsd_orb_cr_err}"
-                      f"  {orb_cr}  {orb_cr_err}  {time.time() - init_time:.2f}")
+                print(f"  {n:4d}  {en}  {en_err}  {hf_orb_en}  {hf_orb_en_err}"
+                      f"  {cc_orb_en}  {cc_orb_en_err}  {time.time() - init_time:.2f}")
         comm.Barrier()
 
 
 comm.Barrier()
 if rank == 0:
-    assert glb_blk_energy is not None
+    assert glb_blk_en is not None
     assert glb_blk_wt is not None
-    assert glb_blk_hf_orb_cr is not None
-    assert glb_blk_ccsd_orb_cr is not None
-    assert glb_blk_orb_cr is not None
+    assert glb_blk_hf_orb_en is not None
+    assert glb_blk_cc_orb_en is not None
 
 
     samples_clean, idx = stat_utils.reject_outliers(
     np.stack(
                 (
                     glb_blk_wt,
-                    glb_blk_energy,
-                    glb_blk_hf_orb_cr,
-                    glb_blk_ccsd_orb_cr,
-                    glb_blk_orb_cr,
+                    glb_blk_en,
+                    glb_blk_hf_orb_en,
+                    glb_blk_cc_orb_en,
                 )
             ).T,
             1,
@@ -323,59 +275,48 @@ if rank == 0:
         )
     
     glb_blk_wt = samples_clean[:, 0]
-    glb_blk_energy = samples_clean[:, 1]
-    glb_blk_hf_orb_cr = samples_clean[:, 2]
-    glb_blk_ccsd_orb_cr = samples_clean[:, 3]
-    glb_blk_orb_cr = samples_clean[:, 4]
+    glb_blk_en = samples_clean[:, 1]
+    glb_blk_hf_orb_en = samples_clean[:, 2]
+    glb_blk_cc_orb_en = samples_clean[:, 3]
 
-    energy, energy_err = stat_utils.blocking_analysis(
+    en, en_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_energy[: (n + 1) * size],
+                    glb_blk_en[: (n + 1) * size],
                     neql=0,printQ=True
                 )
-    hf_orb_cr, hf_orb_cr_err = stat_utils.blocking_analysis(
+    hf_orb_en, hf_orb_en_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_hf_orb_cr[: (n + 1) * size],
+                    glb_blk_hf_orb_en[: (n + 1) * size],
                     neql=0,printQ=True
                 )
-    ccsd_orb_cr, ccsd_orb_cr_err = stat_utils.blocking_analysis(
+    cc_orb_en, cc_orb_en_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_ccsd_orb_cr[: (n + 1) * size],
-                    neql=0,printQ=True
-                )
-    orb_cr, orb_cr_err = stat_utils.blocking_analysis(
-                    glb_blk_wt[: (n + 1) * size],
-                    glb_blk_orb_cr[: (n + 1) * size],
+                    glb_blk_cc_orb_en[: (n + 1) * size],
                     neql=0,printQ=True
                 )
     
-    if energy_err is not None:
-        energy_err = f"{energy_err:.6f}"
+    if en_err is not None:
+        en_err = f"{en_err:.6f}"
     else:
-        energy_err = f"  {energy_err}  "
-    if hf_orb_cr_err is not None:
-        hf_orb_cr_err = f"{hf_orb_cr_err:.6f}"
+        en_err = f"  {en_err}  "
+    if hf_orb_en_err is not None:
+        hf_orb_en_err = f"{hf_orb_en_err:.6f}"
     else:
-        hf_orb_cr_err = f"  {hf_orb_cr_err}  "
-    if ccsd_orb_cr_err is not None:
-        ccsd_orb_cr_err = f"{ccsd_orb_cr_err:.6f}"
+        hf_orb_en_err = f"  {hf_orb_en_err}  "
+    if cc_orb_en_err is not None:
+        cc_orb_en_err = f"{cc_orb_en_err:.6f}"
     else:
-        ccsd_orb_cr_err = f"  {ccsd_orb_cr_err}  "
-    if orb_cr_err is not None:
-        orb_cr_err = f"{orb_cr_err:.6f}"
-    else:
-        orb_cr_err = f"  {orb_cr_err}  "
+        cc_orb_en_err = f"  {cc_orb_en_err}  "
 
-    energy = f"{energy:.6f}"
-    hf_orb_cr = f"{hf_orb_cr:.6f}"
-    ccsd_orb_cr = f"{ccsd_orb_cr:.6f}"
-    orb_cr = f"{orb_cr:.6f}"
+
+    en = f"{en:.6f}"
+    hf_orb_en = f"{hf_orb_en:.6f}"
+    cc_orb_en = f"{cc_orb_en:.6f}"
 
     print(f"Final Results:")
-    print(f"lno-ccsd-afqmc energy: {energy} +/- {energy_err}")
-    print(f"lno-ccsd-afqmc hf_orb_cr: {hf_orb_cr} +/- {hf_orb_cr_err}")
-    print(f"lno-ccsd-afqmc ccsd_orb_cr: {ccsd_orb_cr} +/- {ccsd_orb_cr_err}")
-    print(f"lno-ccsd-afqmc tot_orb_corr: {orb_cr} +/- {orb_cr_err}")
+    print(f"lno-ccsd-afqmc energy: {en} +/- {en_err}")
+    print(f"lno-ccsd-afqmc hf_orb_en: {hf_orb_en} +/- {hf_orb_en_err}")
+    print(f"lno-ccsd-afqmc cc_orb_en: {cc_orb_en} +/- {cc_orb_en_err}")
     print(f"total run time: {time.time() - init_time:.2f}")
 
 comm.Barrier()
