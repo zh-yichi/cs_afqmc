@@ -32,10 +32,9 @@ def _calc_olp_ratio_restricted(walker: jax.Array, wave_data: dict) -> complex:
     nocc, ci1, ci2 = walker.shape[1], wave_data["ci1"], wave_data["ci2"]
     GF = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
     #o0 = jnp.linalg.det(walker[: walker.shape[1], :]) ** 2
-    o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
-    o2 = 2 * jnp.einsum(
-        "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]
-    ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
+    o1 = jnp.einsum("ia,ia->", ci1, GF[:, nocc:])
+    o2 = 2 * jnp.einsum("iajb, ia, jb->", ci2, GF[:, nocc:], GF[:, nocc:]) \
+        - jnp.einsum("iajb, ib, ja->", ci2, GF[:, nocc:], GF[:, nocc:])
     return 1/(1.0 + 2 * o1 + o2)
 
 @partial(jit, static_argnums=(2,))
@@ -509,7 +508,7 @@ def write_dqmc(E0,hcore,hcore_mod,chol,nelec,nmo,enuc,ms=0,
 
 def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
                            prjlo=[],norb_frozen=[],ci1=None,ci2=None,
-                           use_df_vecs=True,chol_cut=1e-6,
+                           use_df_vecs=False,chol_cut=1e-6,
                            option_file='options.bin',
                            mo_file="mo_coeff.npz",
                            amp_file="amplitudes.npz",
@@ -592,7 +591,7 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
             chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
             chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
             chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
-            eri_ao_df = np.einsum('lpq,lrs->pqrs', chol_df, chol_df)
+            eri_ao_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df)
             #eri_df.reshape((nao*nao, nao*nao))
             print("# decomposing ERIs to Cholesky vectors")
             print(f"# Cholesky cutoff is: {chol_cut}")
@@ -610,7 +609,7 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     print(f'# Number of Cholesky vectors: {chol.shape[0]}\n')
     
     chol = chol.reshape((-1, nbasis, nbasis))
-    v0 = 0.5 * np.einsum('nik,njk->ij', chol, chol, optimize='optimal')
+    v0 = 0.5 * lib.einsum('nik,njk->ij', chol, chol, optimize='optimal')
     h1e_mod = h1e - v0
     chol = chol.reshape((chol.shape[0], -1))
 
@@ -1456,10 +1455,124 @@ def get_mp2_frg_e(mf,frzfrag,eris,orbfragloc,can_orbfrag):
     
     return emp2
 
+def get_eri_ao(mf):
+    nao = mf.mol.nao
+    if getattr(mf,"with_df",None) is not None:
+        cderi = mf.with_df._cderi
+        cderi = lib.unpack_tril(cderi).reshape(cderi.shape[0], -1)
+        cderi = cderi.reshape((-1, nao, nao))
+        eri_ao = lib.einsum('lpq,lrs->pqrs', cderi, cderi)
+    else:
+        eri_ao = mf._eri
+        eri_ao = ao2mo.restore(1, eri_ao, nao)
+    return eri_ao
+
+def get_eri_mo(eri_ao,oa,va):
+    eri_mo = lib.einsum('ip,aq,pqrs,rj,sb->iajb',oa.T,va.T,eri_ao,oa,va)
+    return eri_mo
+
+def make_lno(mfcc,orbfragloc,thresh_internal,thresh_external):
+
+    if isinstance(thresh_external,(float,int)):
+        thresh_ext_occ = thresh_ext_vir = thresh_external
+    else:
+        thresh_ext_occ, thresh_ext_vir  = thresh_external
+
+    mf = mfcc._scf
+    if getattr(mf,'with_df',None) is not None:
+        print('Using DF integrals')
+        eris = mfcc.ao2mo()
+        s1e = eris.s1e if eris.s1e is None else mf.get_ovlp()
+        fock = eris.fock  if eris.fock is None else mf.get_fock()
+    else:
+        print('Using true 4-index integrals')
+        eris = None
+        s1e = mf.get_ovlp()
+        fock = mf.get_fock()
+        
+    nocc = np.count_nonzero(mf.mo_occ>1e-10)
+    nmo = mf.mo_occ.size
+    orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo() # frz_occ, act_occ, act_vir, frz_vir
+    _, moeocc1, moevir1, _ = mfcc.split_moe() # split energy
+
+    lovir = abs(orbfragloc.T @ s1e @ orbvir1).max() > 1e-10
+    m = fdot(orbfragloc.T, s1e, orbocc1) # overlap with all loc act_occs
+    uocc1, uocc2 = lno.projection_construction(m, thresh_internal)
+    moefragocc1, orbfragocc1 = lno.subspace_eigh(fock, fdot(orbocc1, uocc1))
+    if lovir:
+        m = fdot(orbfragloc.T, s1e, orbvir1)
+        uvir1, uvir2 = lno.projection_construction(m, thresh_internal)
+        moefragvir1, orbfragvir1 = lno.subspace_eigh(fock, fdot(orbvir1, uvir1))
+
+    def moe_Ov(moefragocc):
+        return (moefragocc[:,None] - moevir1).reshape(-1)
+
+    eov = moe_Ov(moeocc1)
+    # Construct PT2 dm_vv
+    u = fdot(orbocc1.T, s1e, orbfragocc1)
+    if getattr(mf,'with_df',None) is not None:
+        print('Using DF integrals')
+        ovov = eris.get_Ovov(u)
+    else:
+        print('Using true 4-index integrals')
+        eri_ao = mf._eri
+        nao = mf.mol.nao
+        eri_ao = ao2mo.restore(1,eri_ao,nao)
+        eri_mo = get_eri_mo(eri_ao,orbocc1,orbvir1)
+        ovov = lib.einsum('iI,iajb->Iajb',u,eri_mo)
+    eia = moe_Ov(moefragocc1)
+    ejb = eov
+    e1_or_e2 = 'e1'
+    swapidx = 'ab'
+
+    eiajb = (eia[:,None]+ejb).reshape(*ovov.shape)
+    t2 = ovov / eiajb
+
+    dmvv = lno.make_rdm1_mp2(t2, 'vv', e1_or_e2, swapidx)
+   
+    if lovir:
+        dmvv = fdot(uvir2.T, dmvv, uvir2)
+
+    # Construct PT2 dm_oo
+    e1_or_e2 = 'e2'
+    swapidx = 'ab'
+
+    dmoo = lno.make_rdm1_mp2(t2, 'oo', e1_or_e2, swapidx)
+    dmoo = fdot(uocc2.T, dmoo, uocc2)
+
+    t2 = ovov = eiajb = None
+    orbfragocc2, orbfragocc0 \
+        = lno.natorb_compression(dmoo, orbocc1, thresh_ext_occ, uocc2)
+
+    can_orbfragocc12 = lno.subspace_eigh(fock, np.hstack([orbfragocc2, orbfragocc1]))[1]
+    orbfragocc12 = np.hstack([orbfragocc2, orbfragocc1])
+    if lovir:
+        orbfragvir2, orbfragvir0 \
+            = lno.natorb_compression(dmvv,orbvir1,thresh_ext_vir,uvir2)
+
+        can_orbfragvir12 = lno.subspace_eigh(fock, np.hstack([orbfragvir2, orbfragvir1]))[1]
+        orbfragvir12 = np.hstack([orbfragvir2, orbfragvir1])
+    else: 
+        orbfragvir2, orbfragvir0 = lno.natorb_compression(dmvv,orbvir1,thresh_ext_vir)
+
+        can_orbfragvir12 = lno.subspace_eigh(fock, orbfragvir2)[1]
+        orbfragvir12 = orbfragvir2
+
+    lno_orb = np.hstack([orbocc0, orbfragocc0, orbfragocc12,
+                         orbfragvir12, orbfragvir0, orbvir0])
+    can_orbfrag = np.hstack([orbocc0, orbfragocc0, can_orbfragocc12,
+                        can_orbfragvir12, orbfragvir0, orbvir0])
+    
+    frzfrag = np.hstack([np.arange(orbocc0.shape[1]+orbfragocc0.shape[1]),
+                         np.arange(nocc+orbfragvir12.shape[1],nmo)])
+
+    return frzfrag, lno_orb , can_orbfrag
+
 
 def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
                        lo_type='boys',chol_cut=1e-6,nproc=None,
-                       run_frg_list=None,use_df_vecs=False,mp2=True):
+                       run_frg_list=None,
+                       use_df_vecs=False,mp2=True):
     '''
     mfcc: pyscf mean-field object
     thresh: lno thresh
@@ -1498,12 +1611,12 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
     lno_cc.lo_type = lo_type
     lno_cc.no_type = no_type
     lno_cc.frag_lolist = frag_lolist
-    lno_cc.force_outcore_ao2mo = True
+    # lno_cc.force_outcore_ao2mo = True
 
-    frag_atmlist = lno_cc.frag_atmlist
+    # frag_atmlist = lno_cc.frag_atmlist
 
     s1e = lno_cc._scf.get_ovlp()
-    log.info('no_type = %s', no_type)
+    # log.info('no_type = %s', no_type)
 
     # LO construction
     # orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
@@ -1533,21 +1646,21 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         frag_lolist = [[i] for i in range(orbloc.shape[1])]
     else: print('Only support single LO fragment!')
     nfrag = len(frag_lolist)
-    frag_nonvlist = lno_cc.frag_nonvlist
+    # frag_nonvlist = lno_cc.frag_nonvlist
 
     # dump info
-    log.info('nfrag = %d  nlo = %d', nfrag, orbloc.shape[1])
-    log.info('frag_atmlist = %s', frag_atmlist)
-    log.info('frag_lolist = %s', frag_lolist)
-    log.info('frag_nonvlist = %s', frag_nonvlist)
+    # log.info('nfrag = %d  nlo = %d', nfrag, orbloc.shape[1])
+    # log.info('frag_atmlist = %s', frag_atmlist)
+    # log.info('frag_lolist = %s', frag_lolist)
+    # log.info('frag_nonvlist = %s', frag_nonvlist)
 
     if not (no_type[0] in 'rei' and no_type[1] in 'rei'):
         log.warn('Input no_type "%s" is invalid.', no_type)
         raise ValueError
 
-    if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
+    # if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
 
-    eris = lno_cc.ao2mo()
+    # eris = lno_cc.ao2mo()
     frozen_mask = lno_cc.get_frozen_mask()
     thresh_pno = [thresh_occ,thresh_vir]
     print(f'# lno thresh {thresh_pno}')
@@ -1559,27 +1672,15 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
     seeds = random.randint(random.PRNGKey(options["seed"]),
                         shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
     
-    # non df mean-field object
-    # if not df:
-    #     mf = scf.RHF(mf.mol)
-    #     mf.kernel()
-
     for ifrag in run_frg_list:
         print(f'\n########### running fragment {ifrag+1} ##########')
-        #if(len(lno_cc.runfrags)>0):
-        #    if(ifrag not in lno_cc.runfrags):frag_res[ifrag] = (0,0,0)
+
         fraglo = frag_lolist[ifrag]
         orbfragloc = orbloc[:,fraglo] # the specific local active occ
-        frag_target_nocc, frag_target_nvir = frag_nonvlist[ifrag]
+        # frag_target_nocc, frag_target_nvir = frag_nonvlist[ifrag]
         THRESH_INTERNAL = 1e-10
         frzfrag, orbfrag, can_orbfrag \
-            = lno.make_fpno1(
-                lno_cc, eris, orbfragloc, no_type,
-                THRESH_INTERNAL, thresh_pno,
-                frozen_mask=frozen_mask,
-                frag_target_nocc=frag_target_nocc,
-                frag_target_nvir=frag_target_nvir,
-                canonicalize=False)
+            = make_lno(lno_cc, orbfragloc, THRESH_INTERNAL, thresh_pno)
         
         mol = mf.mol
         nocc = mol.nelectron // 2 
@@ -1599,23 +1700,26 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         print(f'# frozen orbitals: {frzfrag}')
 
         if full_cisd:
-            prj_mo2no = no2mo(mf.mo_coeff,s1e,orbfrag).T
-            # prj_oo = prj_mo2no[:nocc,:nocc]
-            # prj_vv = prj_mo2no[nocc:,nocc:]
-            prj_oo_act = prj_mo2no[actocc,:nocc]
-            prj_vv_act = prj_mo2no[actvir,nocc:]
+            print('# Use full CCSD wavefunction')
+            print('# This method is not size-extensive')
+            print('# Projecting CI coefficients from MO to NO')
+            frz_mo_idx = np.where(np.array(frozen_mask) == False)[0]
+            act_mo_occ = np.array([i for i in range(nocc) if i not in frz_mo_idx])
+            act_mo_vir = np.array([i for i in range(nocc,nao) if i not in frz_mo_idx])
+            prj_no2mo = no2mo(mf.mo_coeff,s1e,orbfrag)
+            prj_oo_act = prj_no2mo[np.ix_(act_mo_occ,actocc)]
+            prj_vv_act = prj_no2mo[np.ix_(act_mo_vir,actvir)]
             full_t1 = mfcc.t1
             full_t2 = mfcc.t2
             # project to active no
-            t1 = np.einsum("ji,jb,ab->ia",prj_oo_act.T,full_t1,prj_vv_act)
-            t2 = np.einsum("ki,lj,klcd,ac,bd->ijab",
-                          prj_oo_act.T,prj_oo_act.T,full_t2,prj_vv_act,prj_vv_act)
-
-            #np.savez("amplitudes.npz",ci1=ci1,ci2=ci2)
+            t1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,full_t1,prj_vv_act.T)
+            t2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
+                    prj_oo_act,prj_oo_act,full_t2,prj_vv_act.T,prj_vv_act.T)
+            print('# Finished MO to NO projection')
 
         else:
             ecorr_ccsd,t1,t2 = cc_impurity_solve(
-                    mf,orbfrag,orbfragloc,frozen=frzfrag,eris=eris
+                    mf,orbfrag,orbfragloc,frozen=frzfrag,eris=None
                     )
             print(f'# lno-ccsd fragment correlation energy: {ecorr_ccsd}')
  
@@ -1623,7 +1727,7 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         norb_act = nactocc+nactvir
 
         ci1 = np.array(t1)
-        ci2 = t2 + np.einsum("ia,jb->ijab",ci1,ci1)
+        ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
         ci2 = ci2.transpose(0, 2, 1, 3)
         
         print(f'# number of active electrons: {nelec_act}')
@@ -1636,7 +1740,7 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
             norb_act=norb_act,nelec_act=nelec_act,
             prjlo=prjlo,norb_frozen=frzfrag,
             ci1=ci1,ci2=ci2,use_df_vecs=use_df_vecs,
-            chol_cut=chol_cut
+            chol_cut=chol_cut,
             )
         
         #MP2 correction 
@@ -1644,18 +1748,14 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
             log.info('# running fragment MP2')
             can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:,actocc])
 
-            # if df:
-            #     from pyscf.cc import dfccsd
-            #     mcc = dfccsd.RCCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
-            # else:
             from pyscf.cc import CCSD
             mcc = CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
             
             mcc.ao2mo = ccsd.ccsd_ao2mo.__get__(mcc, mcc.__class__)
             mcc._s1e = s1e
-            if eris is not None:
-                mcc._h1e = eris.h1e
-                mcc._vhf = eris.vhf
+            # if eris is not None:
+            # mcc._h1e = mf.h1e
+            # mcc._vhf = mf.vhf
             imp_eris = mcc.ao2mo()
 
             if isinstance(imp_eris.ovov, np.ndarray):
@@ -1687,10 +1787,7 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
             if nproc is not None:
                 mpi_prefix += f"-np {nproc} "
         path = os.path.abspath(__file__)
-        dir_path = os.path.dirname(path)
-        #if full_cisd:
-        #    script = f"{dir_path}/run_lnocc_frg_full_cisd.py"
-        #else:    
+        dir_path = os.path.dirname(path)   
         script = f"{dir_path}/run_lnocc_frg.py"
         os.system(
             f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
@@ -1717,18 +1814,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
                     if "lno-ccsd-afqmc hf_orb_cr" in line:
                         hf_orb_cr = line.split()[2]
                         hf_orb_cr_err = line.split()[4]
-                    # if "lno-ccsd-afqmc olp_ratio" in line:
-                    #     olp_ratio = line.split()[2]
-                    #     olp_ratio_err = line.split()[4]
-                    # if "lno-ccsd-afqmc ccsd_orb_cr0" in line:
-                    #     ccsd_orb_cr0 = line.split()[2]
-                    #     ccsd_orb_cr0_err = line.split()[4]
-                    # if "lno-ccsd-afqmc ccsd_orb_cr1" in line:
-                    #     ccsd_orb_cr1 = line.split()[2]
-                    #     ccsd_orb_cr1_err = line.split()[4]
-                    # if "lno-ccsd-afqmc ccsd_orb_cr2" in line:
-                    #     ccsd_orb_cr2 = line.split()[2]
-                    #     ccsd_orb_cr2_err = line.split()[4]
                     if "lno-ccsd-afqmc ccsd_orb_cr" in line:
                         ccsd_orb_cr = line.split()[2]
                         ccsd_orb_cr_err = line.split()[4]
@@ -1768,14 +1853,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
     data = np.array(data.reshape(nfrag,12))
     hf_orb_cr = np.array(data[:,1],dtype='float32')
     hf_orb_cr_err = np.array(data[:,2],dtype='float32')
-    # olp_ratio = np.array(data[:,3],dtype='float32')
-    # olp_ratio_err = np.array(data[:,4],dtype='float32')
-    # ccsd_orb_cr0 = np.array(data[:,5],dtype='float32')
-    # ccsd_orb_cr0_err = np.array(data[:,6],dtype='float32')
-    # ccsd_orb_cr1 = np.array(data[:,7],dtype='float32')
-    # ccsd_orb_cr1_err = np.array(data[:,8],dtype='float32')
-    # ccsd_orb_cr2 = np.array(data[:,9],dtype='float32')
-    # ccsd_orb_cr2_err = np.array(data[:,10],dtype='float32')
     ccsd_orb_cr = np.array(data[:,3],dtype='float32')
     ccsd_orb_cr_err = np.array(data[:,4],dtype='float32')
     tot_orb_cr = np.array(data[:,5],dtype='float32')
@@ -1788,14 +1865,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
 
     hf_cr = sum(hf_orb_cr)
     hf_cr_err = np.sqrt(sum(hf_orb_cr_err**2))
-    # olp_ratio = np.mean(olp_ratio)
-    # olp_ratio_err = np.sqrt(sum(olp_ratio_err**2))/np.sqrt(nfrag)
-    # ccsd_cr0 = sum(ccsd_orb_cr0)
-    # ccsd_cr0_err = np.sqrt(sum(ccsd_orb_cr0_err**2))
-    # ccsd_cr1 = sum(ccsd_orb_cr1)
-    # ccsd_cr1_err = np.sqrt(sum(ccsd_orb_cr1_err**2))
-    # ccsd_cr2 = sum(ccsd_orb_cr2)
-    # ccsd_cr2_err = np.sqrt(sum(ccsd_orb_cr2_err**2))
     ccsd_cr = sum(ccsd_orb_cr)
     ccsd_cr_err = np.sqrt(sum(ccsd_orb_cr_err**2))
     tot_cr = sum(tot_orb_cr)
@@ -1817,14 +1886,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
 
     hf_cr = f'{hf_cr:.6f}'
     hf_cr_err = f'{hf_cr_err:.6f}'
-    # olp_ratio = f'{olp_ratio:.6f}'
-    # olp_ratio_err = f'{olp_ratio_err:.6f}'
-    # ccsd_cr0 = f'{ccsd_cr0:.6f}'
-    # ccsd_cr0_err = f'{ccsd_cr0_err:.6f}'
-    # ccsd_cr1 = f'{ccsd_cr1:.6f}'
-    # ccsd_cr1_err = f'{ccsd_cr1_err:.6f}'
-    # ccsd_cr2 = f'{ccsd_cr2:.6f}'
-    # ccsd_cr2_err = f'{ccsd_cr2_err:.6f}'
     ccsd_cr = f'{ccsd_cr:.6f}'
     ccsd_cr_err = f'{ccsd_cr_err:.6f}'
     tot_cr = f'{tot_cr:.6f}'
@@ -1839,10 +1900,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         out_file.write(f'# final results \n')
         out_file.write(f'# mean-field energy: {mf.e_tot:.10f}\n')
         out_file.write(f'# hf_cr: {hf_cr} +/- {hf_cr_err}\n')
-        # out_file.write(f'# average olp_ratio: {olp_ratio} +/- {olp_ratio_err}\n')
-        # out_file.write(f'# ccsd_cr0: {ccsd_cr0} +/- {ccsd_cr0_err}\n')
-        # out_file.write(f'# ccsd_cr1: {ccsd_cr1} +/- {ccsd_cr1_err}\n')
-        # out_file.write(f'# ccsd_cr2: {ccsd_cr2} +/- {ccsd_cr2_err}\n')
         out_file.write(f'# ccsd_cr: {ccsd_cr} +/- {ccsd_cr_err}\n')
         out_file.write(f'# lno_afqmc_corr: {tot_cr} +/- {tot_cr_err}\n')
         out_file.write(f'# e_mp2_corr: {e_mp2_corr}\n')
@@ -1862,7 +1919,6 @@ def sum_results(n_results):
               "  mp2_afqmc_corr   ccsd_corr "
               "  hf_cr    err "
               "  ccsd_cr   err "
-              "  ave_olp_ratio   err "
               "  ave_norb   max_norb   ave_nelec   max_nelec"
               "  run_time",file=out_file)
         for i in range(n_results):
@@ -1920,3 +1976,34 @@ def sum_results(n_results):
                   f" {ave_nelec} \t {max_nelec} \t"
                   f" {run_time}",file=out_file)
     return None
+
+def lno_data(data):
+      new_data = []
+      lines = data.splitlines()
+      for line in lines:
+            columns = line.split()
+            if len(columns)>1:
+                  if not line.startswith("#"): 
+                        new_data.append(columns)
+
+      new_data = np.array(new_data)
+
+      lno_thresh = []
+      for i in range(new_data.shape[0]):
+            thresh_vir = new_data[:,0][i].split(sep=',')[1]
+            thresh_vir = float(thresh_vir.strip('(),'))
+            lno_thresh.append(thresh_vir)
+
+      lno_data = np.array(new_data[:,1:],dtype="float32")
+
+      lno_thresh = np.array(lno_thresh,dtype="float32")
+      # lno_thresh[-1] = 1e-10 # last thresh = 0.0
+      lno_afqmc_corr = lno_data[:,0]
+      lno_afqmc_err = lno_data[:,1]
+      lno_afqmc_mp2_corr = lno_data[:,2]
+      lno_ccsd_corr = lno_data[:,3]
+
+      lno_mp2_cr = lno_afqmc_mp2_corr-lno_afqmc_corr
+      lno_ccsd_mp2_corr = lno_ccsd_corr+lno_mp2_cr
+
+      return lno_thresh,lno_afqmc_corr,lno_afqmc_mp2_corr,lno_afqmc_err,lno_ccsd_corr,lno_ccsd_mp2_corr

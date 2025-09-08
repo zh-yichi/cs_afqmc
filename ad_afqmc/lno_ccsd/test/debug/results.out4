@@ -1,19 +1,18 @@
-# frag  hf_orb_cr  err  olp_ratio  err  ccsd_orb_cr0  err  ccsd_orb_cr1  err  ccsd_orb_cr2  err ccsd_orb_cr  err  afqmc_orb_corr  err  mp2_orb_corr  ccsd_orb_corr  n_orb  n_elec  time
-  1  -0.032913  0.000182  0.967494  0.000224  0.070110  0.000518  -0.118915  0.000919  0.047366  0.000575  -0.001439  0.000179  -0.034353  0.000005  -0.026110    None    4  20  398.48
-  2  -0.033741  0.000179  0.967461  0.000203  0.071696  0.000486  -0.121200  0.000857  0.048115  0.000541  -0.001388  0.000176  -0.035129  0.000006  -0.026729    None    4  20  399.06
+# frag  hf_orb_cr  err  ccsd_orb_cr  err  afqmc_orb_corr  err  mp2_orb_corr  ccsd_orb_corr  n_orb  n_elec  time
+  1  -0.031997  0.001898  -0.002204  0.001733  -0.034202  0.000265  -0.022115  -0.033108  10  10  49.82
+  2  -0.028321  0.001277  -0.005103  0.001186  -0.033424  0.000205  -0.021855  -0.033170  10  10  109.14
+  3  -0.027392  0.001998  -0.005991  0.001823  -0.033382  0.000414  -0.020898  -0.033161  10  10  53.53
+  4  -0.029662  0.002565  -0.003385  0.002409  -0.033046  0.000230  -0.020898  -0.033161  10  10  49.56
+  5  -0.029406  0.001472  -0.004596  0.001359  -0.034002  0.000286  -0.021855  -0.033170  10  10  50.89
 # final results 
-# mean-field energy: -2.2573139273
-# hf_cr: -0.066654 +/- 0.000255
-# average olp_ratio: 0.967478 +/- 0.000214
-# ccsd_cr0: 0.141806 +/- 0.000710
-# ccsd_cr1: -0.240115 +/- 0.001257
-# ccsd_cr2: 0.095481 +/- 0.000789
-# ccsd_cr: -0.002827 +/- 0.000251
-# lno_afqmc_corr: -0.069482 +/- 0.000008
-# e_mp2_corr: -0.052839
-# e_ccsd_corr: 0.000000
-# mp2_corrected lno_afqmc_corr: -0.069482
-# lno-thresh [9.999999999999999e-06, 1e-06]
-# number of orbitals: average 4.00 maxium 4
-# number of electrons: average 20.00 maxium 20
-# total run time: 797.54
+# mean-field energy: -5.2476173426
+# hf_cr: -0.146778 +/- 0.004239
+# ccsd_cr: -0.021279 +/- 0.003922
+# lno_afqmc_corr: -0.168056 +/- 0.000647
+# e_mp2_corr: -0.107621
+# e_ccsd_corr: -0.165770
+# mp2_corrected lno_afqmc_corr: -0.168055
+# lno-thresh [1e-06, 1e-07]
+# number of orbitals: average 10.00 maxium 10
+# number of electrons: average 10.00 maxium 10
+# total run time: 312.94

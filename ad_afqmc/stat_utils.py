@@ -45,6 +45,9 @@ def blocking_analysis(weights, energies, neql=0, printQ=False, writeBlockedQ=Fal
             plateauError = max(error, prevError)
         prevError = error
 
+    if plateauError is None:
+        plateauError = error
+
     if printQ:
         if plateauError is not None:
             print(f"# Stocahstic error estimate: {plateauError:.6e}\n#")
