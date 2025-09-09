@@ -1,9 +1,6 @@
-import sys
-from pyscf.lib import logger
 from ad_afqmc.lno_ccsd import lno_ccsd
 from pyscf import gto, scf, cc
-
-log = logger.Logger(sys.stdout, 6)
+import os
 
 a = 1.
 nH = 6
@@ -12,7 +9,7 @@ for i in range(nH):
     atoms += f"H {i*a} 0 0 \n"
 
 mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
-mf = scf.RHF(mol)#.density_fit()
+mf = scf.RHF(mol).density_fit()
 mf.kernel()
 
 options = {'n_eql': 4,
@@ -29,8 +26,9 @@ options = {'n_eql': 4,
             'use_gpu': False,
             }
 
-threshs = [1e-4,1e-5]
+threshs = [1e-4]
 for i,thresh in enumerate(threshs):
-    lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5)
+    lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5,debug=True)
+    os.system(f"mv results.out results.out{i+1}")
 
-lno_ccsd.sum_results(len(threshs))
+lno_ccsd.sum_results_dbg(len(threshs))
