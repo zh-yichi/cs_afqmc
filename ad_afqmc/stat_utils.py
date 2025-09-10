@@ -14,7 +14,7 @@ def blocking_analysis(weights, energies, neql=0, printQ=False, writeBlockedQ=Fal
     if printQ:
         print(f"#\n# Mean: {meanEnergy:.8e}")
         print("# Block size    # of blocks         Mean                Error")
-    blockSizes = np.array([1, 2, 5, 10, 20, 50, 100, 200, 300, 400, 500, 1000, 10000])
+    blockSizes = np.array([1, 2, 3, 5, 10, 15, 20, 30, 50, 100, 200, 300, 400, 500, 1000, 10000])
     prevError = 0.0
     plateauError = None
     for i in blockSizes[blockSizes < nSamples / 2.0]:
@@ -44,9 +44,6 @@ def blocking_analysis(weights, energies, neql=0, printQ=False, writeBlockedQ=Fal
         if error < 1.05 * prevError and plateauError is None:
             plateauError = max(error, prevError)
         prevError = error
-
-    if plateauError is None:
-        plateauError = error
 
     if printQ:
         if plateauError is not None:
