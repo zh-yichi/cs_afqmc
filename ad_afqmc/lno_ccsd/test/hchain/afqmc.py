@@ -29,7 +29,7 @@ options = {
     "n_ene_blocks": 1,
     "n_sr_blocks": 20,
     "n_blocks": 40,
-    "n_walkers": 50,
+    "n_walkers": 40,
     "seed": 98,
     "trial": "cisd",
     "walker_type": "rhf",
@@ -53,7 +53,7 @@ options = {
 #                                 chol_file="FCIDUMP_chol"
 #                                 )
 
-pyscf_interface.prep_afqmc(mycc,use_df=True)
+pyscf_interface.prep_afqmc(mycc)
 
 from mpi4py import MPI
 

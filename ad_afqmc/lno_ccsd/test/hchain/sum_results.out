@@ -1,2 +1,4 @@
-# thresh(occ,vir)   mp2_corr  ccsd_corr  olp_ratio  err  qmc_hf_cr  err  qmc_cc_cr0   err  qmc_cc_cr1   err  qmc_cc_cr2   err  qmc_cc_cr   err  qmc_orb_en   err  mp2_correction  nelec_avg   nelec_max  norb_avg   norb_max    run_time
-  (1.00e-03,1.00e-04)  -0.059533  -0.095399  0.949283  0.000626  -0.088806  0.001855  0.341953  0.007828  -0.569158  0.013199  0.220913  0.007210  -0.006293  0.001849  -0.095098 	 0.000034 	  -0.00295256  4.00 	 4 	  4.33  	 5 	 250.06
+# thresh(occ,vir)   mp2_corr  ccsd_corr  afqmc/hf_corr   err   afqmc/ccsd_corr   err   nelec_avg   nelec_max    norb_avg   norb_max    run_time
+ (1.00e-02,1.00e-03) 	 -0.050099 	 0.000000 	 -0.092428 	 0.010591 	 -0.082208 	 0.000075 	 -0.01238628  2.00 	 2 	 2.33  	 3 	 73.78
+ (1.00e-03,1.00e-04) 	 -0.059533 	 0.000000 	 -0.078253 	 0.020199 	 -0.095127 	 0.000068 	 -0.00295234  4.00 	 4 	 4.33  	 5 	 117.19
+ (1.00e-05,1.00e-06) 	 -0.062486 	 0.000000 	 -0.132621 	 0.025548 	 -0.102360 	 0.000094 	 0.00000001  6.00 	 6 	 6.00  	 6 	 158.81

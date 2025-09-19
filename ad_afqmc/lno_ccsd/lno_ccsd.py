@@ -1557,15 +1557,9 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
     lno_cc.lo_type = lo_type
     lno_cc.no_type = no_type
     lno_cc.frag_lolist = frag_lolist
-    # lno_cc.force_outcore_ao2mo = True
-
-    # frag_atmlist = lno_cc.frag_atmlist
+    lno_cc.force_outcore_ao2mo = True
 
     s1e = lno_cc._scf.get_ovlp()
-    # log.info('no_type = %s', no_type)
-
-    # LO construction
-    # orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
     orbactocc = lno_cc.split_mo()[1] # non-localized active occ
     # if localize:
     orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
@@ -1585,28 +1579,16 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
     else:
         log.info('LOs span occupied space plus some virtual space.')
 
-    # LO assignment to fragments
-
     if frag_lolist == '1o':
         log.info('Using single-LO fragment') # this is what we use, every active local occ labels a fragment
         frag_lolist = [[i] for i in range(orbloc.shape[1])]
     else: print('Only support single LO fragment!')
     nfrag = len(frag_lolist)
-    # frag_nonvlist = lno_cc.frag_nonvlist
-
-    # dump info
-    # log.info('nfrag = %d  nlo = %d', nfrag, orbloc.shape[1])
-    # log.info('frag_atmlist = %s', frag_atmlist)
-    # log.info('frag_lolist = %s', frag_lolist)
-    # log.info('frag_nonvlist = %s', frag_nonvlist)
 
     if not (no_type[0] in 'rei' and no_type[1] in 'rei'):
         log.warn('Input no_type "%s" is invalid.', no_type)
         raise ValueError
 
-    # if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
-
-    # eris = lno_cc.ao2mo()
     frozen_mask = lno_cc.get_frozen_mask()
     thresh_pno = [thresh_occ,thresh_vir]
     print(f'# lno thresh {thresh_pno}')
@@ -1662,11 +1644,12 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
             t2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
                     prj_oo_act,prj_oo_act,full_t2,prj_vv_act.T,prj_vv_act.T)
             print('# Finished MO to NO projection')
-
+            ecorr_ccsd = '  None  '
         else:
             ecorr_ccsd,t1,t2 = cc_impurity_solve(
                     mf,orbfrag,orbfragloc,frozen=frzfrag,eris=None
                     )
+            ecorr_ccsd = f'{ecorr_ccsd:.8f}'
             print(f'# lno-ccsd fragment correlation energy: {ecorr_ccsd}')
  
         nelec_act = nactocc*2
@@ -1708,7 +1691,10 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
 
             _, t2 = mcc.init_amps(eris=imp_eris)[1:]
             ecorr_pt2 = get_fragment_energy(oovv, t2, can_prjlo)
-            print(f'# lno-mp2 fragment energy: {ecorr_pt2:.6f}')
+            ecorr_pt2 = f'{ecorr_pt2:.8f}'
+            print(f'# lno-mp2 fragment energy: {ecorr_pt2}')
+        else:
+            ecorr_pt2 = '  None  '
 
         # Run AFQMC
         use_gpu = options["use_gpu"]
@@ -1738,10 +1724,10 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         )
 
         with open(f'frg_{ifrag+1}.out', 'a') as out_file:
-            if mp2:
-                print(f"lno-mp2 orb_corr: {ecorr_pt2:.6f}",file=out_file)
-            if not full_cisd:
-                print(f"lno-ccsd orb_corr: {ecorr_ccsd:.6f}",file=out_file)
+            # if mp2:
+            print(f"lno-mp2 orb_corr: {ecorr_pt2}",file=out_file)
+            # if not full_cisd: 
+            print(f"lno-ccsd orb_corr: {ecorr_ccsd}",file=out_file)
             print(f"number of active electrons: {nelec_act}",file=out_file)
             print(f"number of active orbitals: {norb_act}",file=out_file)
 
@@ -1847,8 +1833,9 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
               '  olp_ratio  err  qmc_hf_orb_cr  err'
               '  qmc_cc_orb_cr0  err  qmc_cc_orb_cr1  err' \
               '  qmc_cc_orb_cr2  err  qmc_cc_orb_cr  err'
-              '  qmc_orb_en  err  norb  nelec  time',file=out_file)
+              '  qmc_orb_en  err  nelec  norb  time',file=out_file)
         for ifrag in range(nfrag):
+            # ccsd_orb_en = None
             with open(f"frg_{ifrag+1}.out","r") as read_file:
                 for line in read_file:
                     if "lno-mp2 orb_corr:" in line:
@@ -1876,18 +1863,20 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
                     if "lno-afqmc/cc orb_en:" in line:
                         qmc_orb_en = line.split()[2]
                         qmc_orb_en_err = line.split()[4]
-                    if "number of active orbitals:" in line:
-                        norb = line.split()[4]
                     if "number of active electrons:" in line:
                         nelec = line.split()[4]
+                    if "number of active orbitals:" in line:
+                        norb = line.split()[4]
                     if "total run time" in line:
                         tot_time = line.split()[3]
+                if ccsd_orb_en is None:
+                    ccsd_orb_en = '  None  '
                 print(f'{ifrag+1:3d}  '
                       f'{mp2_orb_en}  {ccsd_orb_en}  '
                       f'{olp_r}  {olp_r_err}  {hf_orb_cr}  {hf_orb_cr_err}  '
                       f'{cc_orb_cr0}  {cc_orb_cr0_err}  {cc_orb_cr1}  {cc_orb_cr1_err}  '
                       f'{cc_orb_cr2}  {cc_orb_cr2_err}  {cc_orb_cr}  {cc_orb_cr_err}  '
-                      f'{qmc_orb_en}  {qmc_orb_en_err}  {norb}  {nelec}  {tot_time}  ',
+                      f'{qmc_orb_en}  {qmc_orb_en_err}  {nelec}  {norb}  {tot_time}  ',
                       file=out_file)
 
     data = []
@@ -1914,8 +1903,8 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
     cc_orb_cr_err = np.array(data[:,14],dtype='float32')
     qmc_orb_en = np.array(data[:,15],dtype='float32')
     qmc_orb_en_err = np.array(data[:,16],dtype='float32')
-    norb = np.array(data[:,17],dtype='int32')
-    nelec = np.array(data[:,18],dtype='int32')
+    nelec = np.array(data[:,17],dtype='int32')
+    norb = np.array(data[:,18],dtype='int32')
     tot_time = np.array(data[:,19],dtype='float32')
 
     mp2_corr = sum(mp2_orb_en)
@@ -1935,10 +1924,10 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
     qmc_cc_cr_err = np.sqrt(sum(cc_orb_cr_err**2))
     qmc_corr = sum(qmc_orb_en)
     qmc_corr_err = np.sqrt(sum(qmc_orb_en_err**2))
-    norb_avg = np.mean(norb)
     nelec_avg = np.mean(nelec)
-    norb_max = max(norb)
+    norb_avg = np.mean(norb)
     nelec_max = max(nelec)
+    norb_max = max(norb)
     tot_time = sum(tot_time)
 
     mp2_corr = f'{mp2_corr:.6f}'
@@ -1972,19 +1961,19 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
         out_file.write(f'# lno-afqmc/cc cc_cr: {qmc_cc_cr} +/- {qmc_cc_cr_err}\n')
         out_file.write(f'# lno-afqmc/cc corr: {qmc_corr} +/- {qmc_corr_err}\n')
         out_file.write(f'# mp2_correction: {mp2_cr:.8f}\n')
-        out_file.write(f'# number of orbitals: average {norb_avg:.2f} maxium {norb_max}\n')
         out_file.write(f'# number of electrons: average {nelec_avg:.2f} maxium {nelec_max}\n')
+        out_file.write(f'# number of orbitals: average {norb_avg:.2f} maxium {norb_max}\n')
         out_file.write(f'# total run time: {tot_time:.2f}\n')
     
     return None
 
 def sum_results(n_results):
     with open('sum_results.out', 'w') as out_file:
-        print("# thresh(occ,vir) "
+        print("# lno-thresh(occ,vir) "
               "  mp2_corr  ccsd_corr"
-              "  afqmc/hf_corr   err "
-              "  afqmc/ccsd_corr   err "
-              "  nelec_avg   nelec_max  "
+              "  qmc/hf_corr   err "
+              "  qmc/ccsd_corr   err "
+              "  mp2_cr nelec_avg   nelec_max  "
               "  norb_avg   norb_max  "
               "  run_time",file=out_file)
         for i in range(n_results):
@@ -2029,7 +2018,7 @@ def sum_results_dbg(n_results):
               "  mp2_corr  ccsd_corr  olp_ratio  err"
               "  qmc_hf_cr  err  qmc_cc_cr0   err"
               "  qmc_cc_cr1   err  qmc_cc_cr2   err"
-              "  qmc_cc_cr   err  qmc_orb_en   err  mp2_correction"
+              "  qmc_cc_cr   err  qmc_corr   err  mp2_correction"
               "  nelec_avg   nelec_max  norb_avg   norb_max  "
               "  run_time",file=out_file)
         for i in range(n_results):
@@ -2118,3 +2107,52 @@ def lno_data(data):
       lno_ccsd_mp2_corr = lno_ccsd_corr+lno_mp2_cr
 
       return lno_thresh,lno_afqmc_corr,lno_afqmc_mp2_corr,lno_afqmc_err,lno_ccsd_corr,lno_ccsd_mp2_corr
+
+def lno_data_dbg(data):
+      new_data = []
+      lines = data.splitlines()
+      for line in lines:
+            columns = line.split()
+            if len(columns)>1:
+                  if not line.startswith("#"): 
+                        new_data.append(columns)
+
+      new_data = np.array(new_data)
+
+      lno_thresh = []
+      for i in range(new_data.shape[0]):
+            thresh_vir = new_data[:,0][i].split(sep=',')[1]
+            thresh_vir = float(thresh_vir.strip('(),'))
+            lno_thresh.append(thresh_vir)
+
+      lno_data = np.array(new_data[:,1:],dtype="float32")
+
+      lno_thresh = np.array(lno_thresh,dtype="float32")
+      mp2_corr = lno_data[:,0]
+      ccsd_corr = lno_data[:,1]
+      olp_r = lno_data[:,2]
+      olp_r_err = lno_data[:,3]
+      qmc_hf_cr = lno_data[:,4]
+      qmc_hf_cr_err = lno_data[:,5]
+      qmc_cc_cr0 = lno_data[:,6]
+      qmc_cc_cr0_err = lno_data[:,7]
+      qmc_cc_cr1 = lno_data[:,8]
+      qmc_cc_cr1_err = lno_data[:,9]
+      qmc_cc_cr2 = lno_data[:,10]
+      qmc_cc_cr2_err = lno_data[:,11]
+      qmc_cc_cr = lno_data[:,12]
+      qmc_cc_cr_err = lno_data[:,13]
+      qmc_corr = lno_data[:,14]
+      qmc_corr_err = lno_data[:,15]
+      mp2_cr = lno_data[:,16]
+      nelec_avg = lno_data[:,17]
+      nelec_max = lno_data[:,18]
+      norb_avg = lno_data[:,19]
+      norb_max = lno_data[:,20]
+      time = lno_data[:,21]
+
+      return (lno_thresh,mp2_corr,ccsd_corr,olp_r,olp_r_err,
+              qmc_hf_cr,qmc_hf_cr_err,qmc_cc_cr0,qmc_cc_cr0_err,
+              qmc_cc_cr1,qmc_cc_cr1_err,qmc_cc_cr2,qmc_cc_cr2_err,
+              qmc_cc_cr,qmc_cc_cr_err,qmc_corr,qmc_corr_err,mp2_cr,
+              nelec_avg,nelec_max,norb_avg,norb_max,time)
