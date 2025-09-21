@@ -443,8 +443,8 @@ def cc_impurity_solve(mf,mo_coeff,lo_coeff,eris=None,frozen=None):
     prjlo = fdot(lo_coeff.T, s1e, orbactocc)
 
     # solve impurity problem
-    from pyscf.cc import CCSD
-    mcc = CCSD(mf, mo_coeff=mo_coeff, frozen=frozen) #.set(verbose=verbose_imp)
+    from pyscf import cc
+    mcc = cc.CCSD(mf, mo_coeff=mo_coeff, frozen=frozen) #.set(verbose=verbose_imp)
     mcc.ao2mo = ccsd.ccsd_ao2mo.__get__(mcc, mcc.__class__)
     mcc._s1e = s1e
     if eris is not None:
@@ -603,7 +603,6 @@ def prep_lno_amp_chol_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
                filename=chol_file,mo_coeffs=trial_coeffs)
     
     return None
-
 
 def prep_lnoccsd_afqmc(options=None,prjlo=True,
                        full_cisd = False,
@@ -1369,7 +1368,8 @@ def get_fragment_energy(oovv, t2, prj):
     return lib.einsum('ijab,kjab,ik->',t2,2*oovv-oovv.transpose(0,1,3,2),m)
 
 def get_mp2_frg_e(mf,frzfrag,eris,orbfragloc,can_orbfrag):
-
+    
+    from pyscf import cc
     mol = mf.mol
     nocc = mol.nelectron // 2 
     nao = mol.nao
@@ -1383,7 +1383,7 @@ def get_mp2_frg_e(mf,frzfrag,eris,orbfragloc,can_orbfrag):
 
     s1e = eris.s1e
     can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:,actocc])
-    mc = CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
+    mc = cc.CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
     mc.ao2mo = ccsd.ccsd_ao2mo.__get__(mc,mc.__class__)
     mc._s1e = s1e
     mc._h1e = eris.h1e
@@ -1530,8 +1530,9 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
     '''
 
     from pyscf.cc.ccsd import CCSD
-    from pyscf.cc.uccsd import UCCSD
-    if isinstance(mfcc, (CCSD, UCCSD)):
+    # from pyscf.cc.uccsd import UCCSD
+    from pyscf.ci.cisd import CISD
+    if isinstance(mfcc, (CCSD, CISD)):
         full_cisd = True
         mf = mfcc._scf
     else:
@@ -1628,36 +1629,54 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         print(f'# frozen orbitals: {frzfrag}')
 
         if full_cisd:
-            print('# Use full CCSD wavefunction')
             print('# This method is not size-extensive')
-            print('# Projecting CI coefficients from MO to NO')
             frz_mo_idx = np.where(np.array(frozen_mask) == False)[0]
             act_mo_occ = np.array([i for i in range(nocc) if i not in frz_mo_idx])
             act_mo_vir = np.array([i for i in range(nocc,nao) if i not in frz_mo_idx])
             prj_no2mo = no2mo(mf.mo_coeff,s1e,orbfrag)
             prj_oo_act = prj_no2mo[np.ix_(act_mo_occ,actocc)]
             prj_vv_act = prj_no2mo[np.ix_(act_mo_vir,actvir)]
-            full_t1 = mfcc.t1
-            full_t2 = mfcc.t2
-            # project to active no
-            t1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,full_t1,prj_vv_act.T)
-            t2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
-                    prj_oo_act,prj_oo_act,full_t2,prj_vv_act.T,prj_vv_act.T)
+            if isinstance(mfcc, CCSD):
+                print('# Use full CCSD wavefunction')
+                print('# Project CC amplitudes from MO to NO')
+                t1 = mfcc.t1
+                t2 = mfcc.t2
+                # project to active no
+                t1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,t1,prj_vv_act.T)
+                t2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
+                        prj_oo_act,prj_oo_act,t2,prj_vv_act.T,prj_vv_act.T)
+                ci1 = np.array(t1)
+                ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
+                ci2 = ci2.transpose(0, 2, 1, 3)
+            if isinstance(mfcc, CISD):
+                print('# Use full CISD wavefunction')
+                print('# Project CI coefficients from MO to NO')
+                v_ci = mfcc.ci
+                ci0,ci1,ci2 = mfcc.cisdvec_to_amplitudes(v_ci)
+                ci1 = ci1/ci0
+                ci2 = ci2/ci0
+                ci1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,ci1,prj_vv_act.T)
+                ci2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
+                        prj_oo_act,prj_oo_act,ci2,prj_vv_act.T,prj_vv_act.T)
+                ci2 = ci2.transpose(0, 2, 1, 3)
             print('# Finished MO to NO projection')
             ecorr_ccsd = '  None  '
         else:
             ecorr_ccsd,t1,t2 = cc_impurity_solve(
                     mf,orbfrag,orbfragloc,frozen=frzfrag,eris=None
                     )
+            ci1 = np.array(t1)
+            ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
+            ci2 = ci2.transpose(0, 2, 1, 3)
             ecorr_ccsd = f'{ecorr_ccsd:.8f}'
             print(f'# lno-ccsd fragment correlation energy: {ecorr_ccsd}')
  
         nelec_act = nactocc*2
         norb_act = nactocc+nactvir
 
-        ci1 = np.array(t1)
-        ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
-        ci2 = ci2.transpose(0, 2, 1, 3)
+        # ci1 = np.array(t1)
+        # ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
+        # ci2 = ci2.transpose(0, 2, 1, 3)
         
         print(f'# number of active electrons: {nelec_act}')
         print(f'# number of active orbitals: {norb_act}')
@@ -1677,8 +1696,8 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
             print('# running fragment MP2')
             can_prjlo = fdot(orbfragloc.T,s1e,can_orbfrag[:,actocc])
 
-            from pyscf.cc import CCSD
-            mcc = CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
+            from pyscf import cc
+            mcc = cc.CCSD(mf, mo_coeff=can_orbfrag, frozen=frzfrag)
             mcc.ao2mo = ccsd.ccsd_ao2mo.__get__(mcc, mcc.__class__)
             mcc._s1e = s1e
             imp_eris = mcc.ao2mo()
@@ -2097,16 +2116,15 @@ def lno_data(data):
       lno_data = np.array(new_data[:,1:],dtype="float32")
 
       lno_thresh = np.array(lno_thresh,dtype="float32")
-      # lno_thresh[-1] = 1e-10 # last thresh = 0.0
-      lno_afqmc_corr = lno_data[:,0]
-      lno_afqmc_err = lno_data[:,1]
-      lno_afqmc_mp2_corr = lno_data[:,2]
-      lno_ccsd_corr = lno_data[:,3]
+      lno_mp2_corr = lno_data[:,0]
+      lno_cc_corr = lno_data[:,1]
+      lno_qmc_hf_corr = lno_data[:,2]
+      lno_qmc_hf_err = lno_data[:,3]
+      lno_qmc_cc_corr = lno_data[:,4]
+      lno_qmc_cc_err = lno_data[:,5]
+      mp2_cr = lno_data[:,6]
 
-      lno_mp2_cr = lno_afqmc_mp2_corr-lno_afqmc_corr
-      lno_ccsd_mp2_corr = lno_ccsd_corr+lno_mp2_cr
-
-      return lno_thresh,lno_afqmc_corr,lno_afqmc_mp2_corr,lno_afqmc_err,lno_ccsd_corr,lno_ccsd_mp2_corr
+      return lno_thresh,lno_qmc_cc_corr,lno_qmc_cc_err,lno_cc_corr,mp2_cr
 
 def lno_data_dbg(data):
       new_data = []
@@ -2156,3 +2174,51 @@ def lno_data_dbg(data):
               qmc_cc_cr1,qmc_cc_cr1_err,qmc_cc_cr2,qmc_cc_cr2_err,
               qmc_cc_cr,qmc_cc_cr_err,qmc_corr,qmc_corr_err,mp2_cr,
               nelec_avg,nelec_max,norb_avg,norb_max,time)
+
+def each_frg_results(nresults):
+    for i in range(nresults):
+        with open(f"results.out{i+1}","r") as read_file:
+            for line in read_file:
+                if "lno-thresh" in line:
+                    thresh_occ = line.split()[-2]
+                    thresh_vir = line.split()[-1]
+                    thresh_occ = float(thresh_occ.strip('()[],'))
+                    thresh_vir = float(thresh_vir.strip('()[],'))
+        with open(f"results.out{i+1}","r") as read_file:
+            for line in read_file:
+                if not line.lstrip().startswith("#"):
+                    # print(line.split())
+                    (ifrag,mp2_corr,ccsd_corr,olp_r,olp_r_err,
+                    qmc_hf_cr,qmc_hf_cr_err,qmc_cc_cr0,qmc_cc_cr0_err,
+                    qmc_cc_cr1,qmc_cc_cr1_err,qmc_cc_cr2,qmc_cc_cr2_err,
+                    qmc_cc_cr,qmc_cc_cr_err,qmc_orb_en,qmc_orb_en_err,
+                    nelec,norb,time) = line.split()
+                    if i == 0:
+                        with open(f'frg{ifrag}_results.out', 'w') as out_file:
+                            print("# thresh(occ,vir) "
+                                "  mp2_corr  ccsd_corr  olp_ratio  err"
+                                "  qmc_hf_cr  err  qmc_cc_cr0   err"
+                                "  qmc_cc_cr1   err  qmc_cc_cr2   err"
+                                "  qmc_cc_cr   err  qmc_orb_en   err"
+                                "  nelec   norb  time", file=out_file)
+                            print(f"  ({thresh_occ:.2e},{thresh_vir:.2e})"
+                                f"  {mp2_corr}  {ccsd_corr}  {olp_r}  {olp_r_err}"
+                                f"  {qmc_hf_cr}  {qmc_hf_cr_err}"
+                                f"  {qmc_cc_cr0}  {qmc_cc_cr0_err}"
+                                f"  {qmc_cc_cr1}  {qmc_cc_cr1_err}"
+                                f"  {qmc_cc_cr2}  {qmc_cc_cr2_err}"
+                                f"  {qmc_cc_cr}  {qmc_cc_cr_err}"
+                                f"  {qmc_orb_en}  {qmc_orb_en_err}"
+                                f"  {nelec}  {norb}  {time}", file=out_file)
+                    else: 
+                        with open(f'frg{ifrag}_results.out', 'a') as out_file:
+                                print(f"  ({thresh_occ:.2e},{thresh_vir:.2e})"
+                                f"  {mp2_corr}  {ccsd_corr}  {olp_r}  {olp_r_err}"
+                                f"  {qmc_hf_cr}  {qmc_hf_cr_err}"
+                                f"  {qmc_cc_cr0}  {qmc_cc_cr0_err}"
+                                f"  {qmc_cc_cr1}  {qmc_cc_cr1_err}"
+                                f"  {qmc_cc_cr2}  {qmc_cc_cr2_err}"
+                                f"  {qmc_cc_cr}  {qmc_cc_cr_err}"
+                                f"  {qmc_orb_en}  {qmc_orb_en_err}"
+                                f"  {nelec}  {norb}  {time}", file=out_file)
+    return None

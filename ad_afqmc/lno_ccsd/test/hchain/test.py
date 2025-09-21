@@ -1,5 +1,5 @@
 from ad_afqmc.lno_ccsd import lno_ccsd
-from pyscf import gto, scf, cc
+from pyscf import gto, scf, cc, ci
 import os
 
 a = 1.
@@ -12,8 +12,11 @@ mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
 mf = scf.RHF(mol).density_fit()
 mf.kernel()
 
-mycc = cc.CCSD(mf)
-mycc.kernel()
+# mycc = cc.CCSD(mf)
+# mycc.kernel()
+
+myci = ci.CISD(mf)
+myci.kernel()
 
 options = {'n_eql': 4,
            'n_prop_steps': 50,
@@ -29,9 +32,9 @@ options = {'n_eql': 4,
             'use_gpu': False,
             }
 
-threshs = [1e-3,1e-4,1e-6]
+threshs = [1e-3]
 for i,thresh in enumerate(threshs):
-    lno_ccsd.run_lno_ccsd_afqmc(mycc,thresh,[],options,nproc=5,debug=False)
+    lno_ccsd.run_lno_ccsd_afqmc(myci,thresh,[],options,nproc=5,debug=False)
     os.system(f"mv results.out results.out{i+1}")
 
 lno_ccsd.sum_results(len(threshs))
