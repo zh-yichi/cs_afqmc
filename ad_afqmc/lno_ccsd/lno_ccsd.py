@@ -1517,8 +1517,8 @@ def make_lno(mfcc,orbfragloc,thresh_internal,thresh_external):
 
 def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
                        lo_type='boys',chol_cut=1e-6,nproc=None,
-                       run_frg_list=None,
-                       use_df_vecs=False,mp2=True,debug=False):
+                       run_frg_list=None,use_df_vecs=False,mp2=True,
+                       debug=False,t2_0=False):
     '''
     mfcc: pyscf mean-field object
     thresh: lno thresh
@@ -1562,7 +1562,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
 
     s1e = lno_cc._scf.get_ovlp()
     orbactocc = lno_cc.split_mo()[1] # non-localized active occ
-    # if localize:
     orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
     m = fdot(orbloc.T, s1e, orbactocc)
     lospanerr = abs(fdot(m.T, m) - np.eye(m.shape[1])).max()
@@ -1629,7 +1628,7 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
         print(f'# frozen orbitals: {frzfrag}')
 
         if full_cisd:
-            print('# This method is not size-extensive')
+            # print('# This method is not size-extensive')
             frz_mo_idx = np.where(np.array(frozen_mask) == False)[0]
             act_mo_occ = np.array([i for i in range(nocc) if i not in frz_mo_idx])
             act_mo_vir = np.array([i for i in range(nocc,nao) if i not in frz_mo_idx])
@@ -1641,6 +1640,8 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
                 print('# Project CC amplitudes from MO to NO')
                 t1 = mfcc.t1
                 t2 = mfcc.t2
+                if t2_0:
+                    t2 = np.zeros(t2.shape)
                 # project to active no
                 t1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,t1,prj_vv_act.T)
                 t2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
@@ -1662,9 +1663,12 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
             print('# Finished MO to NO projection')
             ecorr_ccsd = '  None  '
         else:
+            print('# Solving LNO-CCSD')
             ecorr_ccsd,t1,t2 = cc_impurity_solve(
                     mf,orbfrag,orbfragloc,frozen=frzfrag,eris=None
                     )
+            if t2_0:
+                t2 = np.zeros(t2.shape)
             ci1 = np.array(t1)
             ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
             ci2 = ci2.transpose(0, 2, 1, 3)
@@ -1673,10 +1677,6 @@ def run_lno_ccsd_afqmc(mfcc,thresh,frozen=None,options=None,
  
         nelec_act = nactocc*2
         norb_act = nactocc+nactvir
-
-        # ci1 = np.array(t1)
-        # ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
-        # ci2 = ci2.transpose(0, 2, 1, 3)
         
         print(f'# number of active electrons: {nelec_act}')
         print(f'# number of active orbitals: {norb_act}')

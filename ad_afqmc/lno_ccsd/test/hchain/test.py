@@ -15,8 +15,8 @@ mf.kernel()
 # mycc = cc.CCSD(mf)
 # mycc.kernel()
 
-myci = ci.CISD(mf)
-myci.kernel()
+# myci = ci.CISD(mf)
+# myci.kernel()
 
 options = {'n_eql': 4,
            'n_prop_steps': 50,
@@ -34,7 +34,7 @@ options = {'n_eql': 4,
 
 threshs = [1e-3]
 for i,thresh in enumerate(threshs):
-    lno_ccsd.run_lno_ccsd_afqmc(myci,thresh,[],options,nproc=5,debug=False)
+    lno_ccsd.run_lno_ccsd_afqmc(mf,thresh,[],options,nproc=5,t2_0=True)
     os.system(f"mv results.out results.out{i+1}")
 
 lno_ccsd.sum_results(len(threshs))
