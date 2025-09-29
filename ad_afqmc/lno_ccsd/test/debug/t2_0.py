@@ -13,7 +13,7 @@ import os
 # '''
 
 a = 1. # 2aB
-nH = 6
+nH = 10
 atoms = ""
 for i in range(nH):
     atoms += f"H {i*a:.5f} 0.00000 0.00000 \n"

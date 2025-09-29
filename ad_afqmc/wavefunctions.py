@@ -244,6 +244,11 @@ class wave_function(ABC):
     def calc_orbenergy(self, walkers,ham_data:dict , wave_data:dict, orbE:int) -> jnp.ndarray:
         return vmap(self._calc_orbenergy, in_axes=(None, None, None, 0, None,None))(
             ham_data['h0'], ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,orbE)
+    
+    @singledispatchmethod
+    def calc_orbenergy2(self,walkers,ham_data:dict,wave_data:dict) -> jnp.ndarray:
+        return vmap(self._calc_orbenergy2, in_axes=(None, None, 0, None))(
+            ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,)
 
     @partial(jit, static_argnums=0)
     def _calc_energy_restricted(
@@ -630,6 +635,24 @@ class rhf(wave_function):
         eneo2Jt = jnp.einsum('Gxk,xk,G->',f,m,c)*2 
         eneo2ext = jnp.einsum('Gxy,Gyk,xk->',f,f,m) 
         return eneo2Jt - eneo2ext 
+    
+    @partial(jit, static_argnums=0)
+    def _calc_orbenergy2(self, rot_h1, rot_chol, walker, wave_data):
+        m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
+        nocc = rot_h1.shape[0]
+        green_walker = self._calc_green(walker, wave_data)
+        f = jnp.einsum('gia,ak->gik', rot_chol[:,:nocc,nocc:],
+                       green_walker.T[nocc:,:nocc], optimize='optimal')
+        c = vmap(jnp.trace)(f)
+        ## for non orthogonal 
+        ene11 = 2*jnp.einsum('ia,ka,ik->',green_walker[:nocc,nocc:],rot_h1[:nocc,nocc:],m)
+        ene12 = 2*jnp.einsum('gik,ik,gjj->',f,m,rot_chol[:,:nocc,:nocc]) \
+                - jnp.einsum('gij,gjk,ik->',f,rot_chol[:,:nocc,:nocc],m)
+        ene1 = ene11-2*ene12
+        ##
+        eneo2Jt = jnp.einsum('Gxk,xk,G->',f,m,c)*2 
+        eneo2ext = jnp.einsum('Gxy,Gyk,xk->',f,f,m) 
+        return ene1 + eneo2Jt - eneo2ext
     
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
