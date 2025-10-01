@@ -1,0 +1,72 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 3
+# nelec: (1, 1)
+# nchol: 6
+#
+# n_eql: 4
+# n_prop_steps: 50
+# n_ene_blocks: 1
+# n_sr_blocks: 1
+# n_blocks: 1
+# n_walkers: 5
+# seed: 298
+# walker_type: rhf
+# trial: cisd
+# dt: 0.005
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# free_projection: False
+# n_batch: 1
+# ene0: 0
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# afqmc propagation with 25 walkers
+# appraching equilibrium
+# step  energy  hf_orb_en  cc_orb_en  time
+    0  -3.159581  0.000000  -0.000579  2.57 
+    1  -3.159581  -0.000246  -0.000579  15.90 
+    2  -3.159581  -0.000354  -0.000579  25.90 
+    3  -3.159581  -0.000446  -0.000579  25.92 
+    4  -3.159580  -0.000841  -0.000579  25.93 
+# Sampling sweeps:
+# iter  energy  err  hf_orb_en  err  cc_orb_cr  err  time
+     0  -3.159581    None    -0.000710    None    -0.000579  0.000000  25.99
+# Number of outliers in post: 0 
+#
+# Mean: -3.15958071e+00
+# Block size    # of blocks         Mean                Error
+      1                5       -3.15958071e+00       0.000000e+00
+      2                2       -3.15958071e+00       0.000000e+00
+#
+# Mean: -7.09849112e-04
+# Block size    # of blocks         Mean                Error
+      1                5       -7.09849112e-04       1.294343e-04
+      2                2       -6.71189813e-04       2.985614e-04
+#
+# Mean: -5.78887190e-04
+# Block size    # of blocks         Mean                Error
+      1                5       -5.78887190e-04       1.712372e-09
+      2                2       -5.78888066e-04       4.325984e-10
+# Stocahstic error estimate: 1.712372e-09
+#
+Final Results:
+lno-ccsd-afqmc energy: -3.159581 +/-   None  
+lno-ccsd-afqmc hf_orb_en: -0.000710 +/-   None  
+lno-ccsd-afqmc cc_orb_en: -0.000579 +/- 0.000000
+total run time: 26.00
+lno-mp2 orb_corr: -0.0005614498562411132
+lno-ccsd orb_corr: -0.00057888
+number of active electrons: 2
+number of active orbitals: 3
