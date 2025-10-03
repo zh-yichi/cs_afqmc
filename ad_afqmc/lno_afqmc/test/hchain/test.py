@@ -33,9 +33,9 @@ options = {'n_eql': 4,
             'which_rhf': 1,
             }
 
-threshs = [1e-8]
+threshs = [1e-4]
 for i,thresh in enumerate(threshs):
-    code_tester.run_lno_afqmc(mf,thresh,[],options,nproc=5)
+    code_tester.run_lno_afqmc_norhf_test(mf,thresh,[],options,nproc=5)
     os.system(f"mv results.out results.out1")
 
-code_tester.sum_results(1)
+code_tester.sum_results_norhf_test(1)
