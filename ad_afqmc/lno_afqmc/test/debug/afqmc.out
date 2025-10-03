@@ -1,0 +1,36 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 10
+#
+# Using Local Natural Orbital Approximation
+# norb: 4
+# nelec: (2, 2)
+#
+# n_eql: 1
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 5
+# n_walkers: 5
+# seed: 98
+# walker_type: rhf
+# trial: rhf
+# dt: 0.005
+# orbE: 1
+# prjlo: [[ 0. -1.]]
+# maxError: 0.0007071067811865475
+# LNO: True
+# n_exp_terms: 6
+# n_prop_steps: 50
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# free_projection: False
+# n_batch: 1
+#
+# Equilibration sweeps:
+#   Iter        Block energy      Walltime
+#     0      -1.828187129e+00     6.71e+00 

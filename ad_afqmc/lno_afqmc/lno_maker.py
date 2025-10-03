@@ -59,7 +59,7 @@ def get_lo(lnocc,lo_type='boys'):
         ,check_lo_span(lnocc,lococc,locvir))
     return lococc, locvir
 
-def make_lno(mfcc,orbfragloc,lococc,locvir,thresh_internal,thresh_external):
+def make_lno(mfcc,orbfragloc,thresh_internal,thresh_external):
 
     if isinstance(thresh_external,(float,int)):
         thresh_ext_occ = thresh_ext_vir = thresh_external
@@ -80,25 +80,24 @@ def make_lno(mfcc,orbfragloc,lococc,locvir,thresh_internal,thresh_external):
         
     nocc = np.count_nonzero(mf.mo_occ>1e-10)
     nmo = mf.mo_occ.size
-    # orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo()
-    frzocc, _, _, frzvir = mfcc.split_mo() # frz_occ, act_occ, act_vir, frz_vir
-    _, moeocc1, moevir1, _ = mfcc.split_moe() # split energy
+    orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo()
+    _, moeocc1, moevir1, _ = mfcc.split_moe()
 
-    lovir = abs(orbfragloc.T @ s1e @ locvir).max() > 1e-10
-    m = orbfragloc.T @ s1e @ lococc # overlap with all loc act_occs
+    lovir = abs(orbfragloc.T @ s1e @ orbvir1).max() > 1e-10
+    m = orbfragloc.T @ s1e @ orbocc1 # overlap with all loc act_occs
     uocc1, uocc2 = lno.projection_construction(m, thresh_internal)
-    moefragocc1, orbfragocc1 = lno.subspace_eigh(fock, lococc@uocc1)
+    moefragocc1, orbfragocc1 = lno.subspace_eigh(fock, orbocc1@uocc1)
     if lovir:
-        m = orbfragloc.T @ s1e @ locvir
+        m = orbfragloc.T @ s1e @ orbvir1
         uvir1, uvir2 = lno.projection_construction(m, thresh_internal)
-        _, orbfragvir1 = lno.subspace_eigh(fock, locvir@uvir1)
+        moefragvir1, orbfragvir1 = lno.subspace_eigh(fock, orbvir1@uvir1)
 
     def moe_Ov(moefragocc):
         return (moefragocc[:,None] - moevir1).reshape(-1)
 
     eov = moe_Ov(moeocc1)
     # Construct PT2 dm_vv
-    u = lococc.T @ s1e @ orbfragocc1
+    u = orbocc1.T @ s1e @ orbfragocc1
     if getattr(mf,'with_df',None) is not None:
         print('Using DF integrals')
         ovov = eris.get_Ovov(u)
@@ -107,7 +106,7 @@ def make_lno(mfcc,orbfragloc,lococc,locvir,thresh_internal,thresh_external):
         eri_ao = mf._eri
         nao = mf.mol.nao
         eri_ao = ao2mo.restore(1,eri_ao,nao)
-        eri_mo = get_eri_mo(eri_ao,lococc,locvir)
+        eri_mo = get_eri_mo(eri_ao,orbocc1,orbvir1)
         ovov = lib.einsum('iI,iajb->Iajb',u,eri_mo)
     eia = moe_Ov(moefragocc1)
     ejb = eov
@@ -131,128 +130,31 @@ def make_lno(mfcc,orbfragloc,lococc,locvir,thresh_internal,thresh_external):
 
     t2 = ovov = eiajb = None
     orbfragocc2, orbfragocc0 \
-        = lno.natorb_compression(dmoo, lococc, thresh_ext_occ, uocc2)
+        = lno.natorb_compression(dmoo, orbocc1, thresh_ext_occ, uocc2)
 
     can_orbfragocc12 = lno.subspace_eigh(fock, np.hstack([orbfragocc2, orbfragocc1]))[1]
     orbfragocc12 = np.hstack([orbfragocc2, orbfragocc1])
     if lovir:
         orbfragvir2, orbfragvir0 \
-            = lno.natorb_compression(dmvv,locvir,thresh_ext_vir,uvir2)
+            = lno.natorb_compression(dmvv,orbvir1,thresh_ext_vir,uvir2)
 
         can_orbfragvir12 = lno.subspace_eigh(fock, np.hstack([orbfragvir2, orbfragvir1]))[1]
         orbfragvir12 = np.hstack([orbfragvir2, orbfragvir1])
     else: 
-        orbfragvir2, orbfragvir0 = lno.natorb_compression(dmvv,locvir,thresh_ext_vir)
+        orbfragvir2, orbfragvir0 = lno.natorb_compression(dmvv,orbvir1,thresh_ext_vir)
 
         can_orbfragvir12 = lno.subspace_eigh(fock, orbfragvir2)[1]
         orbfragvir12 = orbfragvir2
 
-    lno_orb = np.hstack([frzocc, orbfragocc0, orbfragocc12,
-                         orbfragvir12, orbfragvir0, frzvir])
-    can_orbfrag = np.hstack([frzocc, orbfragocc0, can_orbfragocc12,
-                        can_orbfragvir12, orbfragvir0, frzvir])
+    lno_orb = np.hstack([orbocc0, orbfragocc0, orbfragocc12,
+                         orbfragvir12, orbfragvir0, orbvir0])
+    can_orbfrag = np.hstack([orbocc0, orbfragocc0, can_orbfragocc12,
+                        can_orbfragvir12, orbfragvir0, orbvir0])
     
-    frzfrag = np.hstack([np.arange(frzocc.shape[1]+orbfragocc0.shape[1]),
+    frzfrag = np.hstack([np.arange(orbocc0.shape[1]+orbfragocc0.shape[1]),
                          np.arange(nocc+orbfragvir12.shape[1],nmo)])
 
-    return frzfrag, lno_orb, can_orbfrag
-
-# def make_lno(mfcc,orbfragloc,thresh_internal,thresh_external):
-
-#     if isinstance(thresh_external,(float,int)):
-#         thresh_ext_occ = thresh_ext_vir = thresh_external
-#     else:
-#         thresh_ext_occ, thresh_ext_vir  = thresh_external
-
-#     mf = mfcc._scf
-#     if getattr(mf,'with_df',None) is not None:
-#         print('Using DF integrals')
-#         eris = mfcc.ao2mo()
-#         s1e = eris.s1e if eris.s1e is None else mf.get_ovlp()
-#         fock = eris.fock  if eris.fock is None else mf.get_fock()
-#     else:
-#         print('Using true 4-index integrals')
-#         eris = None
-#         s1e = mf.get_ovlp()
-#         fock = mf.get_fock()
-        
-#     nocc = np.count_nonzero(mf.mo_occ>1e-10)
-#     nmo = mf.mo_occ.size
-#     orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo()
-#     _, moeocc1, moevir1, _ = mfcc.split_moe()
-
-#     lovir = abs(orbfragloc.T @ s1e @ orbvir1).max() > 1e-10
-#     m = orbfragloc.T @ s1e @ orbocc1 # overlap with all loc act_occs
-#     uocc1, uocc2 = lno.projection_construction(m, thresh_internal)
-#     moefragocc1, orbfragocc1 = lno.subspace_eigh(fock, orbocc1@uocc1)
-#     if lovir:
-#         m = orbfragloc.T @ s1e @ orbvir1
-#         uvir1, uvir2 = lno.projection_construction(m, thresh_internal)
-#         moefragvir1, orbfragvir1 = lno.subspace_eigh(fock, orbvir1@uvir1)
-
-#     def moe_Ov(moefragocc):
-#         return (moefragocc[:,None] - moevir1).reshape(-1)
-
-#     eov = moe_Ov(moeocc1)
-#     # Construct PT2 dm_vv
-#     u = orbocc1.T @ s1e @ orbfragocc1
-#     if getattr(mf,'with_df',None) is not None:
-#         print('Using DF integrals')
-#         ovov = eris.get_Ovov(u)
-#     else:
-#         print('Using true 4-index integrals')
-#         eri_ao = mf._eri
-#         nao = mf.mol.nao
-#         eri_ao = ao2mo.restore(1,eri_ao,nao)
-#         eri_mo = get_eri_mo(eri_ao,orbocc1,orbvir1)
-#         ovov = lib.einsum('iI,iajb->Iajb',u,eri_mo)
-#     eia = moe_Ov(moefragocc1)
-#     ejb = eov
-#     e1_or_e2 = 'e1'
-#     swapidx = 'ab'
-
-#     eiajb = (eia[:,None]+ejb).reshape(*ovov.shape)
-#     t2 = ovov / eiajb
-
-#     dmvv = lno.make_rdm1_mp2(t2, 'vv', e1_or_e2, swapidx)
-   
-#     if lovir:
-#         dmvv = uvir2.T @ dmvv @uvir2
-
-#     # Construct PT2 dm_oo
-#     e1_or_e2 = 'e2'
-#     swapidx = 'ab'
-
-#     dmoo = lno.make_rdm1_mp2(t2, 'oo', e1_or_e2, swapidx)
-#     dmoo = uocc2.T @ dmoo @ uocc2
-
-#     t2 = ovov = eiajb = None
-#     orbfragocc2, orbfragocc0 \
-#         = lno.natorb_compression(dmoo, orbocc1, thresh_ext_occ, uocc2)
-
-#     can_orbfragocc12 = lno.subspace_eigh(fock, np.hstack([orbfragocc2, orbfragocc1]))[1]
-#     orbfragocc12 = np.hstack([orbfragocc2, orbfragocc1])
-#     if lovir:
-#         orbfragvir2, orbfragvir0 \
-#             = lno.natorb_compression(dmvv,orbvir1,thresh_ext_vir,uvir2)
-
-#         can_orbfragvir12 = lno.subspace_eigh(fock, np.hstack([orbfragvir2, orbfragvir1]))[1]
-#         orbfragvir12 = np.hstack([orbfragvir2, orbfragvir1])
-#     else: 
-#         orbfragvir2, orbfragvir0 = lno.natorb_compression(dmvv,orbvir1,thresh_ext_vir)
-
-#         can_orbfragvir12 = lno.subspace_eigh(fock, orbfragvir2)[1]
-#         orbfragvir12 = orbfragvir2
-
-#     lno_orb = np.hstack([orbocc0, orbfragocc0, orbfragocc12,
-#                          orbfragvir12, orbfragvir0, orbvir0])
-#     can_orbfrag = np.hstack([orbocc0, orbfragocc0, can_orbfragocc12,
-#                         can_orbfragvir12, orbfragvir0, orbvir0])
-    
-#     frzfrag = np.hstack([np.arange(orbocc0.shape[1]+orbfragocc0.shape[1]),
-#                          np.arange(nocc+orbfragvir12.shape[1],nmo)])
-
-#     return frzfrag, lno_orb , can_orbfrag
+    return frzfrag, lno_orb , can_orbfrag
 
 def get_fragment_energy(oovv,t2,prj):
     m = prj.T @ prj

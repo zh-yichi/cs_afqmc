@@ -23,9 +23,9 @@ amp_file = "amplitudes.npz"
 chol_file = "FCIDUMP_chol"
 
 def run_afqmc(options=None, script=None, mpi_prefix=None, nproc=None):
-    from mpi4py import MPI
-    if not MPI.Is_finalized():
-        MPI.Finalize()
+    # from mpi4py import MPI
+    # if not MPI.Is_finalized():
+    #     MPI.Finalize()
     if options is None:
         options = {}
     with open("options.bin", "wb") as f:
@@ -40,9 +40,9 @@ def run_afqmc(options=None, script=None, mpi_prefix=None, nproc=None):
         gpu_flag = "--use_gpu"
         mpi_prefix = ""
         nproc = None
-        config.afqmc_config["use_gpu"] = True
-        config.setup_jax()
-        MPI = config.setup_comm()
+        # config.afqmc_config["use_gpu"] = True
+        # config.setup_jax()
+        # MPI = config.setup_comm()
     else:
         print(f'# running AFQMC on CPU')
         gpu_flag = ""

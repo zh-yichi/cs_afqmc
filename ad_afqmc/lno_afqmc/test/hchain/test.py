@@ -1,4 +1,4 @@
-from ad_afqmc.lno_afqmc import lnoafqmc_runner, data_maker
+from ad_afqmc.lno_afqmc import lnoafqmc_runner, data_maker ,code_tester
 from pyscf import gto, scf
 import os
 
@@ -22,19 +22,20 @@ options = {'n_eql': 4,
            'n_prop_steps': 50,
             'n_ene_blocks': 1,
             'n_sr_blocks': 1,
-            'n_blocks': 1,
+            'n_blocks': 10,
             'n_walkers': 5,
             'seed': 2,
             'walker_type': 'rhf',
-            'trial': 'cisd',
+            'trial': 'rhf',
             'dt':0.005,
             'ad_mode':None,
             'use_gpu': False,
+            'which_rhf': 1,
             }
 
-threshs = [1e-3]
+threshs = [1e-8]
 for i,thresh in enumerate(threshs):
-    lnoafqmc_runner.run_lno_afqmc(mf,thresh,[],options,nproc=5)
-    os.system(f"mv results.out results.out{i+1}")
+    code_tester.run_lno_afqmc(mf,thresh,[],options,nproc=5)
+    os.system(f"mv results.out results.out1")
 
-data_maker.sum_results(len(threshs))
+code_tester.sum_results(1)

@@ -102,6 +102,24 @@ def _frg_olp_exp2(x: float, chol_i: jax.Array, walker: jax.Array,
     return olp
 
 @partial(jit, static_argnums=(3,))
+def _frg_hf_eorb(rot_h1, rot_chol, walker, trial, wave_data):
+    '''hf orbital correlation energy'''
+    m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
+    nocc = rot_h1.shape[0]
+    _calc_green = wavefunctions.rhf(
+        trial.norb,trial.nelec,n_batch=trial.n_batch)._calc_green
+    green_walker = _calc_green(walker, wave_data)
+    f = jnp.einsum('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+                    green_walker.T[nocc:,:nocc], optimize='optimal')
+    c = vmap(jnp.trace)(f)
+    eneo2Jt = jnp.einsum('Gxk,xk,G->',f,m,c)*2 
+    eneo2ext = jnp.einsum('Gxy,Gyk,xk->',f,f,m)
+    hf_orb_en = eneo2Jt - eneo2ext
+    # olp_ratio = _calc_olp_ratio_restricted(walker,wave_data)
+    # hf_orb_cr = jnp.real(olp_ratio*hf_orb_en)
+    return jnp.real(hf_orb_en)
+
+@partial(jit, static_argnums=(3,))
 def _frg_hf_cr(rot_h1, rot_chol, walker, trial, wave_data):
     '''hf orbital correlation energy multiplies the overlap ratio'''
     m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])

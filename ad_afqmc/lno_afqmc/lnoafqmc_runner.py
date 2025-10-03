@@ -356,8 +356,8 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
     lno_cc.force_outcore_ao2mo = True
 
     s1e = mf.get_ovlp()
-    # orbloc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
-    lococc,locvir = lno_maker.get_lo(lno_cc,lo_type)
+    lococc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
+    # lococc,locvir = lno_maker.get_lo(lno_cc,lo_type) ### fix this for DF
 
     frag_lolist = [[i] for i in range(lococc.shape[1])]
     nfrag = len(frag_lolist)
@@ -380,7 +380,7 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
         THRESH_INTERNAL = 1e-10
         frzfrag, orbfrag, can_orbfrag \
             = lno_maker.make_lno(
-                lno_cc,orbfragloc,lococc,locvir,THRESH_INTERNAL,thresh_pno
+                lno_cc,orbfragloc,THRESH_INTERNAL,thresh_pno
                 )
         
         mol = mf.mol
@@ -448,7 +448,9 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
                 ci2 = ci2.transpose(0, 2, 1, 3)
                 ecorr_cc = f'{ecorr_cc:.8f}'
                 print(f'# lno-ccsd fragment correlation energy: {ecorr_cc}')
-
+                from mpi4py import MPI
+                if not MPI.Is_finalized():
+                    MPI.Finalize() # CCSD initializes MPI
         #MP2 correction 
         if mp2:
             ## mp2 is not invariant to lno transformation
@@ -457,6 +459,7 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
             print('# running fragment MP2')
             ecorr_p2 = \
                 lno_maker.lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag)
+            ecorr_p2 = f'{ecorr_p2:.8f}'
             print(f'# lno-mp2 fragment correlation energy: {ecorr_p2}')
         else:
             ecorr_p2 = '  None  '
@@ -484,9 +487,6 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
             gpu_flag = "--use_gpu"
             mpi_prefix = ""
             nproc = None
-            from mpi4py import MPI
-            if not MPI.Is_finalized():
-                MPI.Finalize() # CCSD initializes MPI
         else:
             print(f'# running AFQMC on CPU')
             gpu_flag = ""
@@ -510,13 +510,13 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
             print(f"number of active electrons: {nelec_act}",file=out_file)
             print(f"number of active orbitals: {norb_act}",file=out_file)
 
-    from pyscf import mp
-    mmp = mp.MP2(mf, frozen=frozen)
-    e_mp2 = mmp.kernel()[0]
+    # from pyscf import mp
+    # mmp = mp.MP2(mf, frozen=frozen)
+    # e_mp2 = mmp.kernel()[0]
 
     if debug:
-        data_maker.frg2result_dbg(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2)
+        data_maker.frg2result_dbg(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2=0)
     else:
-        data_maker.frg2result(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2)
+        data_maker.frg2result(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2=0)
 
     return None

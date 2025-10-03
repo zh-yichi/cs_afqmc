@@ -356,13 +356,13 @@ def lno_data(data):
       lno_thresh = np.array(lno_thresh,dtype="float32")
       lno_mp2_corr = lno_data[:,0]
       lno_cc_corr = lno_data[:,1]
-      lno_qmc_hf_corr = lno_data[:,2]
-      lno_qmc_hf_err = lno_data[:,3]
+    #   lno_qmc_hf_corr = lno_data[:,2]
+    #   lno_qmc_hf_err = lno_data[:,3]
       lno_qmc_cc_corr = lno_data[:,4]
       lno_qmc_cc_err = lno_data[:,5]
       mp2_cr = lno_data[:,6]
 
-      return lno_thresh,lno_qmc_cc_corr,lno_qmc_cc_err,lno_cc_corr,mp2_cr
+      return lno_thresh,lno_mp2_corr,lno_cc_corr,lno_qmc_cc_corr,lno_qmc_cc_err,mp2_cr
 
 def lno_data_dbg(data):
       new_data = []
