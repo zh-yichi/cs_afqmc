@@ -4,11 +4,10 @@ from jax import random
 import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, wavefunctions, stat_utils
-from ad_afqmc.lno_afqmc import afqmc_maker, lnoafqmc_runner, code_tester
+from ad_afqmc.lno_afqmc import norhf_test, lnoafqmc_runner
 import time
 
 print = partial(print, flush=True)
-
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
     lnoafqmc_runner.prep_lnoafqmc_run())
 
@@ -33,6 +32,15 @@ ham_data = wavefunctions.rhf(trial.norb, trial.nelec,n_batch=trial.n_batch
 ham_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
 ham_data = ham.build_propagation_intermediates(ham_data, propagator, trial, wave_data)
 
+## add fock_ia to ham_data
+rot_h1,rot_chol = ham_data['rot_h1'],ham_data['rot_chol']
+nocc = rot_h1.shape[0]
+h_ia = rot_h1[:nocc,nocc:]
+veff_ia = 2*jnp.einsum('gia,gjj->ia',rot_chol[:,:nocc,nocc:],rot_chol[:,:nocc,:nocc])\
+          - jnp.einsum('gij,gja->ia',rot_chol[:,:nocc,:nocc],rot_chol[:,:nocc,nocc:])
+f_ia = h_ia + veff_ia
+ham_data['fock_ia'] = f_ia
+
 prop_data = propagator.init_prop_data(trial, wave_data, ham_data, init_walkers)
 if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
     raise ValueError(
@@ -49,22 +57,8 @@ init_time = time.time()
 which_rhf = options.get("which_rhf", 1)
 comm.Barrier()
 if rank == 0:
-    # if isinstance(trial, wavefunctions.rhf):
-    #     if which_rhf == 1:
-    #         orb_en = code_tester._frg_rhf_eorb(
-    #             ham_data['rot_h1'], ham_data['rot_chol'],
-    #             prop_data["walkers"][0], trial, wave_data)
-    #     elif which_rhf == 2:
-    orb_en,orb_fk,orb_cx = code_tester._frg_norhf_eorb_test(
+    orb_en,orb_fk,orb_cx = norhf_test._walker_norhf_orbenergy_test(
         prop_data["walkers"][0],ham_data,wave_data)
-            
-    # elif isinstance(trial, wavefunctions.cisd):
-    #     which_rhf = 0
-    #     hf_orb_cr,_ = afqmc_maker._frg_hf_cr(
-    #         ham_data['rot_h1'], ham_data['rot_chol'],prop_data["walkers"][0],trial,wave_data)
-    #     cc_orb_cr = afqmc_maker._frg_ci_cr(
-    #         prop_data["walkers"][0],ham_data,wave_data,trial,1e-6)
-    #     orb_en = hf_orb_cr+cc_orb_cr
 
     e_init = prop_data["e_estimate"]
 
@@ -82,7 +76,7 @@ comm.Barrier()
 
 for n in range(options["n_eql"]):
     prop_data, (blk_wt,blk_en,blk_orb_en,blk_orb_fk,blk_orb_cx) \
-                = code_tester.propagate_phaseless_orb_norhf_test(
+                = norhf_test.propagate_phaseless_orb_norhf_test(
                     ham_data,prop,prop_data,trial,wave_data,sampler)
     
     blk_wt = np.array([blk_wt], dtype="float32")
@@ -195,7 +189,7 @@ comm.Barrier()
 
 for n in range(sampler.n_blocks):
     prop_data,(blk_wt,blk_en,blk_orb_en,blk_orb_fk,blk_orb_cx) \
-        = code_tester.propagate_phaseless_orb_norhf_test(
+        = norhf_test.propagate_phaseless_orb_norhf_test(
             ham_data,prop,prop_data,trial,wave_data,sampler)
 
     blk_wt = np.array([blk_wt], dtype="float32")

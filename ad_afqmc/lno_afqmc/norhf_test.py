@@ -10,119 +10,6 @@ from ad_afqmc import wavefunctions, propagation, sampling
 from typing import Tuple
 import os
 
-def get_lo(lnocc,lo_type='boys'):
-    '''get the localized orbitals in the active space'''
-    from pyscf import lo
-    mol = lnocc._scf.mol
-    _,actocc,actvir,_ = lnocc.split_mo()
-    if lo_type == 'boys':
-        lococc = lo.Boys(mol,actocc).kernel()
-        locvir = lo.Boys(mol,actvir).kernel()
-    if lo_type == 'pm':
-        lococc = lo.PM(mol,actocc).kernel()
-        locvir = lo.PM(mol,actvir).kernel()
-    print('(loc_occ,loc_vir) span the same space as (occ,vir): ',
-          lno_maker.check_lo_span(lnocc,lococc,locvir))
-    return lococc, locvir
-
-def make_lno(mfcc,orbfragloc,lococc,locvir,thresh_internal,thresh_external):
-
-    if isinstance(thresh_external,(float,int)):
-        thresh_ext_occ = thresh_ext_vir = thresh_external
-    else:
-        thresh_ext_occ, thresh_ext_vir  = thresh_external
-
-    mf = mfcc._scf
-    if getattr(mf,'with_df',None) is not None:
-        print('Using DF integrals')
-        eris = mfcc.ao2mo()
-        s1e = eris.s1e if eris.s1e is None else mf.get_ovlp()
-        fock = eris.fock  if eris.fock is None else mf.get_fock()
-    else:
-        print('Using true 4-index integrals')
-        eris = None
-        s1e = mf.get_ovlp()
-        fock = mf.get_fock()
-        
-    nocc = np.count_nonzero(mf.mo_occ>1e-10)
-    nmo = mf.mo_occ.size
-    # orbocc0, orbocc1, orbvir1, orbvir0 = mfcc.split_mo()
-    frzocc, _, _, frzvir = mfcc.split_mo() # frz_occ, act_occ, act_vir, frz_vir
-    _, moeocc1, moevir1, _ = mfcc.split_moe() # split energy
-
-    lovir = abs(orbfragloc.T @ s1e @ locvir).max() > 1e-10
-    m = orbfragloc.T @ s1e @ lococc # overlap with all loc act_occs
-    uocc1, uocc2 = lno.projection_construction(m, thresh_internal)
-    moefragocc1, orbfragocc1 = lno.subspace_eigh(fock, lococc@uocc1)
-    if lovir:
-        m = orbfragloc.T @ s1e @ locvir
-        uvir1, uvir2 = lno.projection_construction(m, thresh_internal)
-        _, orbfragvir1 = lno.subspace_eigh(fock, locvir@uvir1)
-
-    def moe_Ov(moefragocc):
-        return (moefragocc[:,None] - moevir1).reshape(-1)
-
-    eov = moe_Ov(moeocc1)
-    # Construct PT2 dm_vv
-    u = lococc.T @ s1e @ orbfragocc1
-    if getattr(mf,'with_df',None) is not None:
-        print('Using DF integrals')
-        ovov = eris.get_Ovov(u)
-    else:
-        print('Using true 4-index integrals')
-        eri_ao = mf._eri
-        nao = mf.mol.nao
-        eri_ao = ao2mo.restore(1,eri_ao,nao)
-        eri_mo = lno_maker.get_eri_mo(eri_ao,lococc,locvir)
-        ovov = lib.einsum('iI,iajb->Iajb',u,eri_mo)
-    eia = moe_Ov(moefragocc1)
-    ejb = eov
-    e1_or_e2 = 'e1'
-    swapidx = 'ab'
-
-    eiajb = (eia[:,None]+ejb).reshape(*ovov.shape)
-    t2 = ovov / eiajb
-
-    dmvv = lno.make_rdm1_mp2(t2, 'vv', e1_or_e2, swapidx)
-   
-    if lovir:
-        dmvv = uvir2.T @ dmvv @uvir2
-
-    # Construct PT2 dm_oo
-    e1_or_e2 = 'e2'
-    swapidx = 'ab'
-
-    dmoo = lno.make_rdm1_mp2(t2, 'oo', e1_or_e2, swapidx)
-    dmoo = uocc2.T @ dmoo @ uocc2
-
-    t2 = ovov = eiajb = None
-    orbfragocc2, orbfragocc0 \
-        = lno.natorb_compression(dmoo, lococc, thresh_ext_occ, uocc2)
-
-    can_orbfragocc12 = lno.subspace_eigh(fock, np.hstack([orbfragocc2, orbfragocc1]))[1]
-    orbfragocc12 = np.hstack([orbfragocc2, orbfragocc1])
-    if lovir:
-        orbfragvir2, orbfragvir0 \
-            = lno.natorb_compression(dmvv,locvir,thresh_ext_vir,uvir2)
-
-        can_orbfragvir12 = lno.subspace_eigh(fock, np.hstack([orbfragvir2, orbfragvir1]))[1]
-        orbfragvir12 = np.hstack([orbfragvir2, orbfragvir1])
-    else: 
-        orbfragvir2, orbfragvir0 = lno.natorb_compression(dmvv,locvir,thresh_ext_vir)
-
-        can_orbfragvir12 = lno.subspace_eigh(fock, orbfragvir2)[1]
-        orbfragvir12 = orbfragvir2
-
-    lno_orb = np.hstack([frzocc, orbfragocc0, orbfragocc12,
-                         orbfragvir12, orbfragvir0, frzvir])
-    can_orbfrag = np.hstack([frzocc, orbfragocc0, can_orbfragocc12,
-                        can_orbfragvir12, orbfragvir0, frzvir])
-    
-    frzfrag = np.hstack([np.arange(frzocc.shape[1]+orbfragocc0.shape[1]),
-                         np.arange(nocc+orbfragvir12.shape[1],nmo)])
-
-    return frzfrag, lno_orb, can_orbfrag
-
 @jax.jit
 def _walker_rhf_efock(walker,ham_data,wave_data):
     '''C_ia <psi|H|psi_i^a}>'''
@@ -215,7 +102,7 @@ def _walker_norhf_orbenergy(walker,ham_data,wave_data):
     e_col = jnp.real(2*jnp.einsum('gik,ik,g->',cg,m,tr_cg))
     e_exc = jnp.real(-jnp.einsum('gij,gjk,ik->',cg,cg,m))
     e_corr = e_fock+e_col+e_exc
-    return e_corr,e_fock,e_col+e_exc
+    return e_corr
 
 @partial(jit, static_argnums=(2,))
 def _walker_rhf_orbenergy(walker,ham_data,trial,wave_data):
@@ -238,132 +125,10 @@ def walker_rhf_orbenergy(walkers,ham_data,wave_data,trial):
 
 @jax.jit
 def walker_norhf_orbenergy(walkers,ham_data,wave_data):
-    orb_en,orb1,orb2 = vmap(_walker_norhf_orbenergy, in_axes=(0, None, None))(
+    orb_en = vmap(_walker_norhf_orbenergy, in_axes=(0, None, None))(
         walkers, ham_data, wave_data)
-    return orb_en,orb1,orb2
+    return orb_en
 
-@partial(jit, static_argnums=(2,3,5,6))
-def block_orb(prop_data: dict,
-              ham_data: dict,
-              prop: propagation.propagator,
-              trial: wavefunctions,
-              wave_data: dict,
-              sampler: sampling.sampler,
-              which_rhf):
-        """Block scan function. Propagation and orbital_i energy calculation."""
-        prop_data["key"], subkey = random.split(prop_data["key"])
-        fields = random.normal(
-            subkey,
-            shape=(
-                sampler.n_prop_steps,
-                prop.n_walkers,
-                ham_data["chol"].shape[0],
-            ),
-        )
-        # propgate n_prop_steps x dt
-        _step_scan_wrapper = lambda x, y: sampler._step_scan(
-            x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-        prop_data = prop.orthonormalize_walkers(prop_data)
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        
-        if isinstance(trial, wavefunctions.rhf):
-            if which_rhf == 1:
-                orb_en \
-                    = frg_rhf_eorb(
-                    prop_data["walkers"],ham_data,wave_data,trial)
-            elif which_rhf == 2:
-                orb_en \
-                    = frg_norhf_eorb(
-                    prop_data["walkers"],ham_data,wave_data)
-        elif isinstance(trial, wavefunctions.cisd):
-            hf_orb_cr,_ \
-                = afqmc_maker.frg_hf_cr(
-                    prop_data["walkers"],ham_data,wave_data,trial)
-            ci_orb_cr \
-                = afqmc_maker.frg_ci_cr(
-                    prop_data["walkers"], ham_data, wave_data, trial)
-            orb_en = hf_orb_cr + ci_orb_cr
-
-        energy_samples = jnp.real(
-            trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
-        )
-        energy_samples = jnp.where(
-            jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-            prop_data["e_estimate"],
-            energy_samples,
-        )
-
-        blk_wt = jnp.sum(prop_data["weights"])
-        blk_en = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
-        # blk_hf_orb_en = jnp.sum(hf_orb_en * prop_data["weights"]) / blk_wt
-        blk_eorb= jnp.sum(orb_en * prop_data["weights"]) / blk_wt
-        # blk_cc_orb_cr = jnp.sum(cc_orb_cr * prop_data["weights"]) / blk_wt
-        # blk_cc_orb_en = blk_hf_orb_cr+blk_cc_orb_cr
-        
-        prop_data["pop_control_ene_shift"] = (
-            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_en
-        )
-
-        return prop_data,(blk_wt,blk_en,blk_eorb)
-
-@partial(jit, static_argnums=(2,3,5,6))
-def _sr_block_scan_orb(
-    prop_data: dict,
-    ham_data: dict,
-    prop: propagation.propagator,
-    trial: wavefunctions,
-    wave_data: dict,
-    sampler: sampling.sampler,
-    which_rhf,
-) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-    def _block_scan_wrapper(x,_):
-        return block_orb(x,ham_data,prop,trial,wave_data,sampler,which_rhf)
-    
-    # propagate n_ene_blocks then do sr
-    prop_data, (blk_wt,blk_en,blk_eorb) \
-        = lax.scan(
-        _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
-    )
-    prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-
-    return prop_data, (blk_wt,blk_en,blk_eorb)
-
-@partial(jit, static_argnums=(1, 3, 5,6))
-def propagate_phaseless_orb(
-    ham_data: dict,
-    prop: propagation.propagator,
-    prop_data: dict,
-    trial: wavefunctions,
-    wave_data: dict,
-    sampler: sampling.sampler,
-    which_rhf,
-) -> Tuple[jax.Array, dict]:
-    def _sr_block_scan_wrapper(x,_):
-        return _sr_block_scan_orb(x,ham_data,prop,trial,wave_data,sampler,which_rhf)
-
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    prop_data["n_killed_walkers"] = 0
-    prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    prop_data,(blk_wt,blk_en,blk_eorb) \
-        = lax.scan(
-        _sr_block_scan_wrapper, prop_data, xs=None, length=sampler.n_sr_blocks
-    )
-    prop_data["n_killed_walkers"] /= (
-        sampler.n_sr_blocks * sampler.n_ene_blocks * prop.n_walkers
-    )
-    wt = jnp.sum(blk_wt)
-    en = jnp.sum(blk_en * blk_wt) / wt
-    orb_en = jnp.sum(blk_eorb * blk_wt) / wt
-
-    return prop_data, (wt,en,orb_en)
-
-# class lno_afqmc_norhf_test():
 #### test norhf #######
 @jax.jit
 def _walker_norhf_orbenergy_test(walker,ham_data,wave_data):
@@ -394,58 +159,59 @@ def walker_norhf_orbenergy_test(walkers,ham_data,wave_data):
     return orb_en,orb1,orb2
 
 @partial(jit, static_argnums=(2,3,5))
-def block_orb_norhf_test(prop_data: dict,
-            ham_data: dict,
-            prop: propagation.propagator,
-            trial: wavefunctions,
-            wave_data: dict,
-            sampler: sampling.sampler,
-            ):
-        """Block scan function. Propagation and orbital_i energy calculation."""
-        prop_data["key"], subkey = random.split(prop_data["key"])
-        fields = random.normal(
-            subkey,
-            shape=(
-                sampler.n_prop_steps,
-                prop.n_walkers,
-                ham_data["chol"].shape[0],
-            ),
-        )
-        # propgate n_prop_steps x dt
-        _step_scan_wrapper = lambda x, y: sampler._step_scan(
-            x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-        prop_data = prop.orthonormalize_walkers(prop_data)
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        
-        orb_en,orb_fk,orb_cx \
-            = walker_norhf_orbenergy_test(
-            prop_data["walkers"],ham_data,wave_data)
+def block_orb_norhf_test(
+    prop_data: dict,
+    ham_data: dict,
+    prop: propagation.propagator,
+    trial: wavefunctions,
+    wave_data: dict,
+    sampler: sampling.sampler,
+    ):
+    """Block scan function. Propagation and orbital_i energy calculation."""
+    prop_data["key"], subkey = random.split(prop_data["key"])
+    fields = random.normal(
+        subkey,
+        shape=(
+            sampler.n_prop_steps,
+            prop.n_walkers,
+            ham_data["chol"].shape[0],
+        ),
+    )
 
-        energy_samples = jnp.real(
-            trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
-        )
-        energy_samples = jnp.where(
-            jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-            prop_data["e_estimate"],
-            energy_samples,
-        )
+    _step_scan_wrapper = lambda x, y: sampler._step_scan(
+        x, y, ham_data, prop, trial, wave_data
+    )
+    prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+    prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+        prop_data["weights"]
+    )
+    prop_data = prop.orthonormalize_walkers(prop_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    
+    orb_en,orb_fk,orb_cx \
+        = walker_norhf_orbenergy_test(
+        prop_data["walkers"],ham_data,wave_data)
 
-        blk_wt = jnp.sum(prop_data["weights"])
-        blk_en = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
-        blk_eorb= jnp.sum(orb_en * prop_data["weights"]) / blk_wt
-        blk_orbfk = jnp.sum(orb_fk * prop_data["weights"]) / blk_wt
-        blk_orbcx = jnp.sum(orb_cx * prop_data["weights"]) / blk_wt
-        
-        prop_data["pop_control_ene_shift"] = (
-            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_en
-        )
+    energy_samples = jnp.real(
+        trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+    )
+    energy_samples = jnp.where(
+        jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        prop_data["e_estimate"],
+        energy_samples,
+    )
 
-        return prop_data,(blk_wt,blk_en,blk_eorb,blk_orbfk,blk_orbcx)
+    blk_wt = jnp.sum(prop_data["weights"])
+    blk_en = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
+    blk_eorb= jnp.sum(orb_en * prop_data["weights"]) / blk_wt
+    blk_orbfk = jnp.sum(orb_fk * prop_data["weights"]) / blk_wt
+    blk_orbcx = jnp.sum(orb_cx * prop_data["weights"]) / blk_wt
+    
+    prop_data["pop_control_ene_shift"] = (
+        0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_en
+    )
+
+    return prop_data,(blk_wt,blk_en,blk_eorb,blk_orbfk,blk_orbcx)
 
 @partial(jit, static_argnums=(2,3,5))
 def _sr_block_scan_orb_norhf_test(
@@ -921,57 +687,6 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
             ci1 = []
             ci2 = []
             ecorr_cc = '  None  '
-        if options["trial"] == "cisd":
-            if full_cisd:
-                # print('# This method is not size-extensive')
-                frz_mo_idx = np.where(np.array(frozen_mask) == False)[0]
-                act_mo_occ = np.array([i for i in range(nocc) if i not in frz_mo_idx])
-                act_mo_vir = np.array([i for i in range(nocc,nao) if i not in frz_mo_idx])
-                prj_no2mo = afqmc_maker.no2mo(mf.mo_coeff,s1e,orbfrag)
-                prj_oo_act = prj_no2mo[np.ix_(act_mo_occ,actocc)]
-                prj_vv_act = prj_no2mo[np.ix_(act_mo_vir,actvir)]
-                if isinstance(mfcc, CCSD):
-                    print('# Use full CCSD wavefunction')
-                    print('# Project CC amplitudes from MO to NO')
-                    t1 = mfcc.t1
-                    t2 = mfcc.t2
-                    if t2_0:
-                        t2 = np.zeros(t2.shape)
-                    # project to active no
-                    t1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,t1,prj_vv_act.T)
-                    t2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
-                            prj_oo_act,prj_oo_act,t2,prj_vv_act.T,prj_vv_act.T)
-                    ci1 = np.array(t1)
-                    ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
-                    ci2 = ci2.transpose(0, 2, 1, 3)
-                if isinstance(mfcc, CISD):
-                    print('# Use full CISD wavefunction')
-                    print('# Project CI coefficients from MO to NO')
-                    v_ci = mfcc.ci
-                    ci0,ci1,ci2 = mfcc.cisdvec_to_amplitudes(v_ci)
-                    ci1 = ci1/ci0
-                    ci2 = ci2/ci0
-                    ci1 = lib.einsum("ij,ia,ba->jb",prj_oo_act,ci1,prj_vv_act.T)
-                    ci2 = lib.einsum("ik,jl,ijab,db,ca->klcd",
-                            prj_oo_act,prj_oo_act,ci2,prj_vv_act.T,prj_vv_act.T)
-                    ci2 = ci2.transpose(0, 2, 1, 3)
-                print('# Finished MO to NO projection')
-                ecorr_cc = '  None  '
-            else:
-                print('# Solving LNO-CCSD')
-                ecorr_cc,t1,t2 = lno_maker.lno_cc_solver(
-                        mf,orbfrag,orbfragloc,frozen=frzfrag,eris=None
-                        )
-                if t2_0:
-                    t2 = np.zeros(t2.shape)
-                ci1 = np.array(t1)
-                ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
-                ci2 = ci2.transpose(0, 2, 1, 3)
-                ecorr_cc = f'{ecorr_cc:.8f}'
-                print(f'# lno-ccsd fragment correlation energy: {ecorr_cc}')
-                from mpi4py import MPI
-                if not MPI.Is_finalized():
-                    MPI.Finalize() # CCSD initializes MPI
         #MP2 correction 
         if mp2:
             ## mp2 is not invariant to lno transformation
@@ -1000,7 +715,7 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
             ci1=ci1,ci2=ci2,use_df_vecs=use_df_vecs,
             chol_cut=chol_cut,
             )
-        
+
         # Run AFQMC
         use_gpu = options["use_gpu"]
         if use_gpu:
@@ -1016,10 +731,6 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
                 mpi_prefix += f"-np {nproc} "
         path = os.path.abspath(__file__)
         dir_path = os.path.dirname(path)   
-        # if debug:
-        #     script = f"{dir_path}/run_lnocc_frg_dbg.py"
-        # else:
-        #     script = f"{dir_path}/run_lnocc_frg.py"
         script = f"{dir_path}/run_lnoafqmc_test_norhf.py"
         os.system(
             f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
@@ -1036,9 +747,6 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
     mmp = mp.MP2(mf, frozen=frozen)
     e_mp2 = mmp.kernel()[0]
 
-    # if debug:
-    #     data_maker.frg2result_dbg(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2=0)
-    # else:
     frg2result_norhf_test(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2)
     return None
 
