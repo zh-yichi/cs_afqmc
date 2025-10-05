@@ -664,7 +664,10 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
             = lno_maker.make_lno(
                 lno_cc,orbfragloc,THRESH_INTERNAL,thresh_pno
                 )
-        
+        eorb_cc, _, _ \
+            = lno_maker.lno_cc_solver(mf,orbfrag,orbfragloc,frozen=frzfrag)
+        eorb_cc = f'{eorb_cc:.8f}'
+
         mol = mf.mol
         nocc = mol.nelectron // 2 
         nao = mol.nao
@@ -686,19 +689,19 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
             print('# Using RHF trial wavefunction')
             ci1 = []
             ci2 = []
-            ecorr_cc = '  None  '
+            # ecorr_cc = '  None  '
         #MP2 correction 
         if mp2:
             ## mp2 is not invariant to lno transformation
             ## needs to be done in canoical HF orbitals
             ## which the globel mp2 is calculated in
             print('# running fragment MP2')
-            ecorr_p2 = \
+            eorb_p2 = \
                 lno_maker.lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag)
-            ecorr_p2 = f'{ecorr_p2:.8f}'
-            print(f'# lno-mp2 fragment correlation energy: {ecorr_p2}')
+            eorb_p2 = f'{eorb_p2:.8f}'
+            # print(f'# lno-mp2 fragment correlation energy: {eorb_p2}')
         else:
-            ecorr_p2 = '  None  '
+            eorb_p2 = '  None  '
 
         nelec_act = nactocc*2
         norb_act = nactocc+nactvir
@@ -706,6 +709,8 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
         print(f'# number of active electrons: {nelec_act}')
         print(f'# number of active orbitals: {norb_act}')
         print(f'# number of frozen orbitals: {len(frzfrag)}')
+        print(f'# lno-mp2 ref orb energy: {eorb_p2}')
+        print(f'# lno-ccsd ref orb energy: {eorb_cc}')
 
         options["seed"] = seeds[ifrag]
         lnoafqmc_runner.prep_lnoafqmc_file(
@@ -738,8 +743,8 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
         )
 
         with open(f'frg_{ifrag+1}.out', 'a') as out_file:
-            print(f"lno-mp2 orb_corr: {ecorr_p2}",file=out_file)
-            print(f"lno-ccsd orb_corr: {ecorr_cc}",file=out_file)
+            print(f"lno-mp2 orb_corr: {eorb_p2}",file=out_file)
+            print(f"lno-ccsd orb_corr: {eorb_cc}",file=out_file)
             print(f"number of active electrons: {nelec_act}",file=out_file)
             print(f"number of active orbitals: {norb_act}",file=out_file)
 

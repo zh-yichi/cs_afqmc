@@ -59,6 +59,15 @@ def reject_outliers(data, obs, m=10.0):
     return data[s < m], s < m
 
 
+def reject_outliers_std(data, obs, m=6.0):
+    d = np.abs(data[:, obs] - np.mean(data[:, obs]))
+    std = np.std(data[:, obs])
+    # mdev = np.median(d) + 1.0e-10
+    # s = d / mdev if mdev else 0.0
+    s = d / std # if mdev else 0.0
+    return data[s < m], s < m
+
+
 def jackknife_ratios(num: np.ndarray, denom: np.ndarray):
     r"""Jackknife estimation of standard deviation of the ratio of means.
 

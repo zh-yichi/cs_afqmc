@@ -23,9 +23,10 @@ def thouless_trans(t1):
     u_occ = np.vstack((u_ji,u_ai))
     u, _, _ = np.linalg.svd(u_occ)
     return u
-u = thouless_trans(10*mycc.t1)
-mo_t = mf.mo_coeff @ u
-mf.mo_coeff = mo_t
+
+#u = thouless_trans(10*mycc.t1)
+#mo_t = mf.mo_coeff @ u
+#mf.mo_coeff = mo_t
 
 # myci = ci.CISD(mf)
 # myci.kernel()
@@ -35,7 +36,7 @@ options = {'n_eql': 4,
             'n_ene_blocks': 1,
             'n_sr_blocks': 1,
             'n_blocks': 10,
-            'n_walkers': 5,
+            'n_walkers': 10,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'rhf',
