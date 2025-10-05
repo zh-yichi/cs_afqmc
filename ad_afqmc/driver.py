@@ -635,9 +635,8 @@ def LNOafqmc(
     init_time = time.time() - init
     if rank == 0:
         print("# Equilibration sweeps:")
-        print("#   Iter        Block energy      Walltime")
-        n = 0
-        print(f"# {n:5d}      {prop_data['e_estimate']:.9e}     {init_time:.2e} ")
+        print("#   Iter        Block energy     Block OrbE     Walltime")
+        print(f"# {0:5d}      {prop_data['e_estimate']:.9e}        -        {init_time:.2e} ")
     comm.Barrier()
 
     sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
@@ -647,34 +646,48 @@ def LNOafqmc(
             ham, ham_data, propagator, prop_data, trial, wave_data, orbE = orbE
         )
         block_energy_n = np.array([block_energy_n], dtype="float32")
-        block_weight_n = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
         block_orbE_n = np.array([block_orbE_n], dtype="float32")
-        # block_weighted_energy_n = np.array(
-        #     [block_energy_n * block_weight_n], dtype="float32"
-        # )
-        # total_block_energy_n = np.zeros(1, dtype="float32")
-        # total_block_weight_n = np.zeros(1, dtype="float32")
-        # # comm.Reduce(
-        # #     [block_weighted_energy_n, MPI.FLOAT],
-        # #     [total_block_energy_n, MPI.FLOAT],
-        # #     op=MPI.SUM,
-        # #     root=0,
-        # # )
-        # # comm.Reduce(
-        # #     [block_weight_n, MPI.FLOAT],
-        # #     [total_block_weight_n, MPI.FLOAT],
-        # #     op=MPI.SUM,
-        # #     root=0,
-        # # )
-        # total_block_energy_n = block_weighted_energy_n
-        # total_block_weight_n = block_weight_n
-        # if rank == 0:
-        #     block_weight_n = total_block_weight_n
-        #     block_energy_n = total_block_energy_n / total_block_weight_n
-        # comm.Bcast(block_weight_n, root=0)
-        # comm.Bcast(block_energy_n, root=0)
+        block_weight_n = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
+
+        block_weighted_energy_n = np.array(
+            [block_energy_n * block_weight_n], dtype="float32"
+        )
+        block_weighted_orbE_n = np.array(
+            [block_orbE_n * block_weight_n], dtype="float32"
+        )
+
+        total_block_energy_n = np.zeros(1, dtype="float32")
+        total_block_orbE_n = np.zeros(1, dtype="float32")
+        total_block_weight_n = np.zeros(1, dtype="float32")
+
+        comm.Reduce(
+            [block_weighted_energy_n, MPI.FLOAT],
+            [total_block_energy_n, MPI.FLOAT],
+            op=MPI.SUM,
+            root=0,
+        )
+        comm.Reduce(
+            [block_weighted_orbE_n, MPI.FLOAT],
+            [total_block_orbE_n, MPI.FLOAT],
+            op=MPI.SUM,
+            root=0,
+        )
+        comm.Reduce(
+            [block_weight_n, MPI.FLOAT],
+            [total_block_weight_n, MPI.FLOAT],
+            op=MPI.SUM,
+            root=0,
+        )
+
+        if rank == 0:
+            block_weight_n = total_block_weight_n
+            block_energy_n = total_block_energy_n / total_block_weight_n
+            block_orbE_n = total_block_orbE_n / total_block_weight_n
+        comm.Bcast(block_weight_n, root=0)
+        comm.Bcast(block_energy_n, root=0)
+        comm.Bcast(block_orbE_n, root=0)
         prop_data = propagator.orthonormalize_walkers(prop_data)
-        # prop_data = propagator.stochastic_reconfiguration_global(prop_data, comm)
+        prop_data = propagator.stochastic_reconfiguration_global(prop_data, comm)
         prop_data["e_estimate"] = (
             0.9 * prop_data["e_estimate"] + 0.1 * block_energy_n[0]
         )
@@ -682,7 +695,7 @@ def LNOafqmc(
         comm.Barrier()
         if rank == 0:
             print(
-                f"# {n:5d}      {block_energy_n[0]:.9e}     {time.time() - init:.2e} ",
+                f"# {n:5d}      {block_energy_n[0]:.9e}     {block_orbE_n[0]:.9e}     {time.time() - init:.2e} ",
                 flush=True,
             )
         comm.Barrier()
@@ -832,6 +845,7 @@ def LNOafqmc(
 
         comm.Gather(block_weight_n, gather_weights, root=0)
         comm.Gather(block_energy_n, gather_energies, root=0)
+        comm.Gather(block_orbE_n, gather_orbE, root=0)
         comm.Gather(block_observable_n, gather_observables, root=0)
         gather_weights = block_weight_n
         gather_energies = block_energy_n
@@ -860,7 +874,7 @@ def LNOafqmc(
                 gather_weights
             )
 
-        # block_energy_n = comm.bcast(block_energy_n, root=0)
+        block_energy_n = comm.bcast(block_energy_n, root=0)
         prop_data = propagator.orthonormalize_walkers(prop_data)
 
         if options["save_walkers"] == True:
@@ -871,7 +885,7 @@ def LNOafqmc(
                 with open(f"prop_data_{rank}.bin", "wb") as f:
                     pickle.dump(prop_data, f)
 
-        # prop_data = propagator.stochastic_reconfiguration_global(prop_data, comm)
+        prop_data = propagator.stochastic_reconfiguration_global(prop_data, comm)
         prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * block_energy_n
 
         if n % (max(sampler.n_blocks // 10, 1)) == 0:
@@ -921,6 +935,7 @@ def LNOafqmc(
                             global_block_weights[: (n + 1) * size],
                             global_block_energies[: (n + 1) * size],
                             global_block_observables[: (n + 1) * size],
+                            global_block_orbE[: (n + 1) * size],
                         )
                     ).T,
                 )
@@ -941,7 +956,7 @@ def LNOafqmc(
     comm.Barrier()
     e_afqmc, e_err_afqmc = None, None
     if rank == 0:
-        orbE_afqmc , err_orbE = stat_utils.blocking_analysis(global_block_weights, global_block_orbE, neql=0, printQ=True)
+        # orbE_afqmc , err_orbE = stat_utils.blocking_analysis(global_block_weights, global_block_orbE, neql=0, printQ=True)
         np.savetxt("samples_orbE.dat",
                    np.stack(
                 (global_block_weights, global_block_orbE)
@@ -959,6 +974,7 @@ def LNOafqmc(
                         global_block_weights,
                         global_block_energies,
                         global_block_observables,
+                        global_block_orbE,
                     )
                 ).T,
                 2,
@@ -970,6 +986,7 @@ def LNOafqmc(
                         global_block_weights,
                         global_block_energies,
                         global_block_observables,
+                        global_block_orbE,
                     )
                 ).T,
                 1,
@@ -982,6 +999,7 @@ def LNOafqmc(
         global_block_weights = samples_clean[:, 0]
         global_block_energies = samples_clean[:, 1]
         global_block_observables = samples_clean[:, 2]
+        global_block_orbE = samples_clean[:, 3]
         if options["ad_mode"] == "reverse":
             global_block_rdm1s = global_block_rdm1s[idx]
         elif options["ad_mode"] == "2rdm":
@@ -990,6 +1008,7 @@ def LNOafqmc(
         e_afqmc, e_err_afqmc = stat_utils.blocking_analysis(
             global_block_weights, global_block_energies, neql=0, printQ=True
         )
+        orbE_afqmc , err_orbE = stat_utils.blocking_analysis(global_block_weights, global_block_orbE, neql=0, printQ=True)
         if e_err_afqmc is not None:
             sig_dec = int(abs(np.floor(np.log10(e_err_afqmc))))
             sig_err = np.around(

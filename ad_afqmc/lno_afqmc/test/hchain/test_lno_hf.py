@@ -67,12 +67,13 @@ for thresh in [1e-4]:
     mfcc = LNOAFQMC(mf, thresh=thresh, frozen=frozen).set(verbose=5)
     mfcc.thresh_occ = 10*thresh
     mfcc.thresh_vir = thresh
-    mfcc.nblocks = 10
+    mfcc.nblocks = 100
     mfcc.seed = 1234
     mfcc.lo_type = 'pm'
     mfcc.no_type = 'cim'
     mfcc.frag_lolist = '1o'
-    mfcc.nwalk_per_proc = 5
+    mfcc.nwalk_per_proc = 30
+    mfcc.nproc = 8
     mfcc.force_outcore_ao2mo = True
     mfcc.kernel()#canonicalize=False,chol_vecs=chol_vecs)
     ecc = mfcc.e_corr

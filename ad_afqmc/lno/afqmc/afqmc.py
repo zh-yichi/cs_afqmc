@@ -225,7 +225,7 @@ class LNOAFQMC(LNO):
         #logger.note(self, 'E(%s) = %.15g  E_corr = %.15g',
         #            'LNOMP2', self.e_tot_pt2, self.e_corr_pt2)
         total_err = self.total_lno_erro_afqmc_err()
-        logger.note(self, f'E(LNO-AFQMC) = {self.e_tot}  E_corr = {self.e_corr}  E_err = {self.total_err}')
+        logger.note(self, f'E(LNO-AFQMC) = {self.e_tot:.6f}  E_corr = {self.e_corr:.6f}  E_err = {self.total_err:.6f}')
         #logger.note(self, f'E(%s) = %.15g  E_corr = %.15g  E_err = {self.total_err}',
         #            'LNO-AFQMC', self.e_tot, self.e_corr)
         if self.ccsd_t:

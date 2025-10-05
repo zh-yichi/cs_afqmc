@@ -228,7 +228,7 @@ def run_afqmc_lno_mf(mf,
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1; {mpi_prefix} python {script} {gpu_flag} > afqmc.out"
     )
-    
+
     target_line_prefix = "orbE energy: "
     with open('afqmc.out', "r") as file:
         for line in file:
