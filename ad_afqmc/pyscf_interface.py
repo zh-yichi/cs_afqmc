@@ -150,7 +150,7 @@ def prep_afqmc(
             DFbas = mf.with_df.auxmol.basis  # type: ignore
         h1e, chol, nelec, enuc = generate_integrals(
             mol, mf.get_hcore(), basis_coeff, chol_cut, DFbas=DFbas
-        )
+        ) 
         nbasis = h1e.shape[-1]
         nelec = mol.nelec
 

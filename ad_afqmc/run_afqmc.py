@@ -84,7 +84,7 @@ def run_afqmc_lno_mf(mf,
                      norb_act = None,
                      nelec_act=None,
                      norb_frozen = [],
-                     orbitalE=-2,
+                     orbitalE=0,
                      script=None,
                      integrals=None,
                      dt = 0.005,
@@ -97,7 +97,7 @@ def run_afqmc_lno_mf(mf,
                      prjlo=None):
 
     print("#\n# Preparing LNO-AFQMC calculation")
-    options = {'n_eql': 1,
+    options = {'n_eql': 5,
              'n_ene_blocks': 1,
              'n_sr_blocks': 10,
              'n_blocks': nblocks,
@@ -163,13 +163,16 @@ def run_afqmc_lno_mf(mf,
         if isinstance(norb_frozen, (int, float)) and norb_frozen == 0:
             norb_frozen = []
         act = np.array([i for i in range(mol.nao) if i not in norb_frozen])
-        print(f'# local active orbitals are {act}') #yichi
-        print(f'# local active space size {len(act)}') #yichi
-        e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
-        print(f'# loc_eris shape: {e.shape}') #yichi
-        # add e = pyscf_interface.df(mol_mf,e) for selected loc_mos
-        chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
-        print(f'# chol shape: {chol.shape}') #yichi
+        print(f'# local active orbitals are {act}')
+        print(f'# local active space size {len(act)}')
+        if getattr(mf, "with_df", None) is not None:
+            print('# get Cholesky vectors form DF')
+            _, chol, _, _ = pyscf_interface.generate_integrals(
+                mol,mf.get_hcore(),mo_coeff[:,act],DFbas=mf.with_df.auxmol.basis)
+        else:
+            e = ao2mo.kernel(mf.mol,mo_coeff[:,act],compact=False)
+            chol = pyscf_interface.modified_cholesky(e,max_error = chol_cut)
+        print(f'# chol shape: {chol.shape}')
     
     print("# Finished calculating Cholesky integrals\n")
     print('# Size of the correlation space:')

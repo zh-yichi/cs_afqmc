@@ -75,7 +75,7 @@ def prep_lnoafqmc_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
             _, chol, _, _ = pyscf_interface.generate_integrals(
                 mol,mf.get_hcore(),mo_coeff[:,act],DFbas=mf.with_df.auxmol.basis)
         else:
-            print("# composing ERIs from DF vectors")
+            print("# composing ERIs from DF basis")
             from pyscf import df
             chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
             chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
