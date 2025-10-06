@@ -1,15 +1,14 @@
-# frag  mp2_orb_corr  ccsd_orb_corr  afqmc_hf_orb_en  err  afqmc_cc_orb_en  err  norb  nelec  time
-  1  -0.01907257  -0.02836883  -0.034105  0.003216  -0.028458  0.000067  5  4  55.45
-  2  -0.02023033  -0.03351452  -0.034943  0.003737  -0.033282  0.000048  4  4  55.93
-  3  -0.02023033  -0.03351452  -0.061083  0.015229  -0.033247  0.000074  4  4  55.77
+# frag  mp2_orb_corr  ccsd_orb_corr  afqmc_orb_corr    err    norb  nelec  time
+  1  -0.01598222  -0.02530791  -0.025308  -0.025308  3  2  44.53
+  2  -0.01705853  -0.02843001  -0.028430  -0.028430  2  2  39.23
+  3  -0.01705853  -0.02843001  -0.028430  -0.028430  2  2  39.82
 # final results 
 # mean-field energy: -3.15900175
-# lno-thresh [0.001, 0.0001]
-# e_mp2_corr: -0.05953323
-# e_ccsd_corr: -0.09539787
-# afqmc/hf_corr: -0.130131 +/- 0.016007
-# afqmc/cc_corr: -0.094987 +/- 0.000111
-# mp2_correction: 0.05953323
-# number of orbitals: average 4.33 maxium 5
-# number of electrons: average 4.00 maxium 4
-# total run time: 167.15
+# lno-thresh [0.01, 0.001]
+# lno-mp2_corr: -0.05009928
+# lno-ccsd_corr: -0.08216793
+# lno-afqmc_corr: -0.082168 +/- 0.047508
+# mp2_correction: -0.01238628
+# number of electrons: average 2.00 maxium 2
+# number of orbitals: average 2.33 maxium 3
+# total run time: 123.58

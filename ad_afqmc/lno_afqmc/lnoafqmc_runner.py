@@ -506,9 +506,9 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
         path = os.path.abspath(__file__)
         dir_path = os.path.dirname(path)   
         if debug:
-            script = f"{dir_path}/run_lnocc_frg_dbg.py"
+            script = f"{dir_path}/run_lnoafqmc_dbg.py"
         else:
-            script = f"{dir_path}/run_lnocc_frg.py"
+            script = f"{dir_path}/run_lnoafqmc.py"
         os.system(
             f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
             f"{mpi_prefix} python {script} {gpu_flag} |tee frg_{ifrag+1}.out"
@@ -520,13 +520,13 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
             print(f"number of active electrons: {nelec_act}",file=out_file)
             print(f"number of active orbitals: {norb_act}",file=out_file)
 
-    # from pyscf import mp
-    # mmp = mp.MP2(mf, frozen=frozen)
-    # e_mp2 = mmp.kernel()[0]
+    from pyscf import mp
+    mmp = mp.MP2(mf, frozen=frozen)
+    e_mp2 = mmp.kernel()[0]
 
     if debug:
-        data_maker.frg2result_dbg(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2=0)
+        data_maker.frg2result_dbg(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2)
     else:
-        data_maker.frg2result(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2=0)
+        data_maker.frg2result(thresh_pno,len(run_frg_list),mf.e_tot,e_mp2)
 
     return None

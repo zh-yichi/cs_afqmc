@@ -120,9 +120,10 @@ def _frg_hf_eorb(rot_h1, rot_chol, walker, trial, wave_data):
     return jnp.real(hf_orb_en)
 
 @partial(jit, static_argnums=(3,))
-def _frg_hf_cr(rot_h1, rot_chol, walker, trial, wave_data):
+def _frg_hf_cr(walker, ham_data, wave_data, trial):
     '''hf orbital correlation energy multiplies the overlap ratio'''
     m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
+    rot_h1, rot_chol = ham_data['rot_h1'],ham_data['rot_chol']
     nocc = rot_h1.shape[0]
     _calc_green = wavefunctions.rhf(
         trial.norb,trial.nelec,n_batch=trial.n_batch)._calc_green
@@ -135,13 +136,13 @@ def _frg_hf_cr(rot_h1, rot_chol, walker, trial, wave_data):
     hf_orb_en = eneo2Jt - eneo2ext
     olp_ratio = _calc_olp_ratio_restricted(walker,wave_data)
     hf_orb_cr = jnp.real(olp_ratio*hf_orb_en)
-    return hf_orb_cr, jnp.real(hf_orb_en)
+    return hf_orb_cr
 
 @partial(jit, static_argnums=(3,))
 def frg_hf_cr(walkers,ham_data,wave_data,trial):
-    hf_orb_cr, hf_orb_en = vmap(_frg_hf_cr, in_axes=(None, None, 0, None, None))(
-        ham_data['rot_h1'], ham_data['rot_chol'], walkers, trial, wave_data)
-    return hf_orb_cr, hf_orb_en
+    hf_orb_cr = vmap(_frg_hf_cr, in_axes=(0, None, None, None))(
+        walkers, ham_data, wave_data, trial)
+    return hf_orb_cr
 
 @partial(jit, static_argnums=(3,))
 def _frg_ci_cr(
@@ -206,6 +207,31 @@ def frg_ci_cr(
 
     return ccsd_cr #ccsd_cr0,ccsd_cr1,ccsd_cr2
 
+@partial(jit, static_argnums=(3,))
+def _orb_energy(
+        walker: jax.Array,
+        ham_data: dict,
+        wave_data: dict,
+        trial: wavefunctions) -> jax.Array:
+    
+    e_orb = _frg_hf_cr(walker, ham_data, wave_data, trial) \
+         + _frg_ci_cr(walker, ham_data, wave_data, trial, 1e-5)
+    
+    return e_orb
+
+@partial(jit, static_argnums=(3,))
+def orb_energy(
+        walkers: jax.Array,
+        ham_data: dict,
+        wave_data: dict,
+        trial: wavefunctions) -> jax.Array:
+    
+    e_orb = vmap(_orb_energy, 
+                   in_axes=(0, None, None, None))(
+                       walkers, ham_data, wave_data, trial)
+
+    return e_orb
+
 @partial(jit, static_argnums=(2,3,5))
 def block_orb(prop_data: dict,
               ham_data: dict,
@@ -234,10 +260,6 @@ def block_orb(prop_data: dict,
         prop_data = prop.orthonormalize_walkers(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-        hf_orb_cr, hf_orb_en \
-            = frg_hf_cr(prop_data["walkers"],ham_data,wave_data,trial)
-        cc_orb_cr \
-            = frg_ci_cr(prop_data["walkers"], ham_data, wave_data, trial,1e-5)
         energy_samples = jnp.real(
             trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
         )
@@ -246,19 +268,17 @@ def block_orb(prop_data: dict,
             prop_data["e_estimate"],
             energy_samples,
         )
+        eorb = orb_energy(prop_data["walkers"], ham_data, wave_data, trial)
 
         blk_wt = jnp.sum(prop_data["weights"])
         blk_en = jnp.sum(energy_samples * prop_data["weights"]) / blk_wt
-        blk_hf_orb_en = jnp.sum(hf_orb_en * prop_data["weights"]) / blk_wt
-        blk_hf_orb_cr = jnp.sum(hf_orb_cr * prop_data["weights"]) / blk_wt
-        blk_cc_orb_cr = jnp.sum(cc_orb_cr * prop_data["weights"]) / blk_wt
-        blk_cc_orb_en = blk_hf_orb_cr+blk_cc_orb_cr
+        blk_eorb = jnp.sum(eorb * prop_data["weights"]) / blk_wt
         
         prop_data["pop_control_ene_shift"] = (
             0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_en
         )
 
-        return prop_data,(blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en)
+        return prop_data,(blk_wt,blk_en,blk_eorb)
 
 @partial(jit, static_argnums=(2,3,5))
 def _sr_block_scan_orb(
@@ -273,14 +293,14 @@ def _sr_block_scan_orb(
         return block_orb(x,ham_data,prop,trial,wave_data,sampler)
     
     # propagate n_ene_blocks then do sr
-    prop_data, (blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en) \
+    prop_data,(blk_wt,blk_en,blk_eorb) \
         = lax.scan(
         _block_scan_wrapper, prop_data, xs=None, length=sampler.n_ene_blocks
     )
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-    return prop_data, (blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en)
+    return prop_data,(blk_wt,blk_en,blk_eorb)
 
 @partial(jit, static_argnums=(1, 3, 5))
 def propagate_phaseless_orb(
@@ -297,19 +317,19 @@ def propagate_phaseless_orb(
     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    prop_data,(blk_en,blk_wt,blk_hf_orb_en,blk_cc_orb_en) \
+    prop_data,(blk_wt,blk_en,blk_eorb) \
         = lax.scan(
         _sr_block_scan_wrapper, prop_data, xs=None, length=sampler.n_sr_blocks
     )
     prop_data["n_killed_walkers"] /= (
         sampler.n_sr_blocks * sampler.n_ene_blocks * prop.n_walkers
     )
+
     wt = jnp.sum(blk_wt)
     en = jnp.sum(blk_en * blk_wt) / wt
-    hf_orb_en = jnp.sum(blk_hf_orb_en * blk_wt) / wt
-    cc_orb_en = jnp.sum(blk_cc_orb_en * blk_wt) / wt
+    eorb = jnp.sum(blk_eorb * blk_wt) / wt
 
-    return prop_data, (en,wt,hf_orb_en,cc_orb_en)
+    return prop_data,(wt,en,eorb)
 
 ### debug mode ###
 @partial(jit, static_argnums=(3,))

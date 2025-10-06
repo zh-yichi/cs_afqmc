@@ -1,2 +1,2 @@
-# lno-thresh(occ,vir)   mp2_corr  ccsd_corr  qmc/hf_corr   err   qmc/ccsd_corr   err   mp2_cr nelec_avg   nelec_max    norb_avg   norb_max    run_time
- (1.00e-03,1.00e-04) 	 -0.05953323 	 -0.09539787 	 -0.130131 	 0.016007 	 -0.094987 	 0.000111 	 0.05953323  4.00 	 4 	 4.33  	 5 	 167.15
+# lno-thresh(occ,vir) 	  mp2_corr 	 ccsd_corr 	  afqmc_corr 	   err   	  mp2_cr 	 avg(nelec,norb) 	  max(nelec,norb) 	  run_time
+ (1.00e-02,1.00e-03) 	 -0.05009928 	 -0.08216793 	 -0.082168 	 0.047508 	 -0.01238628 	 (2.00,2.33) 	 	 (2,3) 	 123.58

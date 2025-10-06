@@ -4,31 +4,26 @@ import numpy as np
 def frg2result(lno_thresh,nfrag,e_mf,e_mp2):
     with open('results.out', 'w') as out_file:
         print('# frag  mp2_orb_corr  ccsd_orb_corr' \
-              '  afqmc_hf_orb_en  err  afqmc_cc_orb_en  err' \
-              '  norb  nelec  time',file=out_file)
+              '  afqmc_orb_corr    err    norb  nelec  time',file=out_file)
         for ifrag in range(nfrag):
             with open(f"frg_{ifrag+1}.out","r") as read_file:
                 for line in read_file:
                     if "lno-mp2 orb_corr" in line:
-                        e_mp2_orb_en = line.split()[2]
+                        mp2_eorb = line.split()[-1]
                     if "lno-ccsd orb_corr" in line:
-                        e_ccsd_orb_en = line.split()[2]
-                    if "lno-ccsd-afqmc hf_orb_en" in line:
-                        hf_orb_en = line.split()[2]
-                        hf_orb_en_err = line.split()[4]
-                    if "lno-ccsd-afqmc cc_orb_en" in line:
-                        cc_orb_en = line.split()[2]
-                        cc_orb_en_err = line.split()[4]
-                    if "number of active orbitals" in line:
-                        norb = line.split()[4]
+                        ccsd_eorb = line.split()[-1]
+                    if "lno-afqmc/cisd orbital energy" in line:
+                        afqmc_eorb = line.split()[-3]
+                        afqmc_eorb_err = line.split()[-1]
                     if "number of active electrons" in line:
-                        nelec = line.split()[4]
+                        nelec = line.split()[-1]
+                    if "number of active orbitals" in line:
+                        norb = line.split()[-1]
                     if "total run time" in line:
-                        tot_time = line.split()[3]
+                        tot_time = line.split()[-1]
                 print(f'{ifrag+1:3d}  '
-                      f'{e_mp2_orb_en}  {e_ccsd_orb_en}  '
-                      f'{hf_orb_en}  {hf_orb_en_err}  '
-                      f'{cc_orb_en}  {cc_orb_en_err}  '
+                      f'{mp2_eorb}  {ccsd_eorb}  '
+                      f'{afqmc_eorb}  {afqmc_eorb}  '
                       f'{norb}  {nelec}  {tot_time}', file=out_file)
 
     data = []
@@ -38,48 +33,41 @@ def frg2result(lno_thresh,nfrag,e_mf,e_mp2):
                 data = np.hstack((data,line.split()))
                 data[data == 'None'] = '0.000000' 
 
-    data = np.array(data.reshape(nfrag,10))
-    e_mp2_orb_en = np.array(data[:,1],dtype='float32')
-    e_ccsd_orb_en = np.array(data[:,2],dtype='float32')
-    hf_orb_en = np.array(data[:,3],dtype='float32')
-    hf_orb_en_err = np.array(data[:,4],dtype='float32')
-    cc_orb_en = np.array(data[:,5],dtype='float32')
-    cc_orb_en_err = np.array(data[:,6],dtype='float32')
-    norb = np.array(data[:,7],dtype='int32')
-    nelec = np.array(data[:,8],dtype='int32')
-    tot_time = np.array(data[:,9],dtype='float32')
+    data = np.array(data.reshape(nfrag,8))
+    mp2_eorb = np.array(data[:,1],dtype='float32')
+    ccsd_eorb = np.array(data[:,2],dtype='float32')
+    afqmc_eorb = np.array(data[:,3],dtype='float32')
+    afqmc_eorb_err = np.array(data[:,4],dtype='float32')
+    norb = np.array(data[:,5],dtype='int32')
+    nelec = np.array(data[:,6],dtype='int32')
+    tot_time = np.array(data[:,7],dtype='float32')
 
-    e_mp2_corr = sum(e_mp2_orb_en)
-    mp2_cr = e_mp2 - e_mp2_corr
-    e_ccsd_corr = sum(e_ccsd_orb_en)
-    afqmc_hf_corr = sum(hf_orb_en)
-    afqmc_hf_corr_err = np.sqrt(sum(hf_orb_en_err**2))
-    afqmc_cc_corr = sum(cc_orb_en)
-    afqmc_cc_corr_err = np.sqrt(sum(cc_orb_en_err**2))
-    norb_avg = np.mean(norb)
+    mp2_corr = sum(mp2_eorb)
+    mp2_cr = e_mp2 - mp2_corr
+    ccsd_corr = sum(ccsd_eorb)
+    afqmc_corr = sum(afqmc_eorb)
+    afqmc_corr_err = np.sqrt(sum(afqmc_eorb_err**2))
     nelec_avg = np.mean(nelec)
-    norb_max = max(norb)
+    norb_avg = np.mean(norb)
     nelec_max = max(nelec)
+    norb_max = max(norb)
     tot_time = sum(tot_time)
 
-    e_mp2_corr = f'{e_mp2_corr:.8f}'
-    e_ccsd_corr = f'{e_ccsd_corr:.8f}'
-    afqmc_hf_corr = f'{afqmc_hf_corr:.6f}'
-    afqmc_hf_corr_err = f'{afqmc_hf_corr_err:.6f}'
-    afqmc_cc_corr = f'{afqmc_cc_corr:.6f}'
-    afqmc_cc_corr_err = f'{afqmc_cc_corr_err:.6f}'
+    mp2_corr = f'{mp2_corr:.8f}'
+    ccsd_corr = f'{ccsd_corr:.8f}'
+    afqmc_corr = f'{afqmc_corr:.6f}'
+    afqmc_corr_err = f'{afqmc_corr_err:.6f}'
 
     with open('results.out', 'a') as out_file:
         out_file.write(f'# final results \n')
         out_file.write(f'# mean-field energy: {e_mf:.8f}\n')
         out_file.write(f'# lno-thresh {lno_thresh}\n')
-        out_file.write(f'# e_mp2_corr: {e_mp2_corr}\n')
-        out_file.write(f'# e_ccsd_corr: {e_ccsd_corr}\n')
-        out_file.write(f'# afqmc/hf_corr: {afqmc_hf_corr} +/- {afqmc_hf_corr_err}\n')
-        out_file.write(f'# afqmc/cc_corr: {afqmc_cc_corr} +/- {afqmc_cc_corr_err}\n')
+        out_file.write(f'# lno-mp2_corr: {mp2_corr}\n')
+        out_file.write(f'# lno-ccsd_corr: {ccsd_corr}\n')
+        out_file.write(f'# lno-afqmc_corr: {afqmc_corr} +/- {afqmc_corr_err}\n')
         out_file.write(f'# mp2_correction: {mp2_cr:.8f}\n')
-        out_file.write(f'# number of orbitals: average {norb_avg:.2f} maxium {norb_max}\n')
         out_file.write(f'# number of electrons: average {nelec_avg:.2f} maxium {nelec_max}\n')
+        out_file.write(f'# number of orbitals: average {norb_avg:.2f} maxium {norb_max}\n')
         out_file.write(f'# total run time: {tot_time:.2f}\n')
     
     return None
@@ -226,12 +214,11 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
 
 def sum_results(n_results):
     with open('sum_results.out', 'w') as out_file:
-        print("# lno-thresh(occ,vir) "
-              "  mp2_corr  ccsd_corr"
-              "  qmc/hf_corr   err "
-              "  qmc/ccsd_corr   err "
-              "  mp2_cr nelec_avg   nelec_max  "
-              "  norb_avg   norb_max  "
+        print("# lno-thresh(occ,vir) \t"
+              "  mp2_corr \t ccsd_corr \t"
+              "  afqmc_corr \t   err   \t"
+              "  mp2_cr \t avg(nelec,norb) \t"
+              "  max(nelec,norb) \t"
               "  run_time",file=out_file)
         for i in range(n_results):
             with open(f"results.out{i+1}","r") as read_file:
@@ -241,16 +228,13 @@ def sum_results(n_results):
                         thresh_vir = line.split()[-1]
                         thresh_occ = float(thresh_occ.strip('()[],'))
                         thresh_vir = float(thresh_vir.strip('()[],'))
-                    if "e_mp2_corr:" in line:
+                    if "lno-mp2_corr:" in line:
                         mp2_corr = line.split()[-1]
-                    if "e_ccsd_corr:" in line:
+                    if "lno-ccsd_corr:" in line:
                         ccsd_corr = line.split()[-1]
-                    if "afqmc/hf_corr:" in line:
-                        afqmc_hf_corr = line.split()[-3]
-                        afqmc_hf_corr_err = line.split()[-1]
-                    if "afqmc/cc_corr:" in line:
-                        afqmc_cc_corr = line.split()[-3]
-                        afqmc_cc_corr_err = line.split()[-1]
+                    if "lno-afqmc_corr:" in line:
+                        afqmc_corr = line.split()[-3]
+                        afqmc_corr_err = line.split()[-1]
                     if "mp2_correction:" in line:
                         mp2_cr = line.split()[-1]
                     if "electrons:" in line:
@@ -263,10 +247,9 @@ def sum_results(n_results):
                         run_time = line.split()[-1]
             print(f" ({thresh_occ:.2e},{thresh_vir:.2e}) \t"
                   f" {mp2_corr} \t {ccsd_corr} \t"
-                  f" {afqmc_hf_corr} \t {afqmc_hf_corr_err} \t"
-                  f" {afqmc_cc_corr} \t {afqmc_cc_corr_err} \t"
-                  f" {mp2_cr}  {nelec_avg} \t {nelec_max} \t"
-                  f" {norb_avg}  \t {norb_max} \t {run_time}",file=out_file)
+                  f" {afqmc_corr} \t {afqmc_corr_err} \t"
+                  f" {mp2_cr} \t ({nelec_avg},{norb_avg}) \t"
+                  f" \t ({nelec_max},{norb_max}) \t {run_time}",file=out_file)
     return None
 
 def sum_results_dbg(n_results):

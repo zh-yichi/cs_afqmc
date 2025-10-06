@@ -1,0 +1,83 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 4
+# nelec: (2, 2)
+#
+# n_eql: 4
+# n_prop_steps: 10
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 10
+# n_walkers: 2
+# seed: 2
+# walker_type: rhf
+# trial: cisd
+# dt: 0.005
+# free_projection: False
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# n_batch: 1
+# ene0: 0
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Equilibration sweeps:
+#   Iter 	 energy_pt 	 energy_og 	 Walltime
+#     0 	 -2.0141778 	 -2.0141778 	 4.64
+#     1 	 -2.0159180 	 -2.0116127 	 15.65 
+#     2 	 -2.0759642 	 -2.0066545 	 24.64 
+#     3 	 -2.2503812 	 -2.0084784 	 24.66 
+#     4 	 -3.0222037 	 -2.0105183 	 24.68 
+#
+# Sampling sweeps:
+#  Iter 	 energy_pt 	 error 		 energy_og 	 error 	 Walltime
+     0 	 	 -3.155096 	   None   	 -2.008919 	 0.003131  24.76
+     1 	 	 -2.978060 	 0.625048 	 -2.006776 	 0.002059  33.26
+     2 	 	 -2.788628 	 0.441580 	 -2.007312 	 0.003313  41.74
+     3 	 	 -2.614929 	 0.312507 	 -2.011378 	 0.004687  41.76
+     4 	 	 -2.490940 	 0.268089 	 -2.011190 	 0.003856  41.79
+     5 	 	 -2.400044 	 0.219562 	 -2.010138 	 0.003160  41.82
+     6 	 	 -2.327937 	 0.197695 	 -2.008961 	 0.003088  41.85
+     7 	 	 -2.258925 	 0.174138 	 -2.008088 	 0.002886  41.88
+     8 	 	 -2.186212 	 0.171043 	 -2.007215 	 0.002753  41.91
+     9 	 	 -2.195788 	 0.149944 	 -2.006771 	 0.002486  41.94
+# Number of outliers in post: 12 
+#
+# Mean: -2.06748251e+00
+# Block size    # of blocks         Mean                Error
+      1               38       -2.06748251e+00       1.202310e-02
+      2               19       -2.06748251e+00       1.048677e-02
+      3               12       -2.06879759e+00       1.264277e-02
+      5                7       -2.07020907e+00       1.500921e-02
+     10                3       -2.06810492e+00       3.063549e-02
+     15                2       -2.06810492e+00       2.300236e-02
+# Stocahstic error estimate: 1.202310e-02
+#
+#
+# Mean: -2.01133586e+00
+# Block size    # of blocks         Mean                Error
+      1               38       -2.01133586e+00       2.035841e-03
+      2               19       -2.01133586e+00       2.022388e-03
+      3               12       -2.01167473e+00       2.034154e-03
+      5                7       -2.01174289e+00       2.220499e-03
+     10                3       -2.01197312e+00       3.439717e-03
+     15                2       -2.01197312e+00       1.455049e-03
+# Stocahstic error estimate: 2.035841e-03
+#
+Final Results:
+AFQMC/CISD_PT energy: -2.067483 +/- 0.012023
+AFQMC/CISD_OG energy: -2.011336 +/- 0.002036
+total run time: 41.95

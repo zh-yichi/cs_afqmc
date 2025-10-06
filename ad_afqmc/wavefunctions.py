@@ -241,24 +241,6 @@ class wave_function(ABC):
         return energies.reshape(n_walkers)
     
     @singledispatchmethod
-    def calc_energy_restricted_pert(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
-        n_walkers = walkers.shape[0]
-        batch_size = n_walkers // self.n_batch
-
-        def scanned_fun(carry, walker_batch):
-            energy_batch = vmap(self._calc_energy_restricted_pert, in_axes=(0, None, None))(
-                walker_batch, ham_data, wave_data
-            )
-            return carry, energy_batch
-
-        _, energies = lax.scan(
-            scanned_fun,
-            None,
-            walkers.reshape(self.n_batch, batch_size, self.norb, -1),
-        )
-        return energies.reshape(n_walkers)
-    
-    @singledispatchmethod
     def calc_orbenergy(self, walkers,ham_data:dict , wave_data:dict, orbE:int) -> jnp.ndarray:
         return vmap(self._calc_orbenergy, in_axes=(None, None, None, 0, None,None))(
             ham_data['h0'], ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,orbE)
@@ -2251,11 +2233,24 @@ class cisd(wave_function):
         overlap = 1.0 + overlap_1 + overlap_2
         return (e1 + e2) / overlap + e0
 
-########## pert energy ##############
+
     @partial(jit, static_argnums=0)
-    def _calc_energy_restricted_pert(
-            self, walker: jax.Array, ham_data: dict, wave_data: dict
-    ) -> complex:
+    def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
+        ham_data["lci1"] = jnp.einsum(
+            "git,pt->gip",
+            ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
+            wave_data["ci1"],
+            optimize="optimal",
+        )
+        return ham_data
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+
+@dataclass
+class cisd_pt(cisd):
+    @partial(jit, static_argnums=0)
+    def _calc_energy_pt_restricted(self, walker, ham_data, wave_data):
         ci1, ci2 = wave_data["ci1"], wave_data["ci2"]
         nocc = self.nelec[0]
         green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
@@ -2364,27 +2359,27 @@ class cisd(wave_function):
         e2 = e2_0 + e2_1 + e2_2
 
         # overlap
-        # overlap_1 = 2 * ci1g  # jnp.einsum("ia,ia", ci1, green_occ)
-        # overlap_2 = gci2g
-        # overlap = 1.0 + overlap_1 + overlap_2
-        olp_inv = 1 - 2*ci1g - gci2g + (2*ci1g)**2
-        # return (e1 + e2) / overlap + e0
-        return (e1 + e2) * olp_inv + e0
-#####################################################
+        overlap_1 = 2 * ci1g  # jnp.einsum("ia,ia", ci1, green_occ)
+        overlap_2 = gci2g
+        overlap = 1.0 + overlap_1 + overlap_2
+        olp_inv = 1 - (2*ci1g + gci2g) + (2*ci1g + gci2g)**2 
+                    # - (2*ci1g + gci2g)**3 + (2*ci1g + gci2g)**4
+        
+        e_pt = jnp.real((e1 + e2) * olp_inv + e0)
+        e_og = jnp.real((e1 + e2) / overlap + e0)
 
+        return e_pt, e_og
+    
     @partial(jit, static_argnums=0)
-    def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-        ham_data["lci1"] = jnp.einsum(
-            "git,pt->gip",
-            ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
-            wave_data["ci1"],
-            optimize="optimal",
-        )
-        return ham_data
-
+    def calc_energy_pt_restricted(self,walkers,ham_data,wave_data):
+        e_pt, e_og = vmap(self._calc_energy_pt_restricted, 
+                                in_axes=(0, None, None))(
+                                    walkers, ham_data, wave_data)
+        return e_pt, e_og
+    
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
-
+    
 
 @dataclass
 class cisd_faster(cisd):
@@ -2485,6 +2480,7 @@ class cisd_faster(cisd):
         overlap_2 = gci2g
         overlap = 1.0 + overlap_1 + overlap_2
         return (e1 + e2) / overlap + e0
+     
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))

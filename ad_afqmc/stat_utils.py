@@ -41,7 +41,7 @@ def blocking_analysis(weights, energies, neql=0, printQ=False, writeBlockedQ=Fal
             )
         if printQ:
             print(f"  {i:5d}           {nBlocks:6d}       {mean:.8e}       {error:.6e}")
-        if error < 1.05 * prevError and plateauError is None:
+        if error <= 1.05 * prevError and plateauError is None:
             plateauError = max(error, prevError)
         prevError = error
 

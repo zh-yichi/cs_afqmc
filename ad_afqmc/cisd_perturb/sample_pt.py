@@ -1,0 +1,162 @@
+import os
+from dataclasses import dataclass
+from functools import partial
+from typing import Any, Tuple
+import numpy as np
+import pickle
+import jax
+import jax.numpy as jnp
+from jax import jit, lax, random
+from ad_afqmc import linalg_utils
+from ad_afqmc.hamiltonian import hamiltonian
+from ad_afqmc.propagation import propagator
+from ad_afqmc.wavefunctions import wave_function
+from ad_afqmc.sampling import sampler
+
+
+@partial(jit, static_argnums=(2,3,5))
+def _block_scan(
+    prop_data: dict,
+    ham_data: dict,
+    prop: propagator,
+    trial: wave_function,
+    wave_data: dict,
+    sample: sampler,
+) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+    """Block scan function. Propagation and energy calculation."""
+    prop_data["key"], subkey = random.split(prop_data["key"])
+    fields = random.normal(
+        subkey,
+        shape=(
+            sample.n_prop_steps,
+            prop.n_walkers,
+            ham_data["chol"].shape[0],
+        ),
+    )
+    _step_scan_wrapper = lambda x, y: sample._step_scan(
+        x, y, ham_data, prop, trial, wave_data
+    )
+    prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+    prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+        prop_data["weights"]
+    )
+    prop_data = prop.orthonormalize_walkers(prop_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    e_pt, e_og = trial.calc_energy_pt_restricted(
+        prop_data["walkers"], ham_data, wave_data)
+    
+    e_pt = jnp.where(
+        jnp.abs(e_pt - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        prop_data["e_estimate"],
+        e_pt,
+    )
+    e_og = jnp.where(
+        jnp.abs(e_og - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        prop_data["e_estimate"],
+        e_og,
+    )
+    blk_wt = jnp.sum(prop_data["weights"])
+    blk_ept = jnp.sum(e_pt * prop_data["weights"]) / blk_wt
+    blk_eog = jnp.sum(e_og * prop_data["weights"]) / blk_wt
+    prop_data["pop_control_ene_shift"] = (
+        0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_eog
+    )
+    return prop_data, (blk_wt, blk_ept, blk_eog)
+
+@partial(jit, static_argnums=(2,3,5))
+def _sr_block_scan(
+    prop_data: dict,
+    ham_data: dict,
+    prop: propagator,
+    trial: wave_function,
+    wave_data: dict,
+    sample: sampler,
+) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+    
+    def _block_scan_wrapper(x,_):
+        return _block_scan(x,ham_data,prop,trial,wave_data,sample)
+    
+    # _block_scan_wrapper = lambda x : _block_scan(
+    #     x , ham_data, prop, trial, wave_data, sample
+    # )
+    prop_data, (blk_wt, blk_ept, blk_eog) = lax.scan(
+        _block_scan_wrapper, prop_data, None, length=sample.n_ene_blocks
+    )
+    prop_data = prop.stochastic_reconfiguration_local(prop_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    return prop_data, (blk_wt, blk_ept, blk_eog)
+
+@partial(jit, static_argnums=(2, 3, 5))
+def propagate_phaseless(
+    prop_data: dict,
+    ham_data: dict,
+    prop: propagator,
+    trial: wave_function,
+    wave_data: dict,
+    sample: sampler,
+) -> Tuple[jax.Array, dict]:
+    def _sr_block_scan_wrapper(x,_):
+        return _sr_block_scan(x, ham_data, prop, trial, wave_data, sample)
+
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["n_killed_walkers"] = 0
+    prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+    prop_data, (blk_wt, blk_ept, blk_eog) = lax.scan(
+        _sr_block_scan_wrapper, prop_data, None, length=sample.n_sr_blocks
+    )
+    prop_data["n_killed_walkers"] /= (
+        sample.n_sr_blocks * sample.n_ene_blocks * prop.n_walkers
+    )
+
+    wt = jnp.sum(blk_wt)
+    ept = jnp.sum(blk_ept * blk_wt) / wt
+    eog = jnp.sum(blk_eog * blk_wt) / wt
+
+    return prop_data, (wt, ept, eog)
+
+def run_afqmc_cisd_pt(options,nproc=None,option_file='options.bin'):
+    options["dt"] = options.get("dt", 0.005)
+    options["n_exp_terms"] = options.get("n_exp_terms",6)
+    options["n_walkers"] = options.get("n_walkers", 50)
+    options["n_prop_steps"] = options.get("n_prop_steps", 50)
+    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
+    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
+    options["n_blocks"] = options.get("n_blocks", 50)
+    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
+    options["n_eql"] = options.get("n_eql", 1)
+    options["ad_mode"] = options.get("ad_mode", None)
+    assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
+    options["orbital_rotation"] = options.get("orbital_rotation", True)
+    options["do_sr"] = options.get("do_sr", True)
+    options["walker_type"] = options.get("walker_type", "rhf")
+    options["symmetry"] = options.get("symmetry", False)
+    options["save_walkers"] = options.get("save_walkers", False)
+    options["trial"] = options.get("trial", "cisd")
+    options["free_projection"] = options.get("free_projection", False)
+    options["n_batch"] = options.get("n_batch", 1)
+    options["ene0"] = options.get("ene0",0)
+    options["use_gpu"] = options.get("use_gpu", False)
+
+    with open(option_file, 'wb') as f:
+        pickle.dump(options, f)
+
+    use_gpu = options["use_gpu"]
+    if use_gpu:
+        print(f'# running AFQMC on GPU')
+        gpu_flag = "--use_gpu"
+        mpi_prefix = ""
+        nproc = None
+    else:
+        print(f'# running AFQMC on CPU')
+        gpu_flag = ""
+        mpi_prefix = "mpirun "
+        if nproc is not None:
+            mpi_prefix += f"-np {nproc} "
+    path = os.path.abspath(__file__)
+    dir_path = os.path.dirname(path)  
+    script = f"{dir_path}/run_afqmc_cisd_pt.py"
+    
+    os.system(
+        f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
+        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc_cisd_pt.out"
+    )
