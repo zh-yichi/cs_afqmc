@@ -1,4 +1,4 @@
-from ad_afqmc.lno_afqmc import norhf_test
+from ad_afqmc.lno_afqmc import norhf_test, lnoafqmc_runner,data_maker
 from pyscf import gto, scf, cc
 import numpy as np
 import os
@@ -24,9 +24,9 @@ def thouless_trans(t1):
     u, _, _ = np.linalg.svd(u_occ)
     return u
 
-#u = thouless_trans(10*mycc.t1)
-#mo_t = mf.mo_coeff @ u
-#mf.mo_coeff = mo_t
+# u = thouless_trans(10*mycc.t1)
+# mo_t = mf.mo_coeff @ u
+# mf.mo_coeff = mo_t
 
 # myci = ci.CISD(mf)
 # myci.kernel()
@@ -39,7 +39,7 @@ options = {'n_eql': 4,
             'n_walkers': 10,
             'seed': 2,
             'walker_type': 'rhf',
-            'trial': 'rhf',
+            'trial': 'cisd',
             'dt':0.005,
             'ad_mode':None,
             'use_gpu': False,
@@ -48,7 +48,8 @@ options = {'n_eql': 4,
 
 threshs = [1e-4]
 for i,thresh in enumerate(threshs):
-    norhf_test.run_lno_afqmc_norhf_test(mf,thresh,[],options,nproc=5)
+    # norhf_test.run_lno_afqmc_norhf_test(mf,thresh,[],options,nproc=5)
+    lnoafqmc_runner.run_lno_afqmc(mf,thresh,[],options,nproc=5)
     os.system(f"mv results.out results.out1")
 
-norhf_test.sum_results_norhf_test(1)
+data_maker.sum_results(1)

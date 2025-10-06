@@ -62,8 +62,8 @@ def frg2result(lno_thresh,nfrag,e_mf,e_mp2):
     nelec_max = max(nelec)
     tot_time = sum(tot_time)
 
-    e_mp2_corr = f'{e_mp2_corr:.6f}'
-    e_ccsd_corr = f'{e_ccsd_corr:.6f}'
+    e_mp2_corr = f'{e_mp2_corr:.8f}'
+    e_ccsd_corr = f'{e_ccsd_corr:.8f}'
     afqmc_hf_corr = f'{afqmc_hf_corr:.6f}'
     afqmc_hf_corr_err = f'{afqmc_hf_corr_err:.6f}'
     afqmc_cc_corr = f'{afqmc_cc_corr:.6f}'
@@ -187,8 +187,8 @@ def frg2result_dbg(lno_thresh,nfrag,e_mf,e_mp2):
     norb_max = max(norb)
     tot_time = sum(tot_time)
 
-    mp2_corr = f'{mp2_corr:.6f}'
-    ccsd_corr = f'{ccsd_corr:.6f}'
+    mp2_corr = f'{mp2_corr:.8f}'
+    ccsd_corr = f'{ccsd_corr:.8f}'
     olp_r = f'{olp_r:.6f}'
     olp_r_err = f'{olp_r_err:.6f}'
     qmc_hf_cr = f'{qmc_hf_cr:.6f}'

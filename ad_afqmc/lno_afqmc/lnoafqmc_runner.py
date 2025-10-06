@@ -11,6 +11,7 @@ from pyscf import ao2mo, mcscf, scf, lib
 from ad_afqmc import pyscf_interface, wavefunctions, config
 from ad_afqmc import hamiltonian, propagation, sampling
 from ad_afqmc.lno.cc import LNOCCSD
+from ad_afqmc.lno.base import lno
 from ad_afqmc.lno_afqmc import lno_maker, afqmc_maker, data_maker
 
 def write_dqmc(E0,hcore,hcore_mod,chol,nelec,nmo,enuc,ms=0,
@@ -354,8 +355,10 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
     lno_cc.lo_type = lo_type
     lno_cc.no_type = no_type
     lno_cc.force_outcore_ao2mo = True
+    lno_cc.frag_lolist = '1o'
 
     s1e = mf.get_ovlp()
+    eris = lno_cc.ao2mo()
     lococc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
     # lococc,locvir = lno_maker.get_lo(lno_cc,lo_type) ### fix this for DF
 
@@ -378,10 +381,17 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
         fraglo = frag_lolist[ifrag]
         orbfragloc = lococc[:,fraglo]
         THRESH_INTERNAL = 1e-10
+        # frzfrag, orbfrag, can_orbfrag \
+        #     = lno_maker.make_lno(
+        #         lno_cc,orbfragloc,THRESH_INTERNAL,thresh_pno
+        #         )
         frzfrag, orbfrag, can_orbfrag \
-            = lno_maker.make_lno(
-                lno_cc,orbfragloc,THRESH_INTERNAL,thresh_pno
-                )
+            = lno.make_fpno1(lno_cc, eris, orbfragloc, no_type,
+                            THRESH_INTERNAL, thresh_pno,
+                            frozen_mask=frozen_mask,
+                            frag_target_nocc=None,
+                            frag_target_nvir=None,
+                            canonicalize=True)
         
         mol = mf.mol
         nocc = mol.nelectron // 2 
@@ -447,7 +457,6 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
                 ci2 = t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
                 ci2 = ci2.transpose(0, 2, 1, 3)
                 ecorr_cc = f'{ecorr_cc:.8f}'
-                print(f'# lno-ccsd fragment correlation energy: {ecorr_cc}')
                 from mpi4py import MPI
                 if not MPI.Is_finalized():
                     MPI.Finalize() # CCSD initializes MPI
@@ -460,7 +469,6 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
             ecorr_p2 = \
                 lno_maker.lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag)
             ecorr_p2 = f'{ecorr_p2:.8f}'
-            print(f'# lno-mp2 fragment correlation energy: {ecorr_p2}')
         else:
             ecorr_p2 = '  None  '
 
@@ -470,6 +478,8 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
         print(f'# number of active electrons: {nelec_act}')
         print(f'# number of active orbitals: {norb_act}')
         print(f'# number of frozen orbitals: {len(frzfrag)}')
+        print(f'# lno-mp2 fragment correlation energy: {ecorr_p2}')
+        print(f'# lno-ccsd fragment correlation energy: {ecorr_cc}')
 
         options["seed"] = seeds[ifrag]
         prep_lnoafqmc_file(

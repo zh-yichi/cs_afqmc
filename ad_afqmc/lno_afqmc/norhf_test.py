@@ -636,7 +636,9 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
     lno_cc.lo_type = lo_type
     lno_cc.no_type = no_type
     lno_cc.force_outcore_ao2mo = True
+    lno_cc.frag_lolist = '1o'
 
+    eris = lno_cc.ao2mo()
     s1e = mf.get_ovlp()
     lococc = lno_cc.get_lo(lo_type=lo_type) # localized active occ orbitals
     # lococc,locvir = lno_maker.get_lo(lno_cc,lo_type) ### fix this for DF
@@ -646,24 +648,28 @@ def run_lno_afqmc_norhf_test(mfcc,thresh,frozen=None,options=None,
 
     frozen_mask = lno_cc.get_frozen_mask()
     thresh_pno = [thresh_occ,thresh_vir]
-    print(f'# lno thresh {thresh_pno}')
+    print(f'# lno thresh: {thresh_pno}')
+    print(f'# fragment list: {frag_lolist}')
+    print(f'# number of fragments: {nfrag}')
     
     if run_frg_list is None:
         run_frg_list = range(nfrag)
     
     seeds = random.randint(random.PRNGKey(options["seed"]),
                         shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
-    
+
     for ifrag in run_frg_list:
         print(f'\n########### running fragment {ifrag+1} ##########')
-
         fraglo = frag_lolist[ifrag]
         orbfragloc = lococc[:,fraglo]
         THRESH_INTERNAL = 1e-10
         frzfrag, orbfrag, can_orbfrag \
-            = lno_maker.make_lno(
-                lno_cc,orbfragloc,THRESH_INTERNAL,thresh_pno
-                )
+            = lno.make_fpno1(lno_cc, eris, orbfragloc, no_type,
+                            THRESH_INTERNAL, thresh_pno,
+                            frozen_mask=frozen_mask,
+                            frag_target_nocc=None,
+                            frag_target_nvir=None,
+                            canonicalize=True)
         eorb_cc, _, _ \
             = lno_maker.lno_cc_solver(mf,orbfrag,orbfragloc,frozen=frzfrag)
         eorb_cc = f'{eorb_cc:.8f}'
@@ -827,8 +833,8 @@ def frg2result_norhf_test(lno_thresh,nfrag,e_mf,e_mp2):
     norb_max = max(norb)
     tot_time = sum(tot_time)
 
-    e_mp2_corr = f'{e_mp2_corr:.6f}'
-    e_ccsd_corr = f'{e_ccsd_corr:.6f}'
+    e_mp2_corr = f'{e_mp2_corr:.8f}'
+    e_ccsd_corr = f'{e_ccsd_corr:.8f}'
     afqmc_corr = f'{afqmc_corr:.6f}'
     afqmc_corr_err = f'{afqmc_corr_err:.6f}'
     afqmc_fk = f'{afqmc_fk:.6f}'
