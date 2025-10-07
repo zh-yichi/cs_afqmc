@@ -1,0 +1,74 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 12
+# nelec: (6, 6)
+#
+# n_eql: 4
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 10
+# n_blocks: 10
+# n_walkers: 10
+# seed: 2
+# walker_type: rhf
+# trial: cisd
+# dt: 0.005
+# free_projection: False
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# n_batch: 1
+# ene0: 0
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Equilibration sweeps:
+#   Iter 	 energy 	 time
+#     0 	 -6.542877 	 10.46
+#     1 	 -6.538163 	 28.30 
+#     2 	 -6.537420 	 42.96 
+#     3 	 -6.538260 	 45.48 
+#     4 	 -6.538284 	 47.98 
+#
+# Sampling sweeps:
+#  Iter 	 energy 	 error 	 	 time
+     0 	 	 -6.537642 	   None   	  50.54
+     1 	 	 -6.537815 	   None   	  64.47
+     2 	 	 -6.537798 	 0.000249 	  78.53
+     3 	 	 -6.537872 	 0.000201 	  81.03
+     4 	 	 -6.538064 	 0.000151 	  83.81
+     5 	 	 -6.538107 	 0.000192 	  86.34
+     6 	 	 -6.538087 	 0.000139 	  88.84
+     7 	 	 -6.537994 	 0.000137 	  91.32
+     8 	 	 -6.537987 	 0.000123 	  93.88
+     9 	 	 -6.537972 	 0.000116 	  96.39
+# Number of outliers in post: 0 
+#
+# Mean: -6.53797224e+00
+# Block size    # of blocks         Mean                Error
+      1               50       -6.53797224e+00       1.161225e-04
+      2               25       -6.53797224e+00       1.155703e-04
+      3               16       -6.53800127e+00       1.287419e-04
+      5               10       -6.53797224e+00       1.335023e-04
+     10                5       -6.53797224e+00       1.765307e-04
+     15                3       -6.53798677e+00       2.629790e-04
+     20                2       -6.53799371e+00       1.720914e-04
+# Stocahstic error estimate: 1.161225e-04
+#
+# Final Results
+# size-extensiveness experiment
+# Trial - CISD: Guide - RHF
+# AFQMC energy: -6.537972 +/- 0.000116
+# total run time: 96.40
