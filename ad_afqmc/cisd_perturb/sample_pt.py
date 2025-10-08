@@ -124,8 +124,9 @@ def _block_scan(
     prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
         prop_data["weights"]
     )
+    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
     prop_data = prop.orthonormalize_walkers(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     e_pt, e_og = cisd_pt.cisd_walker_energy_pt(prop_data["walkers"],ham_data,wave_data,trial)
 
     e_pt = jnp.where(
@@ -158,6 +159,8 @@ def _sr_block_scan(
     sample: sampler,
 ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
     
+    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
+    
     def _block_scan_wrapper(x,_):
         return _block_scan(x,ham_data,prop,trial,wave_data,sample)
     
@@ -165,7 +168,7 @@ def _sr_block_scan(
         _block_scan_wrapper, prop_data, None, length=sample.n_ene_blocks
     )
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     return prop_data, (blk_wt, blk_ept, blk_eog)
 
 @partial(jit, static_argnums=(2, 3, 5))
@@ -179,8 +182,10 @@ def propagate_phaseless(
 ) -> Tuple[jax.Array, dict]:
     def _sr_block_scan_wrapper(x,_):
         return _sr_block_scan(x, ham_data, prop, trial, wave_data, sample)
+    
+    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
 
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
     prop_data, (blk_wt, blk_ept, blk_eog) = lax.scan(
