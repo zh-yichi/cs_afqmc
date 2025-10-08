@@ -203,38 +203,43 @@ def _e2(walker, ham_data, wave_data, trial, eps=3e-4):
 @partial(jit, static_argnums=3)
 def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     ci1,ci2 = wave_data['ci1'],wave_data['ci2']
-    t1 = ci1
-    t2 = ci2 - jnp.einsum('ia,jb->iajb',ci1,ci1)
     nocc = trial.nelec[0]
     green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
     green = green[:nocc,:]
     green_occ = green[:, nocc:].copy()
-    t1g = jnp.einsum("ia,ia->", t1, green_occ, optimize="optimal")
-    t2g_c = jnp.einsum("iajb,ia->jb", t2, green_occ)
-    t2g_e = jnp.einsum("iajb,ib->ja", t2, green_occ)
-    t2g = 2 * t2g_c - t2g_e
-    gt2g = jnp.einsum("ia,ia->", t2g, green_occ, optimize="optimal")
-    # ci1g = jnp.einsum("ia,ia->", ci1, green_occ, optimize="optimal")
-    # ci2g_c = jnp.einsum("iajb,ia->jb", ci2, green_occ)
-    # ci2g_e = jnp.einsum("iajb,ib->ja", ci2, green_occ)
-    # ci2g = 2 * ci2g_c - ci2g_e
-    # gci2g = jnp.einsum("ia,ia->", ci2g, green_occ, optimize="optimal")
+    # expand t1 t2 do uncomment below ###############################
+    # t1 = ci1
+    # t2 = ci2 - jnp.einsum('ia,jb->iajb',ci1,ci1)
+    # t1g = jnp.einsum("ia,ia->", t1, green_occ, optimize="optimal")
+    # t2g_c = jnp.einsum("iajb,ia->jb", t2, green_occ)
+    # t2g_e = jnp.einsum("iajb,ib->ja", t2, green_occ)
+    # t2g = 2 * t2g_c - t2g_e
+    # gt2g = jnp.einsum("ia,ia->", t2g, green_occ, optimize="optimal")
+    # t = 2 * t1g + gt2g
+    ##################################################################
+    # expand c1 c2 uncomment below
+    ci1g = jnp.einsum("ia,ia->", ci1, green_occ, optimize="optimal")
+    ci2g_c = jnp.einsum("iajb,ia->jb", ci2, green_occ)
+    ci2g_e = jnp.einsum("iajb,ib->ja", ci2, green_occ)
+    ci2g = 2 * ci2g_c - ci2g_e
+    gci2g = jnp.einsum("ia,ia->", ci2g, green_occ, optimize="optimal")
+    c = 2*ci1g + gci2g
     # olp = 1 + 2*ci1g + gci2g
     # c1 = 2*ci1g
     # c2 = gci2g
-    t = 2 * t1g + gt2g
     e0 = _e0(walker,ham_data,trial)
     e1 = _e1(walker,ham_data,wave_data,trial)
     e2 = _e2(walker,ham_data,wave_data,trial)
-    # E0 = e0
-    # E1 = e1 - c1*e0
-    # E2 = e2 - c1*e1 + (c1**2-c2)*e0
     E0 = e0
-    E1 = e1 - t*e0
-    E2 = e2 - t*e1 + t**2*e0
-    e_pt = jnp.real(E0+E1+E2)
-    e_og = jnp.real((e0+e1+e2)/(1+t))
-    # e_og = jnp.real((e0+e1+e2)/(1+c1+c2))
+    E1 = e1 - c*e0
+    # E2 = e2 - c*e1 + c**2*e0
+    # E0 = e0
+    # E1 = e1 - t*e0
+    # E2 = e2 - t*e1 + t**2*e0
+    e_pt = jnp.real(E0+E1)
+    # e_pt = jnp.real(E0+E1+E2)
+    # e_og = jnp.real((e0+e1+e2)/(1+t))
+    e_og = jnp.real((e0+e1+e2)/(1+c))
     return e_pt, e_og
 
 @partial(jit, static_argnums=3)
