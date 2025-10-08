@@ -1,14 +1,12 @@
 from pyscf import gto, scf, cc
-import numpy as np
-from jax import numpy as jnp
-from jax import vmap
 
-a = 1 # 2aB
-d = 3
-nH = 4 
+a = 1
+d = 10
+nH = 6 # set as integer multiple of 2
 atoms = ""
-for i in range(nH):
-    atoms += f"H {i*a:.5f} 0.00000 0.00000 \n"
+for n in range(nH):
+    shift = ((n - n % 2) // 2) * (d-1)
+    atoms += f"H {n*a+shift:.5f} 0.00000 0.00000 \n"
 
 mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
 mol.build()
@@ -34,7 +32,7 @@ options = {'n_eql': 4,
             'use_gpu': False,
             }
 
-from ad_afqmc import pyscf_interface, mpi_jax, wavefunctions
+from ad_afqmc import pyscf_interface
 from ad_afqmc.cisd_perturb import sample_pt
 pyscf_interface.prep_afqmc(mycc,chol_cut=1e-7)
 
