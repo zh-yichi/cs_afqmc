@@ -2362,8 +2362,9 @@ class cisd_pt(cisd):
         overlap_1 = 2 * ci1g  # jnp.einsum("ia,ia", ci1, green_occ)
         overlap_2 = gci2g
         overlap = 1.0 + overlap_1 + overlap_2
-        olp_inv = 1 - (2*ci1g + gci2g) + (2*ci1g + gci2g)**2 \
-                    - (2*ci1g + gci2g)**3 + (2*ci1g + gci2g)**4
+        t = overlap_1 + overlap_2
+        # olp_inv = 1 - (2*ci1g + gci2g) + (2*ci1g + gci2g)**2 \
+        #             - (2*ci1g + gci2g)**3 + (2*ci1g + gci2g)**4
         
         e_pt = jnp.real((e1 + e2) * olp_inv + e0)
         e_og = jnp.real((e1 + e2) / overlap + e0)

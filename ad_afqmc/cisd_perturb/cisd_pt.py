@@ -203,6 +203,7 @@ def _e2(walker, ham_data, wave_data, trial, eps=3e-4):
 @partial(jit, static_argnums=3)
 def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     ci1,ci2 = wave_data['ci1'],wave_data['ci2']
+    h0 = ham_data['h0']
     nocc = trial.nelec[0]
     green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
     green = green[:nocc,:]
@@ -228,8 +229,8 @@ def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     # c1 = 2*ci1g
     # c2 = gci2g
     e0 = _e0(walker,ham_data,trial)
-    e1 = _e1(walker,ham_data,wave_data,trial)
-    e2 = _e2(walker,ham_data,wave_data,trial)
+    e1 = _e1(walker,ham_data,wave_data,trial)+_e2(walker,ham_data,wave_data,trial)
+    # e2 = _e2(walker,ham_data,wave_data,trial)
     E0 = e0
     E1 = e1 - c*e0
     # E2 = e2 - c*e1 + c**2*e0
@@ -239,7 +240,7 @@ def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     e_pt = jnp.real(E0+E1)
     # e_pt = jnp.real(E0+E1+E2)
     # e_og = jnp.real((e0+e1+e2)/(1+t))
-    e_og = jnp.real((e0+e1+e2)/(1+c))
+    e_og = jnp.real((e0+e1)/(1+c))
     return e_pt, e_og
 
 @partial(jit, static_argnums=3)

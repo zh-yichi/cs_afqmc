@@ -1,14 +1,14 @@
 from pyscf import gto, scf, cc
 
-a = 1
+a = 1.05835
 d = 10
-nH = 6 # set as integer multiple of 2
+nH = 2 # set as integer multiple of 2
 atoms = ""
 for n in range(nH):
     shift = ((n - n % 2) // 2) * (d-1)
     atoms += f"H {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
+mol = gto.M(atom=atoms, basis="ccpvdz", verbose=4)
 mol.build()
 
 mf = scf.RHF(mol)#.density_fit()
@@ -16,14 +16,14 @@ e = mf.kernel()
 
 mycc = cc.CCSD(mf)
 e = mycc.kernel()
-# mycc.t1 = mycc.t1*0
+mycc.t1 = mycc.t1*0
 
 options = {'n_eql': 4,
            'n_prop_steps': 50,
             'n_ene_blocks': 1,
             'n_sr_blocks': 10,
             'n_blocks': 10,
-            'n_walkers': 5,
+            'n_walkers': 20,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'cisd',
