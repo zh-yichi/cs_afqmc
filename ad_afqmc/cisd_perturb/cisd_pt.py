@@ -37,8 +37,9 @@ def _hf_olp_exp2(x: float, chol_i: jax.Array, walker: jax.Array) -> complex:
 
 @partial(jit, static_argnums=2)
 def _e0(walker, ham_data, trial, eps=3e-4):
+    '''<psi_0|h1+h2|phi>/<psi_0|phi>'''
     norb = trial.norb
-    h0 = ham_data['h0']
+    # h0 = ham_data['h0']
     h1_mod = ham_data['h1_mod']
     chol = ham_data["chol"].reshape(-1, norb, norb)
 
@@ -57,7 +58,8 @@ def _e0(walker, ham_data, trial, eps=3e-4):
     _, olp_m = lax.scan(scanned_fun, (-1.0 * eps, walker), chol)
     d_2_olp = (olp_p - 2.0 * olp_0 + olp_m) / eps / eps
 
-    e_0= h0 + (d_olp + jnp.sum(d_2_olp) / 2.0 )/ olp
+    # e_0= h0 + (d_olp + jnp.sum(d_2_olp) / 2.0 )/ olp
+    e_0= (d_olp + jnp.sum(d_2_olp) / 2.0 )/ olp
 
     return e_0
 
@@ -123,6 +125,7 @@ def _e1(walker,ham_data,wave_data,trial,eps=3e-4):
     d_2_olp = (olp_p - 2.0 * olp_0 + olp_m) / eps / eps
 
     e_1 = (h0 * ci1_olp + d_olp + jnp.sum(d_2_olp) / 2.0 ) / hf_olp
+    # e_1 = (d_olp + jnp.sum(d_2_olp) / 2.0 ) / hf_olp
 
     return e_1
 
@@ -200,6 +203,80 @@ def _e2(walker, ham_data, wave_data, trial, eps=3e-4):
 
     return e_2
 
+### <psi_0|TH|phi> part ###
+@jax.jit
+def _c1c2_walker_olp(walker,wave_data):
+    ''' <psi_0(c1+c2)|phi> '''
+    ci1, ci2 = wave_data['ci1'], wave_data['ci2']
+    nocc = walker.shape[1]
+    GF = (walker.dot(jnp.linalg.inv(walker[: nocc, :]))).T
+    o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
+    o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
+    o2 = 2 * jnp.einsum(
+        "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]
+    ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
+    return (2*o1 + o2) * o0
+
+@jax.jit
+def _c1c2_olp_exp1(x: float, h1_mod: jax.Array, walker: jax.Array,
+                  wave_data: dict) -> complex:
+    '''
+    c_ia <psi_i^a|exp(x*h1_mod)|walker>
+    '''
+    t = x * h1_mod
+    walker_1x = walker + t.dot(walker)
+    olp = _c1c2_walker_olp(walker_1x,wave_data)
+    return olp
+
+@jax.jit
+def _c1c2_olp_exp2(x: float, chol_i: jax.Array, walker: jax.Array,
+                  wave_data: dict) -> complex:
+    '''
+    c_ia <psi_i^a|exp(x*h2_mod)|walker>
+    '''
+    walker_2x = (
+            walker
+            + x * chol_i.dot(walker)
+            + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker))
+        )
+    olp = _c1c2_walker_olp(walker_2x,wave_data)
+    return olp
+
+@partial(jit, static_argnums=3)
+def _ec1c2(walker, ham_data, wave_data, trial, eps=3e-4):
+    ''' <psi_0|(ci1+ci2)(h1+h2)|phi>/<psi_0|phi> '''
+    norb = trial.norb
+    # h0 = ham_data['h0']
+    h1_mod = ham_data['h1_mod']
+    chol = ham_data["chol"].reshape(-1, norb, norb)
+
+    # zero body
+    # c_ij^ab <psi_ij^ab|phi>/<psi_0|phi> * h0
+    hf_olp = _hf_walker_olp(walker)
+    # ci2_olp = _ci2_walker_olp(walker,wave_data)
+
+    # one body
+    # c_ij^ab <psi_ij^ab|phi_1x>/<psi_0|phi>
+    x = 0.0
+    f1 = lambda a: _c1c2_olp_exp1(a,h1_mod,walker,wave_data)
+    _, d_olp = jvp(f1, [x], [1.0])
+
+    # two body
+    # c_ij^ab <psi_ij^ab|phi_2x>/<psi_0|phi>
+    def scanned_fun(carry, c):
+        eps, walker, wave_data = carry
+        return carry, _c1c2_olp_exp2(eps,c,walker,wave_data)
+
+    _, olp_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
+    _, olp_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
+    _, olp_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
+    d_2_olp = (olp_p - 2.0 * olp_0 + olp_m) / eps / eps
+    
+    e_2 = ( d_olp + jnp.sum(d_2_olp) / 2.0 ) / hf_olp
+
+    return e_2
+
+
 @partial(jit, static_argnums=3)
 def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     ci1,ci2 = wave_data['ci1'],wave_data['ci2']
@@ -225,22 +302,17 @@ def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     ci2g = 2 * ci2g_c - ci2g_e
     gci2g = jnp.einsum("ia,ia->", ci2g, green_occ, optimize="optimal")
     c = 2*ci1g + gci2g
-    # olp = 1 + 2*ci1g + gci2g
-    # c1 = 2*ci1g
-    # c2 = gci2g
     e0 = _e0(walker,ham_data,trial)
-    e1 = _e1(walker,ham_data,wave_data,trial)+_e2(walker,ham_data,wave_data,trial)
+    e1 = _ec1c2(walker,ham_data,wave_data,trial)
+    # e1 = _e1(walker,ham_data,wave_data,trial)+_e2(walker,ham_data,wave_data,trial)
     # e2 = _e2(walker,ham_data,wave_data,trial)
-    E0 = e0
-    E1 = e1 - c*e0
-    # E2 = e2 - c*e1 + c**2*e0
-    # E0 = e0
-    # E1 = e1 - t*e0
-    # E2 = e2 - t*e1 + t**2*e0
+    E0 =  h0 + e0
+    E1 = -c*e0 + e1
+    # E2 =  c**2*e0 - c*e1
+    # E3 = -c**3*e0 + c**2*e1
+    # E4 =  c**4*e0 - c**3*e1
     e_pt = jnp.real(E0+E1)
-    # e_pt = jnp.real(E0+E1+E2)
-    # e_og = jnp.real((e0+e1+e2)/(1+t))
-    e_og = jnp.real((e0+e1)/(1+c))
+    e_og = jnp.real(h0+(e0+e1)/(1+c))
     return e_pt, e_og
 
 @partial(jit, static_argnums=3)

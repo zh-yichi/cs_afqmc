@@ -16,7 +16,7 @@ e = mf.kernel()
 
 mycc = cc.CCSD(mf)
 e = mycc.kernel()
-mycc.t1 = mycc.t1*0
+#mycc.t1 = mycc.t1*0
 
 options = {'n_eql': 4,
            'n_prop_steps': 50,
