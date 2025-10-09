@@ -313,11 +313,11 @@ def _cisd_walker_energy_pt(walker,ham_data,wave_data,trial):
     # E4 =  c**4*e0 - c**3*e1
     e_pt = jnp.real(E0+E1)
     e_og = jnp.real(h0+(e0+e1)/(1+c))
-    return e_pt, e_og
+    return e_pt, e_og, jnp.real(E0)
 
 @partial(jit, static_argnums=3)
 def cisd_walker_energy_pt(walkers,ham_data,wave_data,trial):
-    e_pt, e_og = vmap(
+    e_pt, e_og, e_0 = vmap(
         _cisd_walker_energy_pt,in_axes=(0, None, None, None))(
         walkers, ham_data, wave_data,trial)
-    return e_pt, e_og 
+    return e_pt, e_og, e_0

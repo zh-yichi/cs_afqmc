@@ -120,7 +120,8 @@ def _block_scan(
         prop_data["weights"]
     )
     prop_data = prop.orthonormalize_walkers(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
+    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     
     en_samples = jnp.real(
             trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
@@ -157,7 +158,7 @@ def _sr_block_scan(
         _block_scan_wrapper, prop_data, None, length=sample.n_ene_blocks
     )
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     
     return prop_data, (blk_wt, blk_en)
 
@@ -173,7 +174,8 @@ def propagate_phaseless(
     def _sr_block_scan_wrapper(x,_):
         return _sr_block_scan(x, ham_data, prop, trial, wave_data, sample)
 
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
+    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
     prop_data, (blk_wt, blk_en) = lax.scan(

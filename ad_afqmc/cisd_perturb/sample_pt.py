@@ -36,8 +36,9 @@ def propagate_mix(
     Returns:
         prop_data: dictionary containing the updated propagation data
     """
-
+    ### evaluate overlap & force bias with HF guide wave 
     guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
+
     force_bias = guide.calc_force_bias(prop_data["walkers"], ham_data, wave_data)
     field_shifts = -jnp.sqrt(prop.dt) * (1.0j * force_bias - ham_data["mf_shifts"])
     shifted_fields = fields - field_shifts
@@ -127,7 +128,7 @@ def _block_scan(
     guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
-    e_pt, e_og = cisd_pt.cisd_walker_energy_pt(prop_data["walkers"],ham_data,wave_data,trial)
+    e_pt, e_og, e_0 = cisd_pt.cisd_walker_energy_pt(prop_data["walkers"],ham_data,wave_data,trial)
 
     e_pt = jnp.where(
         jnp.abs(e_pt - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
@@ -139,15 +140,22 @@ def _block_scan(
         prop_data["e_estimate"],
         e_og,
     )
+    e_0 = jnp.where(
+        jnp.abs(e_0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        prop_data["e_estimate"],
+        e_0,
+    )
+
 
     blk_wt = jnp.sum(prop_data["weights"])
     blk_ept = jnp.sum(e_pt * prop_data["weights"]) / blk_wt
     blk_eog = jnp.sum(e_og * prop_data["weights"]) / blk_wt
+    blk_e0 = jnp.sum(e_0 * prop_data["weights"]) / blk_wt
 
     prop_data["pop_control_ene_shift"] = (
         0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
     )
-    return prop_data, (blk_wt, blk_ept, blk_eog)
+    return prop_data, (blk_wt, blk_ept, blk_eog, blk_e0)
 
 @partial(jit, static_argnums=(2,3,5))
 def _sr_block_scan(
@@ -164,12 +172,12 @@ def _sr_block_scan(
     def _block_scan_wrapper(x,_):
         return _block_scan(x,ham_data,prop,trial,wave_data,sample)
     
-    prop_data, (blk_wt, blk_ept, blk_eog) = lax.scan(
+    prop_data, (blk_wt, blk_ept, blk_eog, blk_e0) = lax.scan(
         _block_scan_wrapper, prop_data, None, length=sample.n_ene_blocks
     )
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
     prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
-    return prop_data, (blk_wt, blk_ept, blk_eog)
+    return prop_data, (blk_wt, blk_ept, blk_eog, blk_e0)
 
 @partial(jit, static_argnums=(2, 3, 5))
 def propagate_phaseless(
@@ -188,7 +196,7 @@ def propagate_phaseless(
     prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    prop_data, (blk_wt, blk_ept, blk_eog) = lax.scan(
+    prop_data, (blk_wt, blk_ept, blk_eog, blk_e0) = lax.scan(
         _sr_block_scan_wrapper, prop_data, None, length=sample.n_sr_blocks
     )
     prop_data["n_killed_walkers"] /= (
@@ -198,8 +206,9 @@ def propagate_phaseless(
     wt = jnp.sum(blk_wt)
     ept = jnp.sum(blk_ept * blk_wt) / wt
     eog = jnp.sum(blk_eog * blk_wt) / wt
+    e0 = jnp.sum(blk_e0 * blk_wt) / wt
 
-    return prop_data, (wt, ept, eog)
+    return prop_data, (wt, ept, eog, e0)
 
 def run_afqmc_cisd_pt(options,nproc=None,option_file='options.bin'):
     options["dt"] = options.get("dt", 0.005)
@@ -241,7 +250,8 @@ def run_afqmc_cisd_pt(options,nproc=None,option_file='options.bin'):
             mpi_prefix += f"-np {nproc} "
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)  
-    script = f"{dir_path}/run_afqmc_cisd_pt.py"
+    script = f"{dir_path}/run_afqmc_cisd_pt_e0.py"
+    # script = f"{dir_path}/run_afqmc_cisd_pt.py"
     
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
