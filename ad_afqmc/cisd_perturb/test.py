@@ -2,13 +2,13 @@ from pyscf import gto, scf, cc
 
 a = 1.05835
 d = 10
-nH = 4 # set as integer multiple of 2
+nH = 16 # set as integer multiple of 2
 atoms = ""
 for n in range(nH):
     shift = ((n - n % 2) // 2) * (d-a)
     atoms += f"H {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis="ccpvdz", verbose=4)
+mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
 mol.build()
 
 mf = scf.RHF(mol)#.density_fit()
@@ -23,7 +23,7 @@ options = {'n_eql': 4,
             'n_ene_blocks': 5,
             'n_sr_blocks': 10,
             'n_blocks': 10,
-            'n_walkers': 30,
+            'n_walkers': 40,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'cisd',
@@ -34,7 +34,7 @@ options = {'n_eql': 4,
             }
 
 from ad_afqmc import pyscf_interface
-from ad_afqmc.cisd_perturb import sample_pt
+from ad_afqmc.cisd_perturb import sample_pt2
 pyscf_interface.prep_afqmc(mycc,chol_cut=1e-7)
 
-sample_pt.run_afqmc_cisd_pt(options,nproc=5)
+sample_pt2.run_afqmc_ccsd_pt(options,nproc=10)
