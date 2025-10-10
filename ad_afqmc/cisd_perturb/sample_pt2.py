@@ -131,21 +131,22 @@ def _block_scan(
     wt = prop_data["weights"]
     blk_wt = jnp.sum(wt)
     blk_t = jnp.sum(t*wt)/blk_wt
+    blk_e0 = jnp.sum(e0*wt)/blk_wt
+    blk_e1 = jnp.sum(e1*wt)/blk_wt
 
-    h0 = ham_data['h0']
-    ept = jnp.real(h0 + e0 + e1 - blk_t*e0)
-    ept = jnp.where(
-        jnp.abs(ept - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-        prop_data["e_estimate"],
-        ept,
-    )
+    # h0 = ham_data['h0']
+    # ept = jnp.real(h0 + e0 + e1 - blk_t*e0)
+    # ept = jnp.where(
+    #     jnp.abs(ept - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+    #     prop_data["e_estimate"],
+    #     ept,
+    # )
+    # blk_ept = jnp.sum(ept*wt)/blk_wt
 
-    blk_ept = jnp.sum(ept*wt)/blk_wt
-
-    prop_data["pop_control_ene_shift"] = (
-        0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
-    )
-    return prop_data, (blk_wt, blk_ept)
+    # prop_data["pop_control_ene_shift"] = (
+    #     0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
+    # )
+    return prop_data, (blk_wt, blk_t, blk_e0, blk_e1)
 
 @partial(jit, static_argnums=(2,3,5))
 def _sr_block_scan(
@@ -162,12 +163,12 @@ def _sr_block_scan(
     def _block_scan_wrapper(x,_):
         return _block_scan(x,ham_data,prop,trial,wave_data,sample)
     
-    prop_data, (blk_wt, blk_ept) = lax.scan(
+    prop_data, (blk_wt, blk_t, blk_e0, blk_e1)= lax.scan(
         _block_scan_wrapper, prop_data, None, length=sample.n_ene_blocks
     )
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
     prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
-    return prop_data, (blk_wt, blk_ept)
+    return prop_data, (blk_wt, blk_t, blk_e0, blk_e1)
 
 @partial(jit, static_argnums=(2, 3, 5))
 def propagate_phaseless(
@@ -186,7 +187,7 @@ def propagate_phaseless(
     prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    prop_data, (blk_wt, blk_ept) = lax.scan(
+    prop_data, (blk_wt, blk_t, blk_e0, blk_e1) = lax.scan(
         _sr_block_scan_wrapper, prop_data, None, length=sample.n_sr_blocks
     )
     prop_data["n_killed_walkers"] /= (
@@ -194,9 +195,11 @@ def propagate_phaseless(
     )
 
     wt = jnp.sum(blk_wt)
-    ept = jnp.sum(blk_ept * blk_wt) / wt
+    t = jnp.sum(blk_t * blk_wt) / wt
+    e0 = jnp.sum(blk_e0 * blk_wt) / wt
+    e1 = jnp.sum(blk_e1 * blk_wt) / wt
 
-    return prop_data, (wt, ept)
+    return prop_data, (wt, t, e0, e1)
 
 def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin'):
     options["dt"] = options.get("dt", 0.005)

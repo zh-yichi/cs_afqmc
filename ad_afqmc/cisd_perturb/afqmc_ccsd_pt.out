@@ -2,17 +2,17 @@
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 10
+# Number of MPI ranks: 5
 #
-# norb: 2
-# nelec: (1, 1)
+# norb: 4
+# nelec: (2, 2)
 #
 # n_eql: 4
 # n_prop_steps: 50
 # n_ene_blocks: 5
-# n_sr_blocks: 10
+# n_sr_blocks: 5
 # n_blocks: 10
-# n_walkers: 40
+# n_walkers: 20
 # seed: 2
 # walker_type: rhf
 # trial: cisd
@@ -35,39 +35,26 @@
 # Machine Type: x86_64
 # Processor: x86_64
 # Equilibration sweeps:
-#   Iter 	 energy_pt 	 Walltime
-#     0 	 -1.096072 	 14.96
-#     1 	 -1.095882 	 34.55 
-#     2 	 -1.094856 	 48.63 
-#     3 	 -1.096013 	 49.24 
-#     4 	 -1.095961 	 49.85 
+#   Iter 	 energy 	 Walltime
+      0 	 -2.192144 	 11.02
+#     1 	 -2.192513 	 24.83 
+#     2 	 -2.192695 	 35.23 
+#     3 	 -2.191975 	 35.59 
+#     4 	 -2.191849 	 35.96 
 #
 # Sampling sweeps:
-#  Iter 	 energy_pt 	 error 	 	 Walltime
-     0 	 	 -1.096119 	   None   	  50.55
-     1 	 	 -1.095941 	 0.000160 	  64.39
-     2 	 	 -1.095956 	 0.000085 	  78.00
-     3 	 	 -1.095927 	 0.000091 	  78.63
-     4 	 	 -1.095693 	 0.000245 	  79.25
-     5 	 	 -1.095731 	 0.000205 	  79.89
-     6 	 	 -1.095580 	 0.000239 	  80.51
-     7 	 	 -1.095631 	 0.000210 	  81.13
-     8 	 	 -1.095665 	 0.000187 	  81.76
-     9 	 	 -1.095687 	 0.000169 	  82.39
-# Number of outliers in post: 4 
-#
-# Mean: -1.09596010e+00
-# Block size    # of blocks         Mean                Error
-      1               96       -1.09596010e+00       3.512796e-05
-      2               48       -1.09596010e+00       3.495925e-05
-      3               32       -1.09596010e+00       3.865606e-05
-      5               19       -1.09596023e+00       3.555326e-05
-     10                9       -1.09596512e+00       2.960088e-05
-     15                6       -1.09596512e+00       3.244039e-05
-     20                4       -1.09597349e+00       3.951661e-05
-     30                3       -1.09596512e+00       4.875587e-05
-# Stocahstic error estimate: 3.512796e-05
-#
+#  Iter 	 energy 	 error 	 	 Walltime
+     0 	 	 -2.192222 	 0.037479 	  36.51
+     1 	 	 -2.192008 	 0.025889 	  46.67
+     2 	 	 -2.192292 	 0.019748 	  56.83
+     3 	 	 -2.192390 	 0.016679 	  57.20
+     4 	 	 -2.192443 	 0.013801 	  57.57
+     5 	 	 -2.192349 	 0.011634 	  57.93
+     6 	 	 -2.192351 	 0.010173 	  58.30
+     7 	 	 -2.192330 	 0.009685 	  58.67
+     8 	 	 -2.192340 	 0.009149 	  59.03
+     9 	 	 -2.192384 	 0.008359 	  59.40
+# Number of outliers in post: 0 
 Final Results:
-AFQMC/CCSD_PT energy: -1.095960 +/- 0.000035
-total run time: 82.41
+AFQMC/CCSD_PT energy: -2.192384 +/- 0.008359
+total run time: 59.41

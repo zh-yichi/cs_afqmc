@@ -2,7 +2,7 @@ from pyscf import gto, scf, cc
 
 a = 1.05835
 d = 10
-nH = 2 # set as integer multiple of 2
+nH = 4 # set as integer multiple of 2
 atoms = ""
 for n in range(nH):
     shift = ((n - n % 2) // 2) * (d-a)
@@ -21,9 +21,9 @@ e = mycc.kernel()
 options = {'n_eql': 4,
            'n_prop_steps': 50,
             'n_ene_blocks': 5,
-            'n_sr_blocks': 10,
+            'n_sr_blocks': 5,
             'n_blocks': 10,
-            'n_walkers': 40,
+            'n_walkers': 20,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'cisd',
@@ -37,4 +37,4 @@ from ad_afqmc import pyscf_interface
 from ad_afqmc.cisd_perturb import sample_pt2
 pyscf_interface.prep_afqmc(mycc,chol_cut=1e-7)
 
-sample_pt2.run_afqmc_ccsd_pt(options,nproc=10)
+sample_pt2.run_afqmc_ccsd_pt(options,nproc=5)

@@ -29,6 +29,7 @@ wave_data['t2'] = t2
 
 h1_mod = h1 - v0 
 ham_data['h1_mod'] = h1_mod
+h0 = ham_data['h0']
 
 if options["use_gpu"]:
     config.afqmc_config["use_gpu"] = True
@@ -61,29 +62,34 @@ prop_data["key"] = random.PRNGKey(seed + rank)
 
 e0, e1, t = ccsd_pt._ccsd_walker_energy_pt(
     prop_data['walkers'][0],ham_data,wave_data,trial)
-init_ept = jnp.real(ham_data['h0'] + e0 + e1 - t*e0)
+init_ept = ham_data['h0'] + e0 + e1 - t*e0
 
 comm.Barrier()
 init_time = time.time() - init
 if rank == 0:
     print("# Equilibration sweeps:")
-    print("#   Iter \t energy_pt \t Walltime")
-    print(f"# {0:5d} \t {init_ept:.6f} \t {init_time:.2f}")
+    print("#   Iter \t energy \t Walltime")
+    print(f"  {0:5d} \t {init_ept:.6f} \t {init_time:.2f}")
 comm.Barrier()
 
 for n in range(1, neql + 1):
-    prop_data, (blk_wt, blk_ept) = sample_pt2.propagate_phaseless(
-        prop_data, ham_data, prop, trial, wave_data, sampler
-    )
+    prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
+        sample_pt2.propagate_phaseless(
+            prop_data, ham_data, prop, trial, wave_data, sampler)
+    
     blk_wt = np.array([blk_wt], dtype="float32")
-    blk_ept = np.array([blk_ept], dtype="float32")
+    blk_t = np.array([blk_t], dtype="float32")#"complex64")
+    blk_e0 = np.array([blk_e0], dtype="float32")#"complex64")
+    blk_e1 = np.array([blk_e1], dtype="float32")#"complex64")
 
-    blk_wt_ept = np.array(
-        [blk_ept * blk_wt], dtype="float32"
-    )
+    blk_wt_t = np.array([blk_t * blk_wt], dtype="float32")#"complex64"
+    blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float32")#"complex64"
+    blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float32")#"complex64"
 
     tot_blk_wt = np.zeros(1, dtype="float32")
-    tot_blk_ept = np.zeros(1, dtype="float32")
+    tot_blk_t = np.zeros(1, dtype="float32")#"complex64")
+    tot_blk_e0 = np.zeros(1, dtype="float32")#"complex64")
+    tot_blk_e1 = np.zeros(1, dtype="float32")#"complex64")
     
     comm.Reduce(
         [blk_wt, MPI.FLOAT],
@@ -92,18 +98,38 @@ for n in range(1, neql + 1):
         root=0,
     )
     comm.Reduce(
-        [blk_wt_ept, MPI.FLOAT],
-        [tot_blk_ept, MPI.FLOAT],
+        [blk_wt_t, MPI.FLOAT],
+        [tot_blk_t, MPI.FLOAT],
+        op=MPI.SUM,
+        root=0,
+    )
+    comm.Reduce(
+        [blk_wt_e0, MPI.FLOAT],
+        [tot_blk_e0, MPI.FLOAT],
+        op=MPI.SUM,
+        root=0,
+    )
+    comm.Reduce(
+        [blk_wt_e1, MPI.FLOAT],
+        [tot_blk_e1, MPI.FLOAT],
         op=MPI.SUM,
         root=0,
     )
 
+    comm.Barrier()
     if rank == 0:
         blk_wt = tot_blk_wt
-        blk_ept = tot_blk_ept / tot_blk_wt
+        blk_t = tot_blk_t / tot_blk_wt
+        blk_e0 = tot_blk_e0 / tot_blk_wt
+        blk_e1 = tot_blk_e1 / tot_blk_wt
+    comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
-    comm.Bcast(blk_ept, root=0)
+    comm.Bcast(blk_t, root=0)
+    comm.Bcast(blk_e0, root=0)
+    comm.Bcast(blk_e1, root=0)
+
+    blk_ept = h0 + blk_e0 + blk_e1 - blk_t * blk_e0
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
@@ -119,49 +145,71 @@ for n in range(1, neql + 1):
     comm.Barrier()
 
 glb_blk_wt = None
-glb_blk_ept = None
+glb_blk_t = None
+glb_blk_e0 = None
+glb_blk_e1 = None
 
 if rank == 0:
-    glb_blk_wt = np.zeros(size * sampler.n_blocks)
-    glb_blk_ept = np.zeros(size * sampler.n_blocks)
+    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
+    glb_blk_t = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
+    glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
+    glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
 
 comm.Barrier()
 if rank == 0:
     print("#\n# Sampling sweeps:")
-    print("#  Iter \t energy_pt \t error \t \t Walltime")
+    print("#  Iter \t energy \t error \t \t Walltime")
 comm.Barrier()
 
 for n in range(sampler.n_blocks):
-    prop_data, (blk_wt, blk_ept) = \
+    prop_data, (blk_wt, blk_t, blk_e0, blk_e1) = \
         sample_pt2.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler
         )
     blk_wt = np.array([blk_wt], dtype="float32")
-    blk_ept = np.array([blk_ept], dtype="float32")
+    blk_t = np.array([blk_t], dtype="float32")#"complex64")
+    blk_e0 = np.array([blk_e0], dtype="float32")#"complex64")
+    blk_e1 = np.array([blk_e1], dtype="float32")#"complex64")
 
     gather_wt = None
-    gather_ept = None
+    gather_t = None
+    gather_e0 = None
+    gather_e1 = None
 
     comm.Barrier()
     if rank == 0:
         gather_wt = np.zeros(size, dtype="float32")
-        gather_ept = np.zeros(size, dtype="float32")
+        gather_t = np.zeros(size, dtype="float32")#"complex64")
+        gather_e0 = np.zeros(size, dtype="float32")#"complex64")
+        gather_e1 = np.zeros(size, dtype="float32")#"complex64")
     comm.Barrier()
 
     comm.Gather(blk_wt, gather_wt, root=0)
-    comm.Gather(blk_ept, gather_ept, root=0)
+    comm.Gather(blk_t, gather_t, root=0)
+    comm.Gather(blk_e0, gather_e0, root=0)
+    comm.Gather(blk_e1, gather_e1, root=0)
 
     comm.Barrier()
     if rank == 0:
         glb_blk_wt[n * size : (n + 1) * size] = gather_wt
-        glb_blk_ept[n * size : (n + 1) * size] = gather_ept
+        glb_blk_t[n * size : (n + 1) * size] = gather_t
+        glb_blk_e0[n * size : (n + 1) * size] = gather_e0
+        glb_blk_e1[n * size : (n + 1) * size] = gather_e1
 
         assert gather_wt is not None
 
         blk_wt= np.sum(gather_wt)
-        blk_ept = np.sum(gather_wt * gather_ept) / blk_wt
+        blk_t = np.sum(gather_wt * gather_t) / blk_wt
+        blk_e0 = np.sum(gather_wt * gather_e0) / blk_wt
+        blk_e1 = np.sum(gather_wt * gather_e1) / blk_wt
     comm.Barrier()
 
+    comm.Bcast(blk_wt, root=0)
+    comm.Bcast(blk_t, root=0)
+    comm.Bcast(blk_e0, root=0)
+    comm.Bcast(blk_e1, root=0)
+    
+    blk_ept = h0 + blk_e0 + blk_e1 - blk_t * blk_e0
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
@@ -169,18 +217,49 @@ for n in range(sampler.n_blocks):
     if n % (max(sampler.n_blocks // 10, 1)) == 0:
         comm.Barrier()
         if rank == 0:
-                ept, ept_err = stat_utils.blocking_analysis(
+                t, t_err = stat_utils.blocking_analysis(
                     glb_blk_wt[: (n + 1) * size],
-                    glb_blk_ept[: (n + 1) * size],
+                    glb_blk_t[: (n + 1) * size],
+                    neql=0,
+                )
+                e0, e0_err = stat_utils.blocking_analysis(
+                    glb_blk_wt[: (n + 1) * size],
+                    glb_blk_e0[: (n + 1) * size],
+                    neql=0,
+                )
+                e1, e1_err = stat_utils.blocking_analysis(
+                    glb_blk_wt[: (n + 1) * size],
+                    glb_blk_e1[: (n + 1) * size],
                     neql=0,
                 )
 
-                if ept_err is not None:
-                    ept_err = f"{ept_err:.6f}"
+                ept = h0 + e0 + e1 - t*e0
+                ept_err = jnp.sqrt(
+                    e0**2*t_err**2 + (1-t)**2*e0_err**2 + e1_err**2)
+                
+                if t_err is None:
+                    ept_err = "  None  "
+                if e0_err is None:
+                    ept_err = "  None  "
+                if e1_err is None:
+                    ept_err = "  None  "
                 else:
-                    ept_err = f"  {ept_err}  "
+                    ept_err = f"{ept_err:.6f}"
 
                 ept = f"{ept:.6f}"
+
+                # if t_err is not None:
+                #     t_err = f"{t_err:.6f}"
+                # else:
+                #     t_err = f"  {t_err}  "
+                # if e0_err is not None:
+                #     e0_err = f"{e0_err:.6f}"
+                # else:
+                #     e0_err = f"  {e0_err}  "
+                # if e1_err is not None:
+                #     e1_err = f"{e1_err:.6f}"
+                # else:
+                #     e1_err = f"  {e1_err}  "
 
                 print(f"  {n:4d} \t \t {ept} \t {ept_err} \t"
                       f"  {time.time() - init:.2f}")
@@ -189,13 +268,14 @@ for n in range(sampler.n_blocks):
 comm.Barrier()
 if rank == 0:
     assert glb_blk_wt is not None
-    assert glb_blk_ept is not None
 
     samples_clean, idx = stat_utils.reject_outliers(
     np.stack(
                 (
                     glb_blk_wt,
-                    glb_blk_ept,
+                    glb_blk_t,
+                    glb_blk_e0,
+                    glb_blk_e1,
                 )
             ).T,
             1,
@@ -206,18 +286,38 @@ if rank == 0:
         )
     
     glb_blk_wt = samples_clean[:, 0]
-    glb_blk_ept = samples_clean[:, 1]
+    glb_blk_t = samples_clean[:, 1]
+    glb_blk_e0 = samples_clean[:, 2]
+    glb_blk_e1 = samples_clean[:, 3]
 
-    ept, ept_err = stat_utils.blocking_analysis(
-                    glb_blk_wt[: (n + 1) * size],
-                    glb_blk_ept[: (n + 1) * size],
-                    neql=0,printQ=True
-                )
+    t, t_err = stat_utils.blocking_analysis(
+        glb_blk_wt[: (n + 1) * size],
+        glb_blk_t[: (n + 1) * size],
+        neql=0,
+    )
+    e0, e0_err = stat_utils.blocking_analysis(
+        glb_blk_wt[: (n + 1) * size],
+        glb_blk_e0[: (n + 1) * size],
+        neql=0,
+    )
+    e1, e1_err = stat_utils.blocking_analysis(
+        glb_blk_wt[: (n + 1) * size],
+        glb_blk_e1[: (n + 1) * size],
+        neql=0,
+    )
+
+    ept = h0 + e0 + e1 - t*e0
+    ept_err = jnp.sqrt(
+        e0**2*t_err**2 + (1-t)**2*e0_err**2 + e1_err**2)
     
-    if ept_err is not None:
-        ept_err = f"{ept_err:.6f}"
+    if t_err is None:
+        ept_err = "  None  "
+    if e0_err is None:
+        ept_err = "  None  "
+    if e1_err is None:
+        ept_err = "  None  "
     else:
-        ept_err = f"  {ept_err}  "
+        ept_err = f"{ept_err:.6f}"
 
     ept = f"{ept:.6f}"
 

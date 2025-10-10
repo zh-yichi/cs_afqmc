@@ -243,20 +243,16 @@ def _t1t2_olp_exp2(x: float, chol_i: jax.Array, walker: jax.Array,
     return olp
 
 @partial(jit, static_argnums=3)
-def _ec1c2(walker, ham_data, wave_data, trial, eps=3e-4):
+def _et1t2(walker, ham_data, wave_data, trial, eps=3e-4):
     ''' <psi_0|(t1+t2)(h1+h2)|phi>/<psi_0|phi> '''
     norb = trial.norb
     # h0 = ham_data['h0']
     h1_mod = ham_data['h1_mod']
     chol = ham_data["chol"].reshape(-1, norb, norb)
 
-    # zero body
-    # c_ij^ab <psi_ij^ab|phi>/<psi_0|phi> * h0
     hf_olp = _hf_walker_olp(walker)
-    # ci2_olp = _ci2_walker_olp(walker,wave_data)
 
     # one body
-    # c_ij^ab <psi_ij^ab|phi_1x>/<psi_0|phi>
     x = 0.0
     f1 = lambda a: _t1t2_olp_exp1(a,h1_mod,walker,wave_data)
     _, d_olp = jvp(f1, [x], [1.0])
@@ -272,9 +268,9 @@ def _ec1c2(walker, ham_data, wave_data, trial, eps=3e-4):
     _, olp_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
     d_2_olp = (olp_p - 2.0 * olp_0 + olp_m) / eps / eps
     
-    e_2 = ( d_olp + jnp.sum(d_2_olp) / 2.0 ) / hf_olp
+    e_1 = ( d_olp + jnp.sum(d_2_olp) / 2.0 ) / hf_olp
 
-    return e_2
+    return e_1
 
 
 @partial(jit, static_argnums=3)
@@ -294,7 +290,7 @@ def _ccsd_walker_energy_pt(walker,ham_data,wave_data,trial):
     t = 2 * t1g + gt2g
     ##################################################################
     e0 = _e0(walker,ham_data,trial)
-    e1 = _ec1c2(walker,ham_data,wave_data,trial)
+    e1 = _et1t2(walker,ham_data,wave_data,trial)
     # e1 = _e1(walker,ham_data,wave_data,trial)+_e2(walker,ham_data,wave_data,trial)
     # e2 = _e2(walker,ham_data,wave_data,trial)
     # E0 =  h0 + e0
@@ -304,7 +300,7 @@ def _ccsd_walker_energy_pt(walker,ham_data,wave_data,trial):
     # E4 =  c**4*e0 - c**3*e1
     # e_pt = jnp.real(E0+E1)
     # e_og = jnp.real(h0+(e0+e1)/(1+t))
-    return e0, e1, t
+    return jnp.real(e0), jnp.real(e1), jnp.real(t)
 
 @partial(jit, static_argnums=3)
 def ccsd_walker_energy_pt(walkers,ham_data,wave_data,trial):
