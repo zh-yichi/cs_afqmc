@@ -4,7 +4,7 @@ from jax import random
 from jax import numpy as jnp
 from functools import partial
 from ad_afqmc import config, wavefunctions, stat_utils, mpi_jax
-from ad_afqmc.cisd_perturb import sample_pt2, cisd_pt2
+from ad_afqmc.cisd_perturb import sample_pt2, ccsd_pt
 
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ \
     = (mpi_jax._prep_afqmc())
@@ -59,9 +59,9 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
     )
 prop_data["key"] = random.PRNGKey(seed + rank)
 
-e0, e1, t = cisd_pt2._ccsd_walker_energy_pt(
+e0, e1, t = ccsd_pt._ccsd_walker_energy_pt(
     prop_data['walkers'][0],ham_data,wave_data,trial)
-init_ept = ham_data['h0'] + e0 + e1 - t*e0
+init_ept = jnp.real(ham_data['h0'] + e0 + e1 - t*e0)
 
 comm.Barrier()
 init_time = time.time() - init

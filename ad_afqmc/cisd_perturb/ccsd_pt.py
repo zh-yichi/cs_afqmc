@@ -304,7 +304,7 @@ def _ccsd_walker_energy_pt(walker,ham_data,wave_data,trial):
     # E4 =  c**4*e0 - c**3*e1
     # e_pt = jnp.real(E0+E1)
     # e_og = jnp.real(h0+(e0+e1)/(1+t))
-    return jnp.real(e0), jnp.real(e1), jnp.real(t)
+    return e0, e1, t
 
 @partial(jit, static_argnums=3)
 def ccsd_walker_energy_pt(walkers,ham_data,wave_data,trial):

@@ -12,7 +12,7 @@ from ad_afqmc.hamiltonian import hamiltonian
 from ad_afqmc.propagation import propagator
 from ad_afqmc.wavefunctions import wave_function
 from ad_afqmc.sampling import sampler
-from ad_afqmc.cisd_perturb import cisd_pt2
+from ad_afqmc.cisd_perturb import ccsd_pt
 
 
 @partial(jit, static_argnums=(0, 1))
@@ -125,15 +125,15 @@ def _block_scan(
     guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
-    e0, e1, t = cisd_pt2.ccsd_walker_energy_pt(
+    e0, e1, t = ccsd_pt.ccsd_walker_energy_pt(
         prop_data["walkers"],ham_data,wave_data,trial)
-    
+
     wt = prop_data["weights"]
     blk_wt = jnp.sum(wt)
     blk_t = jnp.sum(t*wt)/blk_wt
 
     h0 = ham_data['h0']
-    ept = h0 + e0 + e1 - blk_t*e0
+    ept = jnp.real(h0 + e0 + e1 - blk_t*e0)
     ept = jnp.where(
         jnp.abs(ept - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
         prop_data["e_estimate"],

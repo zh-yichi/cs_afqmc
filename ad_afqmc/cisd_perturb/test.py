@@ -2,7 +2,7 @@ from pyscf import gto, scf, cc
 
 a = 1.05835
 d = 10
-nH = 16 # set as integer multiple of 2
+nH = 2 # set as integer multiple of 2
 atoms = ""
 for n in range(nH):
     shift = ((n - n % 2) // 2) * (d-a)
