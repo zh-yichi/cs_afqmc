@@ -366,9 +366,8 @@ def solveLS_twoSided(T, X1, X2):
 
     return V
 
-
 # cholesky generation functions are from pauxy
-def generate_integrals(mol, hcore, X, chol_cut=1e-5, verbose=False, DFbas=None):
+def generate_integrals(mol, hcore, X, chol_cut=1e-6, verbose=False, DFbas=None):
     # Unpack SCF data.
     # Step 1. Rotate core Hamiltonian to orthogonal basis.
     if verbose:

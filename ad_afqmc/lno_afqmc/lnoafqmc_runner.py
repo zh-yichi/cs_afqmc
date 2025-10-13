@@ -54,7 +54,7 @@ def prep_lnoafqmc_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     h1e, chol, nelec, enuc, nbasis, nchol = [ None ] * 6
     print('# Generating Cholesky Integrals')
 
-    mc = mcscf.CASSCF(mf, norb_act, nelec_act) 
+    mc = mcscf.CASSCF(mf, norb_act, nelec_act)
     mc.frozen = norb_frozen
     nelec = mc.nelecas
     mc.mo_coeff = mo_coeff
@@ -69,21 +69,22 @@ def prep_lnoafqmc_file(mf_cc,mo_coeff,options,norb_act,nelec_act,
     act = np.array([i for i in range(mol.nao) if i not in norb_frozen])
     print(f'# local active orbitals: {act}') #yichi
     print(f'# local active space size: {len(act)}') #yichi
-    
+
     if getattr(mf, "with_df", None) is not None:
         if use_df_vecs:
             print('# use DF vectors as Cholesky vectors')
             _, chol, _, _ = pyscf_interface.generate_integrals(
                 mol,mf.get_hcore(),mo_coeff[:,act],DFbas=mf.with_df.auxmol.basis)
         else:
-            print("# composing ERIs from DF basis")
+            # using DF basis chol is inefficient for LNO
+            print("# composing AO ERIs from DF basis")
             from pyscf import df
             chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
             chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
             chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
             eri_ao_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df)
-            #eri_df.reshape((nao*nao, nao*nao))
-            print("# decomposing ERIs to Cholesky vectors")
+            # eri_df.reshape((nao*nao, nao*nao))
+            print("# decomposing MO ERIs to Cholesky vectors")
             print(f"# Cholesky cutoff is: {chol_cut}")
             eri_mo_df = ao2mo.kernel(eri_ao_df,mo_coeff[:,act],compact=False)
             eri_mo_df = eri_mo_df.reshape(nbasis**2,nbasis**2)
