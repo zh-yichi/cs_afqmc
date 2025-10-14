@@ -8,7 +8,6 @@ from ad_afqmc.cisd_perturb import sample_pt2, ccsd_pt
 
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ \
     = (mpi_jax._prep_afqmc())
-# trial = wavefunctions.cisd_pt(trial.norb, trial.nelec,n_batch=trial.n_batch)
 
 norb = trial.norb
 chol = ham_data["chol"].reshape(-1, norb, norb)
@@ -22,9 +21,9 @@ v0 = 0.5 * jnp.einsum("gik,gjk->ij",
 
 nocc = wave_data['ci1'].shape[0]
 wave_data["mo_coeff"] = np.eye(norb)[:,:nocc]
-ci1,ci2 = wave_data['ci1'],wave_data['ci2']
-t2 = ci2 #- jnp.einsum('ia,jb->iajb',ci1,ci1)
-wave_data['t1'] = ci1
+t1, t2 = wave_data['ci1'],wave_data['ci2']
+# t2 = ci2 #- jnp.einsum('ia,jb->iajb',ci1,ci1)
+wave_data['t1'] = t1
 wave_data['t2'] = t2
 
 h1_mod = h1 - v0 

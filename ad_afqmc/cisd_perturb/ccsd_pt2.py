@@ -133,7 +133,7 @@ def _e1(walker,ham_data,wave_data,trial,eps=3e-4):
 ### e2 part ###
 @jax.jit
 def _t2_walker_olp(walker,wave_data):
-    ''' t_ij^ab <psi_ij^ab|phi> '''
+    ''' t2_ij^ab <psi|t2_ij^ab|phi> '''
     t2 = wave_data['t2']
     nocc = walker.shape[1]
     GF = (walker.dot(jnp.linalg.inv(walker[: nocc, :]))).T
@@ -561,10 +561,10 @@ def prep_afqmc(mf_or_cc,basis_coeff=None,
                 ci2ab=ci2ab,
                 ci2bb=ci2bb,
             )
-        elif isinstance(cc, CCSD):
-            ci1 = np.array(cc.t1)
+        else:
             ci2 = cc.t2 # + np.einsum("ia,jb->ijab", np.array(cc.t1), np.array(cc.t1))
             ci2 = ci2.transpose(0, 2, 1, 3)
+            ci1 = np.array(cc.t1)
             np.savez(amp_file, ci1=ci1, ci2=ci2)
     else:
         mf = mf_or_cc

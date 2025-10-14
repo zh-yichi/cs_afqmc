@@ -1,6 +1,6 @@
 from pyscf import gto, scf, cc
 
-a = 3#1.05835 # bond length in a cluster
+a = 1.05835 # bond length in a cluster
 d = 10 # distance between each cluster
 nc = 2 # size of a cluster (monomer)
 nH = 2*nc # set as integer multiple of monomers
@@ -12,7 +12,7 @@ for n in range(nH):
 mol = gto.M(atom=atoms, basis="sto6g", verbose=4)
 mol.build()
 
-mf = scf.UHF(mol)#.density_fit()
+mf = scf.RHF(mol)#.density_fit()
 e = mf.kernel()
 
 mycc = cc.CCSD(mf)
@@ -26,17 +26,18 @@ options = {'n_eql': 2,
             'n_blocks': 20,
             'n_walkers': 20,
             'seed': 2,
-            'walker_type': 'uhf',
-            'trial': 'ucisd',
+            'walker_type': 'rhf',
+            'trial': 'cisd',
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
             'use_gpu': False,
             }
 
-from ad_afqmc import pyscf_interface, run_afqmc
-from ad_afqmc.cisd_perturb import sample_pt2, sample_uccsd_pt, ccsd_pt
+# from ad_afqmc import pyscf_interface, run_afqmc
+from ad_afqmc.cisd_perturb import  sample_ccsd_pt, sample_uccsd_pt, ccsd_pt
 ccsd_pt.prep_afqmc(mycc,chol_cut=1e-7)
 
-sample_uccsd_pt.run_afqmc_uccsd_pt(options,nproc=5)
+sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=5)
+#sample_uccsd_pt.run_afqmc_uccsd_pt(options,nproc=5)
 # run_afqmc.run_afqmc(options,nproc=5)

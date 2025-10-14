@@ -4,13 +4,13 @@
 # Processor: x86_64
 # Number of MPI ranks: 5
 #
-# norb: 8
-# nelec: (4, 4)
+# norb: 4
+# nelec: (2, 2)
 #
 # n_eql: 2
 # n_prop_steps: 50
 # n_ene_blocks: 5
-# n_sr_blocks: 5
+# n_sr_blocks: 10
 # n_blocks: 20
 # n_walkers: 20
 # seed: 2
@@ -36,23 +36,23 @@
 # Processor: x86_64
 # Equilibration sweeps:
 #   Iter 	 energy 	 Walltime
-      0 	 -4.384288 	 7.43
-      1 	 -4.384460 	 18.31 
-      2 	 -4.385331 	 27.83 
+      0 	 -2.192144 	 6.99
+      1 	 -2.192410 	 20.62 
+      2 	 -2.191947 	 31.57 
 #
 # Sampling sweeps:
 #  Iter 	 energy 	 Walltime
-     0 	 	 -4.384214 	   28.55
-     2 	 	 -4.383180 	   45.60
-     4 	 	 -4.384198 	   46.95
-     6 	 	 -4.383679 	   48.30
-     8 	 	 -4.385900 	   49.51
-    10 	 	 -4.383395 	   50.87
-    12 	 	 -4.383503 	   52.10
-    14 	 	 -4.383534 	   53.47
-    16 	 	 -4.384155 	   54.77
-    18 	 	 -4.384527 	   55.96
-# remove outliers:  0
+     0 	 	 -2.191940 	   32.42
+     2 	 	 -2.193207 	   53.19
+     4 	 	 -2.192191 	   54.54
+     6 	 	 -2.192080 	   55.90
+     8 	 	 -2.192266 	   57.26
+    10 	 	 -2.192547 	   58.63
+    12 	 	 -2.192694 	   59.99
+    14 	 	 -2.192391 	   61.34
+    16 	 	 -2.191506 	   62.69
+    18 	 	 -2.192370 	   64.07
+# remove outliers:  1
 Final Results:
-AFQMC/CCSD_PT energy: -4.384148 +/- 0.000193
-total run time: 56.61
+AFQMC/CCSD_PT energy: -2.192322 +/- 0.000081
+total run time: 64.75
