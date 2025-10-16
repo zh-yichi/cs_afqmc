@@ -75,7 +75,7 @@ def _ccsd_walker_energy_pt(walker, ham_data, wave_data, trial):
 
     return jnp.real(t), jnp.real(e0), jnp.real(e1)
 
-@partial(jit, static_argnums=3)
+@partial(jit, static_argnums=3) 
 def ccsd_walker_energy_pt(walkers,ham_data,wave_data,trial):
     t, e0, e1 = vmap(
         _ccsd_walker_energy_pt,in_axes=(0, None, None, None))(

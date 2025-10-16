@@ -12,88 +12,7 @@ from ad_afqmc.hamiltonian import hamiltonian
 from ad_afqmc.propagation import propagator
 from ad_afqmc.wavefunctions import wave_function
 from ad_afqmc.sampling import sampler
-from ad_afqmc.cisd_perturb import ccsd_pt
-
-
-# @partial(jit, static_argnums=(0, 1))
-# def propagate(
-#     prop: propagator,
-#     trial: wave_function,
-#     ham_data: dict,
-#     prop_data: dict,
-#     fields: jax.Array,
-#     wave_data: dict,
-# ) -> dict:
-#     """Phaseless AFQMC propagation.
-#     Args:
-#         trial: trial wave function handler
-#         ham_data: dictionary containing the Hamiltonian data
-#         prop_data: dictionary containing the propagation data
-#         fields: auxiliary fields
-#         wave_data: wave function data
-
-#     Returns:
-#         prop_data: dictionary containing the updated propagation data
-#     """
-
-#     force_bias = trial.calc_force_bias(prop_data["walkers"], ham_data, wave_data)
-#     field_shifts = -jnp.sqrt(prop.dt) * (1.0j * force_bias - ham_data["mf_shifts"])
-#     shifted_fields = fields - field_shifts
-#     shift_term = jnp.sum(shifted_fields * ham_data["mf_shifts"], axis=1)
-#     fb_term = jnp.sum(
-#         fields * field_shifts - field_shifts * field_shifts / 2.0, axis=1
-#     )
-
-#     prop_data["walkers"] = prop._apply_trotprop(
-#         ham_data, prop_data["walkers"], shifted_fields
-#     )
-
-#     overlaps_new = trial.calc_overlap(prop_data["walkers"], wave_data)
-#     imp_fun = (
-#         jnp.exp(
-#             -jnp.sqrt(prop.dt) * shift_term
-#             + fb_term
-#             + prop.dt * (prop_data["pop_control_ene_shift"] + ham_data["h0_prop"])
-#         )
-#         * overlaps_new
-#         / prop_data["overlaps"]
-#     )
-#     theta = jnp.angle(
-#         jnp.exp(-jnp.sqrt(prop.dt) * shift_term)
-#         * overlaps_new
-#         / prop_data["overlaps"]
-#     )
-#     imp_fun_phaseless = jnp.abs(imp_fun) * jnp.cos(theta)
-#     imp_fun_phaseless = jnp.array(
-#         jnp.where(jnp.isnan(imp_fun_phaseless), 0.0, imp_fun_phaseless)
-#     )
-#     imp_fun_phaseless = jnp.where(
-#         imp_fun_phaseless < 1.0e-3, 0.0, imp_fun_phaseless
-#     )
-#     imp_fun_phaseless = jnp.where(imp_fun_phaseless > 100.0, 0.0, imp_fun_phaseless)
-
-#     prop_data["weights"] = imp_fun_phaseless * prop_data["weights"]
-#     prop_data["weights"] = jnp.array(
-#         jnp.where(prop_data["weights"] > 100, 0.0, prop_data["weights"])
-#     )
-#     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"] - 0.1 * jnp.array(
-#         jnp.log(jnp.sum(prop_data["weights"]) / prop.n_walkers) / prop.dt
-#     )
-#     prop_data["overlaps"] = overlaps_new
-#     return prop_data
-
-# @partial(jit, static_argnums=(3, 4))
-# def _step_scan(
-#     prop_data: dict,
-#     fields: jax.Array,
-#     ham_data: dict,
-#     prop: propagator,
-#     trial: wave_function,
-#     wave_data: dict,
-# ) -> Tuple[dict, jax.Array]:
-#     """Phaseless propagation scan function over steps."""
-#     prop_data = propagate(prop, trial, ham_data, prop_data, fields, wave_data)
-#     return prop_data, fields
+# from ad_afqmc.cisd_perturb import ccsd_pt
 
 @partial(jit, static_argnums=(2,3,5))
 def _block_scan(
@@ -124,8 +43,8 @@ def _block_scan(
 
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    t, e0, e1 = ccsd_pt.ccsd_walker_energy_pt(
-        prop_data["walkers"],ham_data,wave_data,trial)
+    t, e0, e1 = trial.calc_energy_pt_restricted(
+        prop_data["walkers"],ham_data,wave_data)
     
     e0 = jnp.where(
         jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
@@ -192,27 +111,9 @@ def propagate_phaseless(
     return prop_data, (wt, t, e0, e1)
 
 def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin'):
-    options["dt"] = options.get("dt", 0.005)
-    options["n_exp_terms"] = options.get("n_exp_terms",6)
-    options["n_walkers"] = options.get("n_walkers", 50)
-    options["n_prop_steps"] = options.get("n_prop_steps", 50)
-    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
-    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
-    options["n_blocks"] = options.get("n_blocks", 50)
-    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-    options["n_eql"] = options.get("n_eql", 1)
-    options["ad_mode"] = options.get("ad_mode", None)
-    assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
-    options["orbital_rotation"] = options.get("orbital_rotation", True)
-    options["do_sr"] = options.get("do_sr", True)
-    options["walker_type"] = options.get("walker_type", "rhf")
-    options["symmetry"] = options.get("symmetry", False)
-    options["save_walkers"] = options.get("save_walkers", False)
-    options["trial"] = options.get("trial", "cisd")
-    options["free_projection"] = options.get("free_projection", False)
-    options["n_batch"] = options.get("n_batch", 1)
-    options["ene0"] = options.get("ene0",0)
-    options["use_gpu"] = options.get("use_gpu", False)
+    from mpi4py import MPI
+    if not MPI.Is_finalized():
+        MPI.Finalize()
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
@@ -231,8 +132,12 @@ def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin'):
             mpi_prefix += f"-np {nproc} "
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)  
-    script = f"{dir_path}/run_afqmc_ccsd_pt.py"
-    # script = f"{dir_path}/run_afqmc_cisd_pt.py"
+    script = f"{dir_path}/run_afqmc_ccsd_pt_test.py"
+
+    from ad_afqmc import config
+    if use_gpu:
+        config.afqmc_config["use_gpu"] = True
+    config.setup_jax()
     
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
