@@ -59,9 +59,9 @@ prop_data["key"] = random.PRNGKey(seed + rank)
 t, e0, e1 = ccsd_pt._ccsd_walker_energy_pt(
     prop_data['walkers'][0],ham_data,wave_data,trial)
 init_ept = e0 + e1 - t*(e0-h0)
+init_time = time.time() - init
 
 comm.Barrier()
-init_time = time.time() - init
 if rank == 0:
     print("# Equilibration sweeps:")
     print("#   Iter \t energy \t Walltime")
