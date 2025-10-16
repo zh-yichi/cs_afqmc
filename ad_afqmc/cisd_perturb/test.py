@@ -39,5 +39,5 @@ ccsd_pt.prep_afqmc(mycc,chol_cut=1e-5)
 
 # sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=8)
 # sample_uccsd_pt.run_afqmc_uccsd_pt(options,nproc=8)
-sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=5)
+sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=5,script='run_afqmc_ccsd_pt_test.py')
 # run_afqmc.run_afqmc(options,nproc=5)

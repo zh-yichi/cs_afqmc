@@ -110,7 +110,7 @@ def propagate_phaseless(
 
     return prop_data, (wt, t, e0, e1)
 
-def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin'):
+def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin',script='run_afqmc_ccsd_pt.py'):
     from mpi4py import MPI
     if not MPI.Is_finalized():
         MPI.Finalize()
@@ -132,7 +132,8 @@ def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin'):
             mpi_prefix += f"-np {nproc} "
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)  
-    script = f"{dir_path}/run_afqmc_ccsd_pt_test.py"
+    script = f"{dir_path}/{script}"
+    print(f'# AFQMC script: {script}')
 
     from ad_afqmc import config
     if use_gpu:
