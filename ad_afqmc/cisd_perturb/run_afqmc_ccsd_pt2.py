@@ -2,13 +2,13 @@ import time
 import numpy as np
 from jax import random
 from jax import numpy as jnp
-from ad_afqmc import config, wavefunctions, mpi_jax
+from ad_afqmc import config, wavefunctions, mpi_jax, stat_utils
 from ad_afqmc.cisd_perturb import sample_ccsd_pt2, ccsd_pt2
 
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ \
     = (mpi_jax._prep_afqmc())
 trial = wavefunctions.rhf(trial.norb, trial.nelec,n_batch=trial.n_batch)
-
+ 
 t1, t2 = wave_data['ci1'], wave_data['ci2']
 u = ccsd_pt2.thouless_trans(t1)
 nocc = wave_data['ci1'].shape[0]
@@ -48,9 +48,7 @@ neql = options["n_eql"]
 trial_rdm1 = trial.get_rdm1(wave_data)
 if "rdm1" not in wave_data:
     wave_data["rdm1"] = trial_rdm1
-ham_data = wavefunctions.rhf(
-    trial.norb, trial.nelec,n_batch=trial.n_batch
-    )._build_measurement_intermediates(ham_data, wave_data)
+
 ham_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
 ham_data = ham.build_propagation_intermediates(
     ham_data, prop, trial, wave_data
@@ -132,7 +130,7 @@ for n in range(1, neql + 1):
     comm.Bcast(blk_e0, root=0)
     comm.Bcast(blk_e1, root=0)
 
-    blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0-h0)
+    blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0 - h0)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
@@ -147,16 +145,16 @@ for n in range(1, neql + 1):
         )
     comm.Barrier()
 
-# glb_blk_wt = None
-# glb_blk_t = None
-# glb_blk_e0 = None
-# glb_blk_e1 = None
+glb_blk_wt = None
+glb_blk_t = None
+glb_blk_e0 = None
+glb_blk_e1 = None
 
 if rank == 0:
-    # glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
-    # glb_blk_t = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
-    # glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
-    # glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
+    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
+    glb_blk_t = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
+    glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
+    glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
     ept_samples = np.zeros(sampler.n_blocks,dtype="float32")
     
 comm.Barrier()
@@ -195,10 +193,10 @@ for n in range(sampler.n_blocks):
 
     comm.Barrier()
     if rank == 0:
-        # glb_blk_wt[n * size : (n + 1) * size] = gather_wt
-        # glb_blk_t[n * size : (n + 1) * size] = gather_t
-        # glb_blk_e0[n * size : (n + 1) * size] = gather_e0
-        # glb_blk_e1[n * size : (n + 1) * size] = gather_e1
+        glb_blk_wt[n * size : (n + 1) * size] = gather_wt
+        glb_blk_t[n * size : (n + 1) * size] = gather_t
+        glb_blk_e0[n * size : (n + 1) * size] = gather_e0
+        glb_blk_e1[n * size : (n + 1) * size] = gather_e1
 
         assert gather_wt is not None
 
@@ -213,7 +211,7 @@ for n in range(sampler.n_blocks):
     comm.Bcast(blk_e0, root=0)
     comm.Bcast(blk_e1, root=0)
 
-    blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0-h0)
+    blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0 - h0)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
@@ -242,17 +240,17 @@ for n in range(sampler.n_blocks):
                 #     neql=0,
                 # )
 
-                # t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
-                # e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-                # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
+                t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
+                e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
+                e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
 
-                # ept = h0 + e0 + e1 - t*e0
-                # # dE = [(dE/dt),(dE/de0),(dE/de1)]
-                # dE = np.array([-e0,1-t,1])
-                # cov_te0e1 = np.cov([glb_blk_t[:(n+1)*size],
-                #                     glb_blk_e0[:(n+1)*size],
-                #                     glb_blk_e1[:(n+1)*size]])
-                # ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt(n+1)
+                ept = e0 + e1 - t * (e0 - h0)
+                # dE = [(dE/dt),(dE/de0),(dE/de1)]
+                dE = np.array([-e0+h0,1-t,1])
+                cov_te0e1 = np.cov([glb_blk_t[:(n+1)*size],
+                                    glb_blk_e0[:(n+1)*size],
+                                    glb_blk_e1[:(n+1)*size]])
+                ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
                 
                 # if t_err is None:
                 #     ept_err = "  None  "
@@ -279,34 +277,33 @@ for n in range(sampler.n_blocks):
                 # else:
                 #     e1_err = f"  {e1_err}  "
 
-                print(f"  {n:4d} \t \t {blk_ept:.6f} \t " #{ept_err} \t"
+                print(f"  {n:4d} \t \t {blk_ept:.6f} \t  {ept_err:.6f} \t"
                       f"  {time.time() - init:.2f}")
         comm.Barrier()
 
 comm.Barrier()
 if rank == 0:
-#     assert glb_blk_wt is not None
+    assert glb_blk_wt is not None
+    samples_clean, idx = stat_utils.reject_outliers(
+    np.stack(
+                (
+                    glb_blk_wt,
+                    glb_blk_t,
+                    glb_blk_e0,
+                    glb_blk_e1,
+                )
+            ).T,
+            1,
+        )
 
-#     samples_clean, idx = stat_utils.reject_outliers(
-#     np.stack(
-#                 (
-#                     glb_blk_wt,
-#                     glb_blk_t,
-#                     glb_blk_e0,
-#                     glb_blk_e1,
-#                 )
-#             ).T,
-#             1,
-#         )
-
-#     print(
-#         f"# Number of outliers in post: {glb_blk_wt.size - samples_clean.shape[0]} "
-#         )
+    print(
+        f"# Number of outliers in post: {glb_blk_wt.size - samples_clean.shape[0]} "
+        )
     
-#     glb_blk_wt = samples_clean[:, 0]
-#     glb_blk_t = samples_clean[:, 1]
-#     glb_blk_e0 = samples_clean[:, 2]
-#     glb_blk_e1 = samples_clean[:, 3]
+    glb_blk_wt = samples_clean[:, 0]
+    glb_blk_t = samples_clean[:, 1]
+    glb_blk_e0 = samples_clean[:, 2]
+    glb_blk_e1 = samples_clean[:, 3]
 
     # t, t_err = stat_utils.blocking_analysis(
     #     glb_blk_wt[: (n + 1) * size],
@@ -324,17 +321,17 @@ if rank == 0:
     #     neql=0,
     # )
 
-    # t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
-    # e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-    # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
+    t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
+    e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
+    e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
 
-    # ept = h0 + e0 + e1 - t*e0
-    # dE = [(dE/dt),(dE/de0),(dE/de1)]
-    # dE = np.array([-e0,1-t,1])
-    # cov_te0e1 = np.cov([glb_blk_t,glb_blk_e0,glb_blk_e1])
-    # ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt(n+1)
-    # ept_err = jnp.sqrt(
-    #     e0**2*t_err**2 + (1-t)**2*e0_err**2 + e1_err**2)
+    ept = e0 + e1 - t * (e0-h0)
+    dE = np.array([-e0+h0,1-t,1])
+    cov_te0e1 = np.cov([glb_blk_t,glb_blk_e0,glb_blk_e1])
+    ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt(samples_clean.shape[0])
+
+    print(f"Final Results1:")
+    print(f"AFQMC/CCSD_PT2 energy: {ept:.6f} +/- {ept_err:.6f}")
     
     # if t_err is None:
     #     ept_err = "  None  "
@@ -359,7 +356,7 @@ if rank == 0:
     ept = f"{ept_mean:.6f}"
     ept_err = f"{ept_std/np.sqrt(n):.6f}"
 
-    print(f"Final Results:")
+    print(f"Final Results2:")
     print(f"AFQMC/CCSD_PT2 energy: {ept} +/- {ept_err}")
     print(f"total run time: {time.time() - init:.2f}")
 

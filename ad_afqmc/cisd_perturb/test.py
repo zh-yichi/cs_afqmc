@@ -3,7 +3,7 @@ from pyscf import gto, scf, cc
 a = 1.05835 # bond length in a cluster
 d = 10 # distance between each cluster
 na = 2  # size of a cluster (monomer)
-nc = 1 # set as integer multiple of monomers
+nc = 4 # set as integer multiple of monomers
 atoms = ""
 for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
@@ -23,7 +23,7 @@ options = {'n_eql': 2,
             'n_ene_blocks': 5,
             'n_sr_blocks': 5,
             'n_blocks': 20,
-            'n_walkers': 30,
+            'n_walkers': 25,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'cisd',
@@ -35,8 +35,9 @@ options = {'n_eql': 2,
 
 # from ad_afqmc import pyscf_interface, run_afqmc
 from ad_afqmc.cisd_perturb import sample_ccsd_pt, sample_ccsd_pt2, sample_uccsd_pt, ccsd_pt
-ccsd_pt.prep_afqmc(mycc,chol_cut=1e-7)
+ccsd_pt.prep_afqmc(mycc,chol_cut=1e-5)
 
-sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=5)
-#sample_uccsd_pt.run_afqmc_uccsd_pt(options,nproc=5)
+# sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=8)
+# sample_uccsd_pt.run_afqmc_uccsd_pt(options,nproc=8)
+sample_ccsd_pt2.run_afqmc_ccsd_pt2(options,nproc=8)
 # run_afqmc.run_afqmc(options,nproc=5)
