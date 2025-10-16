@@ -141,18 +141,20 @@ for n in range(1, neql + 1):
             flush=True,
         )
     comm.Barrier()
-
+ 
 glb_blk_wt = None
 glb_blk_t = None
 glb_blk_e0 = None
 glb_blk_e1 = None
 
+comm.Barrier()
 if rank == 0:
     glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
     glb_blk_t = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
     glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
     glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")#"complex64")
     ept_samples = np.zeros(sampler.n_blocks,dtype="float32")
+comm.Barrier()
     
 comm.Barrier()
 if rank == 0:
@@ -218,67 +220,40 @@ for n in range(sampler.n_blocks):
         ept_samples[n] = blk_ept
     comm.Barrier()
 
-    if n % (max(sampler.n_blocks // 10, 1)) == 0:
+    if n % (max(sampler.n_blocks // 10, 1)) == 0 and n != 0:
         comm.Barrier()
         if rank == 0:
-                # t, t_err = stat_utils.blocking_analysis(
-                #     glb_blk_wt[: (n + 1) * size],
-                #     glb_blk_t[: (n + 1) * size],
-                #     neql=0,
-                # )
-                # e0, e0_err = stat_utils.blocking_analysis(
-                #     glb_blk_wt[: (n + 1) * size],
-                #     glb_blk_e0[: (n + 1) * size],
-                #     neql=0,
-                # )
-                # e1, e1_err = stat_utils.blocking_analysis(
-                #     glb_blk_wt[: (n + 1) * size],
-                #     glb_blk_e1[: (n + 1) * size],
-                #     neql=0,
-                # )
+            # t, t_err = stat_utils.blocking_analysis(
+            #     glb_blk_wt[: (n + 1) * size],
+            #     glb_blk_t[: (n + 1) * size],
+            #     neql=0,
+            # )
+            # e0, e0_err = stat_utils.blocking_analysis(
+            #     glb_blk_wt[: (n + 1) * size],
+            #     glb_blk_e0[: (n + 1) * size],
+            #     neql=0,
+            # )
+            # e1, e1_err = stat_utils.blocking_analysis(
+            #     glb_blk_wt[: (n + 1) * size],
+            #     glb_blk_e1[: (n + 1) * size],
+            #     neql=0,
+            # )
 
-                t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
-                e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-                e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
+            t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
+            e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
+            e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
 
-                ept = e0 + e1 - t * (e0 - h0)
-                # dE = [(dE/dt),(dE/de0),(dE/de1)]
-                dE = np.array([-e0+h0,1-t,1])
-                cov_te0e1 = np.cov([glb_blk_t[:(n+1)*size],
-                                    glb_blk_e0[:(n+1)*size],
-                                    glb_blk_e1[:(n+1)*size]])
-                ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
-                
-                # if t_err is None:
-                #     ept_err = "  None  "
-                # if e0_err is None:
-                #     ept_err = "  None  "
-                # if e1_err is None:
-                #     ept_err = "  None  "
-                # else:
-                # ept_err = f"{ept_err:.6f}"
+            ept = e0 + e1 - t * (e0 - h0)
+            dE = np.array([-e0+h0,1-t,1])
+            cov_te0e1 = np.cov([glb_blk_t[:(n+1)*size],
+                                glb_blk_e0[:(n+1)*size],
+                                glb_blk_e1[:(n+1)*size]])
+            ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
+            
 
-                # ept = f"{ept:.6f}"
-                # ept_err = f"{ept_err}"
-
-                # if t_err is not None:
-                #     t_err = f"{t_err:.6f}"
-                # else:
-                #     t_err = f"  {t_err}  "
-                # if e0_err is not None:
-                #     e0_err = f"{e0_err:.6f}"
-                # else:
-                #     e0_err = f"  {e0_err}  "
-                # if e1_err is not None:
-                #     e1_err = f"{e1_err:.6f}"
-                # else:
-                #     e1_err = f"  {e1_err}  "
-
-                print(f"  {n:4d} \t \t {ept:.6f} \t {ept_err:.6f} \t"
-                      f"  {time.time() - init:.2f}")
+            print(f"  {n:4d} \t \t {ept:.6f} \t {ept_err:.6f} \t"
+                    f"  {time.time() - init:.2f}")
         comm.Barrier()
-    # comm.bcast(ept, root=0)
-    # prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * ept
 
 comm.Barrier()
 if rank == 0:
