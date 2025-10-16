@@ -34,9 +34,9 @@ options = {'n_eql': 2,
             }
 
 # from ad_afqmc import pyscf_interface, run_afqmc
-from ad_afqmc.cisd_perturb import sample_ccsd_pt2, sample_uccsd_pt, ccsd_pt
+from ad_afqmc.cisd_perturb import sample_ccsd_pt, sample_ccsd_pt2, sample_uccsd_pt, ccsd_pt
 ccsd_pt.prep_afqmc(mycc,chol_cut=1e-7)
 
-sample_ccsd_pt2.run_afqmc_ccsd_pt2(options,nproc=5)
+sample_ccsd_pt.run_afqmc_ccsd_pt(options,nproc=5)
 #sample_uccsd_pt.run_afqmc_uccsd_pt(options,nproc=5)
 # run_afqmc.run_afqmc(options,nproc=5)

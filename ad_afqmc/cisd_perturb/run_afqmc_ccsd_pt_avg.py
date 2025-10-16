@@ -57,9 +57,9 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
     )
 prop_data["key"] = random.PRNGKey(seed + rank)
 
-t, e0, e1 = ccsd_pt._ccsd_walker_energy_pt(
+e0, e1, t = ccsd_pt._ccsd_walker_energy_pt(
     prop_data['walkers'][0],ham_data,wave_data,trial)
-init_ept = e0 + e1 - t*(e0-h0)
+init_ept = ham_data['h0'] + e0 + e1 - t*e0
 
 comm.Barrier()
 init_time = time.time() - init
@@ -126,7 +126,7 @@ for n in range(1, neql + 1):
     comm.Bcast(blk_e0, root=0)
     comm.Bcast(blk_e1, root=0)
 
-    blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0-h0)
+    blk_ept = h0 + blk_e0 + blk_e1 - blk_t * blk_e0
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
@@ -161,7 +161,7 @@ comm.Barrier()
 
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) = \
-        sample_ccsd_pt.propagate_phaseless(
+        sample_pt2.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler
         )
     blk_wt = np.array([blk_wt], dtype="float32")
@@ -207,7 +207,7 @@ for n in range(sampler.n_blocks):
     comm.Bcast(blk_e0, root=0)
     comm.Bcast(blk_e1, root=0)
 
-    blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0-h0)
+    blk_ept = h0 + blk_e0 + blk_e1 - blk_t * blk_e0
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept

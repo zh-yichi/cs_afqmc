@@ -24,7 +24,7 @@ def propagate(
     fields: jax.Array,
     wave_data: dict,
 ) -> dict:
-    """Phaseless AFQMC propagation. RHF guide
+    """Phaseless AFQMC propagation.
     Args:
         trial: trial wave function handler
         ham_data: dictionary containing the Hamiltonian data
@@ -35,9 +35,8 @@ def propagate(
     Returns:
         prop_data: dictionary containing the updated propagation data
     """
-    ### evaluate overlap & force bias with HF guide wave 
-    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
-    force_bias = guide.calc_force_bias(prop_data["walkers"], ham_data, wave_data)
+
+    force_bias = trial.calc_force_bias(prop_data["walkers"], ham_data, wave_data)
     field_shifts = -jnp.sqrt(prop.dt) * (1.0j * force_bias - ham_data["mf_shifts"])
     shifted_fields = fields - field_shifts
     shift_term = jnp.sum(shifted_fields * ham_data["mf_shifts"], axis=1)
@@ -49,7 +48,7 @@ def propagate(
         ham_data, prop_data["walkers"], shifted_fields
     )
 
-    overlaps_new = guide.calc_overlap(prop_data["walkers"], wave_data)
+    overlaps_new = trial.calc_overlap(prop_data["walkers"], wave_data)
     imp_fun = (
         jnp.exp(
             -jnp.sqrt(prop.dt) * shift_term
@@ -122,35 +121,25 @@ def _block_scan(
     prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
         prop_data["weights"]
     )
-    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
+
     prop_data = prop.orthonormalize_walkers(prop_data)
-    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
-    e0, e1, t = ccsd_pt.ccsd_walker_energy_pt(
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    t, e0, e1 = ccsd_pt.ccsd_walker_energy_pt(
         prop_data["walkers"],ham_data,wave_data,trial)
     
+    e0 = jnp.where(
+        jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        prop_data["e_estimate"],
+        e0,
+    )
+    
     wt = prop_data["weights"]
-    # wt_mean = jnp.mean(wt)
-    # wt_std = jnp.std(wt)
-    # wt_z = jnp.abs(wt-wt_mean)/wt_std
-    # prop_data["weights"] = jnp.array(jnp.where(wt_z > 10, 0.0, wt))
 
     blk_wt = jnp.sum(wt)
     blk_t = jnp.sum(t*wt)/blk_wt
     blk_e0 = jnp.sum(e0*wt)/blk_wt
     blk_e1 = jnp.sum(e1*wt)/blk_wt
 
-    # h0 = ham_data['h0']
-    # ept = jnp.real(h0 + e0 + e1 - blk_t*e0)
-    # ept = jnp.where(
-    #     jnp.abs(ept - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-    #     prop_data["e_estimate"],
-    #     ept,
-    # )
-    # blk_ept = jnp.sum(ept*wt)/blk_wt
-
-    # prop_data["pop_control_ene_shift"] = (
-    #     0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
-    # )
     return prop_data, (blk_wt, blk_t, blk_e0, blk_e1)
 
 @partial(jit, static_argnums=(2,3,5))
@@ -162,9 +151,7 @@ def _sr_block_scan(
     wave_data: dict,
     sample: sampler,
 ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-    
-    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
-    
+        
     def _block_scan_wrapper(x,_):
         return _block_scan(x,ham_data,prop,trial,wave_data,sample)
     
@@ -172,7 +159,7 @@ def _sr_block_scan(
         _block_scan_wrapper, prop_data, None, length=sample.n_ene_blocks
     )
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
     return prop_data, (blk_wt, blk_t, blk_e0, blk_e1)
 
 @partial(jit, static_argnums=(2, 3, 5))
@@ -186,10 +173,8 @@ def propagate_phaseless(
 ) -> Tuple[jax.Array, dict]:
     def _sr_block_scan_wrapper(x,_):
         return _sr_block_scan(x, ham_data, prop, trial, wave_data, sample)
-    
-    guide = wavefunctions.rhf(trial.norb,trial.nelec,trial.n_batch)
 
-    prop_data["overlaps"] = guide.calc_overlap(prop_data["walkers"], wave_data)
+    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
     prop_data["n_killed_walkers"] = 0
     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) = lax.scan(
