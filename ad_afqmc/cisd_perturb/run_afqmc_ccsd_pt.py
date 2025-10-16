@@ -220,7 +220,7 @@ for n in range(sampler.n_blocks):
         ept_samples[n] = blk_ept
     comm.Barrier()
 
-    if n % (max(sampler.n_blocks // 10, 1)) == 0 and n != 0:
+    if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:
             # t, t_err = stat_utils.blocking_analysis(
