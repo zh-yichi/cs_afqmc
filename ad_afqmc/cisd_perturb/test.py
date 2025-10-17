@@ -3,7 +3,7 @@ from pyscf import gto, scf, cc
 a = 1.05835 # bond length in a cluster
 d = 10 # distance between each cluster
 na = 2  # size of a cluster (monomer)
-nc = 5 # set as integer multiple of monomers
+nc = 8 # set as integer multiple of monomers
 atoms = ""
 for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)

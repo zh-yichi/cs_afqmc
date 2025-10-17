@@ -6,10 +6,27 @@ from jax import numpy as jnp
 from ad_afqmc import config, sampling, stat_utils, mpi_jax
 from ad_afqmc.cisd_perturb import sample_ccsd_pt
 import time
+import argparse
+
+from ad_afqmc import config
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--use_gpu", action="store_true")
+    args = parser.parse_args()
+
+    if args.use_gpu:
+        config.afqmc_config["use_gpu"] = True
+
+config.setup_jax()
+MPI = config.setup_comm()
+comm = MPI.COMM_WORLD
+size = comm.Get_size()
+rank = comm.Get_rank()
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI = (
+ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
     mpi_jax._prep_afqmc())
 
 # if options["use_gpu"]:

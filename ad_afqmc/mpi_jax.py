@@ -92,11 +92,11 @@ def _prep_afqmc(options=None,option_file="options.bin",
     if options['use_gpu']:
         config.afqmc_config["use_gpu"] = True
 
-    config.setup_jax()
-    MPI = config.setup_comm()
-    comm = MPI.COMM_WORLD
-    size = comm.Get_size()
-    rank = comm.Get_rank()
+    # config.setup_jax()
+    # MPI = config.setup_comm()
+    # comm = MPI.COMM_WORLD
+    # size = comm.Get_size()
+    # rank = comm.Get_rank()
     if rank == 0:
         print(f"# Number of MPI ranks: {size}\n#")
 

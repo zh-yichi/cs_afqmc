@@ -112,7 +112,7 @@ def propagate_phaseless(
 
 def run_afqmc_ccsd_pt(options,nproc=None,
                       option_file='options.bin',
-                      script='run_afqmc_ccsd_pt.py'):
+                      script='run_afqmc_ccsd_pt_test.py'):
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
@@ -122,7 +122,6 @@ def run_afqmc_ccsd_pt(options,nproc=None,
         print(f'# running AFQMC on GPU')
         gpu_flag = "--use_gpu"
         mpi_prefix = ""
-        nproc = None
     else:
         print(f'# running AFQMC on CPU')
         gpu_flag = ""
@@ -134,12 +133,12 @@ def run_afqmc_ccsd_pt(options,nproc=None,
     script = f"{dir_path}/{script}"
     print(f'# AFQMC script: {script}')
 
-    from ad_afqmc import config
-    if use_gpu:
-        config.afqmc_config["use_gpu"] = True
-    config.setup_jax()
+    # from ad_afqmc import config
+    # if use_gpu:
+    #     config.afqmc_config["use_gpu"] = True
+    # config.setup_jax()
     
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
-        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc_ccsd_pt.out"
+        f"{mpi_prefix} python {script} {gpu_flag} >> afqmc_ccsd_pt.out"
     )
