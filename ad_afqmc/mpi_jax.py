@@ -33,10 +33,9 @@ mo_file = run_afqmc.mo_file
 amp_file = run_afqmc.amp_file
 chol_file = run_afqmc.chol_file
 
-def _prep_afqmc(options=None,option_file="options.bin",mo_file=mo_file,amp_file=amp_file,chol_file=chol_file):
-    if rank == 0:
-        print(f"# Number of MPI ranks: {size}\n#")
-
+def _prep_afqmc(options=None,option_file="options.bin",
+                mo_file=mo_file,amp_file=amp_file,chol_file=chol_file):
+    
     with h5py.File(chol_file, "r") as fh5:
         [nelec, nmo, ms, nchol] = fh5["header"]
         h0 = jnp.array(fh5.get("energy_core"))
@@ -89,6 +88,17 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file=mo_file,amp_file=
     options['prjlo'] = options.get('prjlo',None)
     options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
+
+    if options['use_gpu']:
+        config.afqmc_config["use_gpu"] = True
+
+    config.setup_jax()
+    MPI = config.setup_comm()
+    comm = MPI.COMM_WORLD
+    size = comm.Get_size()
+    rank = comm.Get_rank()
+    if rank == 0:
+        print(f"# Number of MPI ranks: {size}\n#")
 
     try:
         with h5py.File("observable.h5", "r") as fh5:
@@ -167,6 +177,38 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file=mo_file,amp_file=
             trial = wavefunctions.ucisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as ucisd, but amplitudes.npz not found.")
+    elif options["trial"] == "ccsd_pt":
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
+        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
+    elif options["trial"] == "ccsd_pt2":
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
+        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
+        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
+    elif options["trial"] == "ccsd_pt_ad":
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
+        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
+        trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
+    elif options["trial"] == "ccsd_pt2_ad":
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
+        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
+        trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
     else:
         try:
             with open("trial.pkl", "rb") as f:

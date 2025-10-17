@@ -3,21 +3,20 @@ from jax import random
 #from mpi4py import MPI
 import numpy as np
 from jax import numpy as jnp
-from ad_afqmc import config, wavefunctions, stat_utils, mpi_jax
+from ad_afqmc import config, sampling, stat_utils, mpi_jax
 from ad_afqmc.cisd_perturb import sample_ccsd_pt
 import time
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
+ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI = (
     mpi_jax._prep_afqmc())
-trial = wavefunctions.ccsd_pt_ad(trial.norb, trial.nelec,n_batch=trial.n_batch)
 
-if options["use_gpu"]:
-    config.afqmc_config["use_gpu"] = True
+# if options["use_gpu"]:
+#     config.afqmc_config["use_gpu"] = True
 
-config.setup_jax()
-MPI = config.setup_comm()
+# config.setup_jax()
+# MPI = config.setup_comm()
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
@@ -28,7 +27,7 @@ size = comm.Get_size()  # Total number of processes
 ### initialize propagation
 seed = options["seed"]
 init_walkers = None
-ham_data, wave_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
+ham_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
 ham_data = ham.build_propagation_intermediates(ham_data, prop, trial, wave_data)
 h0 = ham_data['h0']
 
@@ -43,21 +42,23 @@ prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
-
 comm.Barrier()
 if rank == 0:
     t_init, e0_init, e1_init = trial._calc_energy_pt_restricted(
         prop_data['walkers'][0], ham_data, wave_data)
     ept_init = e0_init + e1_init - t_init*(e0_init-h0)
-    print(f'# afqmc propagation with {options["n_walkers"]*size} walkers')
+    print('# \n')
+    print(f'# Propagating with {options["n_walkers"]*size} walkers')
+    print("# Equilibration sweeps:")
     print("#   Iter \t energy \t Walltime")
     print(f"  {0:5d} \t {ept_init:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
-for n in range(options["n_eql"]):
+sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
+for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
         sample_ccsd_pt.propagate_phaseless(
-            prop_data, ham_data, prop, trial, wave_data, sampler)
+            prop_data, ham_data, prop, trial, wave_data, sampler_eq)
 
     blk_wt = np.array([blk_wt], dtype="float32") 
     blk_t = np.array([blk_t], dtype="float32")
@@ -104,6 +105,7 @@ for n in range(options["n_eql"]):
         blk_t = tot_blk_t / tot_blk_wt
         blk_e0 = tot_blk_e0 / tot_blk_wt
         blk_e1 = tot_blk_e1 / tot_blk_wt
+    comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_t, root=0)
@@ -116,7 +118,7 @@ for n in range(options["n_eql"]):
     prop_data["e_estimate"] = (
          0.9 * prop_data["e_estimate"] + 0.1 * blk_ept[0]
          )
-    comm.Barrier()
+    # comm.Barrier()
 
     comm.Barrier()
     if rank == 0:
@@ -125,24 +127,26 @@ for n in range(options["n_eql"]):
         )
     comm.Barrier()
 
-glb_blk_wt = None
-glb_blk_t = None
-glb_blk_e0 = None
-glb_blk_e1 = None
-
-if rank == 0:
-    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_t = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")
-    ept_samples = np.zeros(sampler.n_blocks,dtype="float32")
-    
 comm.Barrier()
 if rank == 0:
     print("#\n# Sampling sweeps:")
     print("#  Iter \t energy \t error \t \t Walltime")
 comm.Barrier()
 
+glb_blk_wt = None
+glb_blk_t = None
+glb_blk_e0 = None
+glb_blk_e1 = None
+
+comm.Barrier()
+if rank == 0:
+    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
+    glb_blk_t = np.zeros(size * sampler.n_blocks,dtype="float32")
+    glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")
+    glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")
+    ept_samples = np.zeros(sampler.n_blocks,dtype="float32")
+comm.Barrier()
+    
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
         sample_ccsd_pt.propagate_phaseless(
@@ -201,7 +205,7 @@ for n in range(sampler.n_blocks):
         ept_samples[n] = blk_ept
     comm.Barrier()
 
-    if n % (max(sampler.n_blocks // 10, 1)) == 0:
+    if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:
             t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)

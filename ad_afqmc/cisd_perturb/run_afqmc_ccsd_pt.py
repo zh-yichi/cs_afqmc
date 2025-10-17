@@ -7,7 +7,7 @@ from ad_afqmc.cisd_perturb import sample_ccsd_pt, ccsd_pt
 
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ \
     = (mpi_jax._prep_afqmc())
-trial = wavefunctions.ccsd_pt_ad(trial.norb, trial.nelec,n_batch=trial.n_batch)
+# trial = wavefunctions.ccsd_pt_ad(trial.norb, trial.nelec,n_batch=trial.n_batch)
 
 h0 = ham_data['h0']
 

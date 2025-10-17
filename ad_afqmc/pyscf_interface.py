@@ -51,6 +51,7 @@ def modified_cholesky(mat: np.ndarray, max_error: float = 1e-6) -> np.ndarray:
 # prepare phaseless afqmc with mf trial
 def prep_afqmc(
     mf_or_cc: Union[scf.uhf.UHF, scf.rhf.RHF, CCSD, UCCSD],
+    options: dict,
     basis_coeff: Optional[np.ndarray] = None,
     norb_frozen: int = 0,
     chol_cut: float = 1e-5,
@@ -71,6 +72,8 @@ def prep_afqmc(
 
     print("#\n# Preparing AFQMC calculation")
 
+    trial = options['trial']
+
     if isinstance(mf_or_cc, (CCSD, UCCSD)):
         # raise warning about mpi
         print(
@@ -80,31 +83,62 @@ def prep_afqmc(
         cc = mf_or_cc
         if cc.frozen is not None:
             norb_frozen = cc.frozen
-        if isinstance(cc, UCCSD):
-            ci2aa = cc.t2[0] + 2 * np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[0])
-            ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
-            ci2aa = ci2aa.transpose(0, 2, 1, 3)
-            ci2bb = cc.t2[2] + 2 * np.einsum("ia,jb->ijab", cc.t1[1], cc.t1[1])
-            ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
-            ci2bb = ci2bb.transpose(0, 2, 1, 3)
-            ci2ab = cc.t2[1] + np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[1])
-            ci2ab = ci2ab.transpose(0, 2, 1, 3)
-            ci1a = np.array(cc.t1[0])
-            ci1b = np.array(cc.t1[1])
-            
-            np.savez(
-                amp_file,
-                ci1a=ci1a,
-                ci1b=ci1b,
-                ci2aa=ci2aa,
-                ci2ab=ci2ab,
-                ci2bb=ci2bb,
-            )
-        else:
-            ci2 = cc.t2 + np.einsum("ia,jb->ijab", np.array(cc.t1), np.array(cc.t1))
-            ci2 = ci2.transpose(0, 2, 1, 3)
-            ci1 = np.array(cc.t1)
-            np.savez(amp_file, ci1=ci1, ci2=ci2)
+        
+        if 'ci' in trial.lower():
+        # build ci from cc #
+            if isinstance(cc, UCCSD):
+                ci2aa = cc.t2[0] + 2 * np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[0])
+                ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
+                ci2aa = ci2aa.transpose(0, 2, 1, 3)
+                ci2bb = cc.t2[2] + 2 * np.einsum("ia,jb->ijab", cc.t1[1], cc.t1[1])
+                ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
+                ci2bb = ci2bb.transpose(0, 2, 1, 3)
+                ci2ab = cc.t2[1] + np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[1])
+                ci2ab = ci2ab.transpose(0, 2, 1, 3)
+                ci1a = np.array(cc.t1[0])
+                ci1b = np.array(cc.t1[1])
+                
+                np.savez(
+                    amp_file,
+                    ci1a=ci1a,
+                    ci1b=ci1b,
+                    ci2aa=ci2aa,
+                    ci2ab=ci2ab,
+                    ci2bb=ci2bb,
+                )
+            else:
+                ci2 = cc.t2 + np.einsum("ia,jb->ijab", np.array(cc.t1), np.array(cc.t1))
+                ci2 = ci2.transpose(0, 2, 1, 3)
+                ci1 = np.array(cc.t1)
+                np.savez(amp_file, ci1=ci1, ci2=ci2)
+        
+        elif 'cc' in trial.lower():
+        # ccsd trial #
+            if isinstance(cc, UCCSD):
+                t2aa = cc.t2[0]
+                t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
+                t2aa = t2aa.transpose(0, 2, 1, 3)
+                t2bb = cc.t2[2]
+                t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
+                t2bb = t2bb.transpose(0, 2, 1, 3)
+                t2ab = cc.t2[1]
+                t2ab = t2ab.transpose(0, 2, 1, 3)
+                t1a = np.array(cc.t1[0])
+                t1b = np.array(cc.t1[1])
+                
+                np.savez(
+                    amp_file,
+                    t1a=t1a,
+                    t1b=t1b,
+                    t2aa=t2aa,
+                    t2ab=t2ab,
+                    t2bb=t2bb,
+                )
+            else:
+                t2 = cc.t2
+                t2 = t2.transpose(0, 2, 1, 3)
+                t1 = np.array(cc.t1)
+                np.savez(amp_file, t1=t1, t2=t2)
     else:
         mf = mf_or_cc
 

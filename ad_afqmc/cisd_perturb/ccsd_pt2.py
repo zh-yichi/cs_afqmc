@@ -4,7 +4,7 @@ from jax import numpy as jnp
 from functools import partial
 import numpy as np
 
-### <psi|T2(h1+h2)|phi>/<psi|phi> ###
+### <psi|T2(h1+h2)|phi>/<psi|phi> ### 
 @partial(jit, static_argnums=2)
 def _t2_walker_olp(walker,wave_data,trial):
     ''' t_iajb <psi|ijab|phi> '''

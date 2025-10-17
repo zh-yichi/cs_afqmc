@@ -2,20 +2,24 @@
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 5
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 8
 #
-# norb: 2
-# nelec: (1, 1)
+# norb: 10
+# nelec: (5, 5)
 #
 # n_eql: 2
 # n_prop_steps: 50
 # n_ene_blocks: 5
 # n_sr_blocks: 5
 # n_blocks: 20
-# n_walkers: 20
+# n_walkers: 25
 # seed: 2
 # walker_type: rhf
-# trial: cisd
+# trial: ccsd_pt
 # dt: 0.005
 # free_projection: False
 # use_gpu: False
@@ -30,32 +34,30 @@
 # orbE: 0
 # maxError: 0.001
 #
-# Hostname: yichi-thinkpad
-# System Type: Linux
-# Machine Type: x86_64
-# Processor: x86_64
-# afqmc propagation with 100 walkers
+# 
+
+# Propagating with 200 walkers
+# Equilibration sweeps:
 #   Iter 	 energy 	 Walltime
-      0 	 -1.096072 	 3.26
-      0 	 -1.096376 	 13.09 
-      1 	 -1.096297 	 21.33 
+      0 	 -5.480361 	 9.04
+      2 	 -5.481178 	 25.36 
+      3 	 -5.480577 	 38.74 
 #
 # Sampling sweeps:
 #  Iter 	 energy 	 error 	 	 Walltime
-     0 	 	 -1.095752 	 0.000542 	  21.66
-     2 	 	 -1.096044 	 0.000156 	  37.47
-     4 	 	 -1.096181 	 0.000090 	  37.74
-     6 	 	 -1.096210 	 0.000063 	  38.01
-     8 	 	 -1.096198 	 0.000055 	  38.34
-    10 	 	 -1.096199 	 0.000045 	  38.73
-    12 	 	 -1.096210 	 0.000039 	  39.10
-    14 	 	 -1.096188 	 0.000041 	  39.49
-    16 	 	 -1.096210 	 0.000036 	  39.76
-    18 	 	 -1.096208 	 0.000034 	  40.03
-# Number of outliers in post: 0 
+     2 	 	 -5.480836 	 0.001106 	  73.82
+     4 	 	 -5.480396 	 0.000721 	  77.74
+     6 	 	 -5.479893 	 0.000690 	  81.62
+     8 	 	 -5.480127 	 0.000556 	  85.61
+    10 	 	 -5.480147 	 0.000460 	  89.54
+    12 	 	 -5.480561 	 0.000502 	  93.60
+    14 	 	 -5.481030 	 0.000624 	  97.31
+    16 	 	 -5.480759 	 0.000606 	  101.44
+    18 	 	 -5.480895 	 0.000547 	  105.22
+# Number of outliers in post: 3 
 Final Results1:
-AFQMC/CCSD_PT energy: -1.096201 +/- 0.000034
+AFQMC/CCSD_PT energy: -5.480876 +/- 0.000338
 # remove outliers:  0
 Final Results2:
-AFQMC/CCSD_PT energy: -1.096171 +/- 0.000044
-total run time: 40.17
+AFQMC/CCSD_PT energy: -5.480842 +/- 0.000465
+total run time: 107.28

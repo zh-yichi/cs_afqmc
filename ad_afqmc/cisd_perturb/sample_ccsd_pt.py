@@ -110,10 +110,9 @@ def propagate_phaseless(
 
     return prop_data, (wt, t, e0, e1)
 
-def run_afqmc_ccsd_pt(options,nproc=None,option_file='options.bin',script='run_afqmc_ccsd_pt.py'):
-    from mpi4py import MPI
-    if not MPI.Is_finalized():
-        MPI.Finalize()
+def run_afqmc_ccsd_pt(options,nproc=None,
+                      option_file='options.bin',
+                      script='run_afqmc_ccsd_pt.py'):
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
