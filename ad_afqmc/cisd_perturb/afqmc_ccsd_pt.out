@@ -6,20 +6,20 @@
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 8
+# Number of MPI ranks: 4
 #
-# norb: 16
-# nelec: (8, 8)
+# norb: 4
+# nelec: (2, 2)
 #
 # n_eql: 2
 # n_prop_steps: 50
 # n_ene_blocks: 5
 # n_sr_blocks: 5
 # n_blocks: 20
-# n_walkers: 25
+# n_walkers: 20
 # seed: 2
 # walker_type: rhf
-# trial: ccsd_pt
+# trial: ccsd_pt_ad
 # dt: 0.005
 # free_projection: False
 # use_gpu: False
@@ -36,28 +36,28 @@
 #
 # 
 
-# Propagating with 200 walkers
+# Propagating with 80 walkers
 # Equilibration sweeps:
 #   Iter 	 energy 	 Walltime
-      0 	 -8.768577 	 9.87
-      1 	 -8.770648 	 35.38 
-      2 	 -8.768781 	 59.51 
+      0 	 -2.165291 	 7.56
+      1 	 -2.166592 	 20.08 
+      2 	 -2.165493 	 29.97 
 #
 # Sampling sweeps:
 #  Iter 	 energy 	 error 	 	 Walltime
-     2 	 	 -8.767734 	 0.001694 	  110.59
-     4 	 	 -8.768580 	 0.001194 	  123.57
-     6 	 	 -8.769431 	 0.000935 	  136.52
-     8 	 	 -8.769155 	 0.000909 	  149.45
-    10 	 	 -8.768260 	 0.001023 	  162.36
-    12 	 	 -8.768106 	 0.000894 	  175.37
-    14 	 	 -8.768827 	 0.000839 	  188.56
-    16 	 	 -8.769111 	 0.000755 	  201.60
-    18 	 	 -8.768856 	 0.000707 	  214.77
+     2 	 	 -2.165868 	 0.000525 	  58.42
+     4 	 	 -2.166124 	 0.000335 	  59.21
+     6 	 	 -2.165822 	 0.000299 	  60.00
+     8 	 	 -2.165913 	 0.000237 	  60.79
+    10 	 	 -2.165727 	 0.000236 	  61.59
+    12 	 	 -2.165643 	 0.000211 	  62.39
+    14 	 	 -2.165626 	 0.000194 	  63.19
+    16 	 	 -2.165632 	 0.000188 	  63.99
+    18 	 	 -2.165638 	 0.000175 	  64.79
 # Number of outliers in post: 0 
 Final Results1:
-AFQMC/CCSD_PT energy: -8.768776 +/- 0.000675
+AFQMC/CCSD_PT energy: -2.165558 +/- 0.000177
 # remove outliers:  0
 Final Results2:
-AFQMC/CCSD_PT energy: -8.768591 +/- 0.000828
-total run time: 221.20
+AFQMC/CCSD_PT energy: -2.165490 +/- 0.000210
+total run time: 65.20

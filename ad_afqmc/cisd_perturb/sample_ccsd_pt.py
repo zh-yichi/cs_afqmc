@@ -140,5 +140,5 @@ def run_afqmc_ccsd_pt(options,nproc=None,
     
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
-        f"{mpi_prefix} python {script} {gpu_flag} >> afqmc_ccsd_pt.out"
+        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc_ccsd_pt.out"
     )

@@ -41,6 +41,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
         h0 = jnp.array(fh5.get("energy_core"))
         h1 = jnp.array(fh5.get("hcore")).reshape(nmo, nmo)
         chol = jnp.array(fh5.get("chol")).reshape(-1, nmo, nmo)
+        h1_mod = jnp.array(fh5.get("hcore_mod")).reshape(nmo, nmo)
 
     assert type(ms) is np.int64
     assert type(nelec) is np.int64
@@ -194,6 +195,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
         trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
     elif options["trial"] == "ccsd_pt_ad":
+        ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
@@ -202,13 +204,20 @@ def _prep_afqmc(options=None,option_file="options.bin",
         wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
         trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
     elif options["trial"] == "ccsd_pt2_ad":
+        ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
-        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
         trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
+        nocc = nelec_sp[0]
+        trial_mo = trial.thouless_trans(t1)
+        # trial_mo = np.eye(norb)[:,:nocc]
+        wave_data['mo_coeff'] = trial_mo
+        rot_t2 = jnp.einsum('il,jk,lakb->iajb',trial_mo[:nocc,:nocc].T,
+                   trial_mo[:nocc,:nocc].T,t2)
+        wave_data['rot_t2'] = rot_t2
     else:
         try:
             with open("trial.pkl", "rb") as f:

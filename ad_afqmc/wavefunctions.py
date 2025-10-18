@@ -2968,6 +2968,7 @@ class ccsd_pt_ad(rhf):
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
     
+    
 @dataclass
 class ccsd_pt2_ad(rhf):
 
@@ -2975,14 +2976,22 @@ class ccsd_pt2_ad(rhf):
     nelec: Tuple[int, int]
     n_batch: int = 1
     
-    @jax.jit
-    def thouless_trans(t1):
-        q, r = jnp.linalg.qr(t1)
-        u_ai = r.T
+    @partial(jit, static_argnums=0)
+    def thouless_trans(self, t1):
+        ''' thouless transformation |psi'> = exp(t1)|psi>
+            gives the transformed mo_occrep in the 
+            original mo basis <psi_p|psi'_i>
+            t = t_ia
+            t_ia = c_ik c.T_ka
+            c_ik = <psi_i|psi'_k>
+        '''
+        q, r = jnp.linalg.qr(t1,mode='complete')
         u_ji = q
+        u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
-        u, _, _ = jnp.linalg.svd(u_occ)
-        return u
+        u_occ, _ = jnp.linalg.qr(u_occ)
+        # u, _, _ = np.linalg.svd(u_occ) # the whole transformed mo
+        return u_occ
 
     @partial(jit, static_argnums=0)
     def _t2_walker_olp(self,walker,wave_data):
@@ -3024,7 +3033,7 @@ class ccsd_pt2_ad(rhf):
         return olp
 
     @partial(jit, static_argnums=0)
-    def _calc_energy_pt2_restricted(self, walker, ham_data, wave_data):
+    def _calc_energy_pt_restricted(self, walker, ham_data, wave_data):
         ''' 
         t = <psi|T2|phi>/<psi|phi>
         e0 = <psi|H|phi>/<psi|phi>
@@ -3064,53 +3073,11 @@ class ccsd_pt2_ad(rhf):
         return jnp.real(t2), jnp.real(e0), jnp.real(et2)
 
     @partial(jit, static_argnums=0)
-    def calc_energy_pt2_restricted(self,walkers,ham_data,wave_data):
+    def calc_energy_pt_restricted(self,walkers,ham_data,wave_data):
         t, e0, e1 = vmap(
-            self._ccsd_walker_energy_pt2,in_axes=(0, None, None))(
+            self._calc_energy_pt_restricted,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
         return t, e0, e1
-    
-    @partial(jit, static_argnums=0)
-    def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-        """Builds half rotated integrals for efficient force bias and energy calculations."""
-        nocc = wave_data['ci1'].shape[0]
-        norb = self.norb
-        wave_data["mo_coeff"] = np.eye(norb)[:,:nocc]
-
-        ham_data["h1"] = (
-            ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
-        )
-        ham_data["h1"] = (
-            ham_data["h1"].at[1].set((ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0)
-        )
-        ham_data["rot_h1"] = wave_data["mo_coeff"].T.conj() @ (
-            (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        )
-        ham_data["rot_chol"] = jnp.einsum(
-            "pi,gij->gpj",
-            wave_data["mo_coeff"].T.conj(),
-            ham_data["chol"].reshape(-1, norb, norb),
-        )
-
-        chol = ham_data["chol"].reshape(-1, norb, norb)
-        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        v0 = 0.5 * jnp.einsum("gik,gjk->ij",
-                                chol.reshape(-1, norb, norb),
-                                chol.reshape(-1, norb, norb),
-                                optimize="optimal")
-        h1_mod = h1 - v0 
-        ham_data['h1_mod'] = h1_mod
-
-        t1, t2 = wave_data['ci1'], wave_data['ci2']
-        u = self.thouless_trans(t1)
-        nocc = wave_data['ci1'].shape[0]
-        trial_mo = u @ np.eye(norb)[:,:nocc]
-        wave_data['mo_coeff'] = trial_mo
-
-        wave_data['t1'] = t1
-        wave_data['t2'] = t2
-
-        return ham_data, wave_data
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
