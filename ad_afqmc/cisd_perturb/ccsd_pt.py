@@ -275,12 +275,12 @@ def _uccsd_walker_energy_pt(walker_up,walker_dn,ham_data,wave_data,trial):
     # e1 = e1_0 + e1_1 + e1_2
     # e2 = e2_0 + e2_1 + e2_2
     # e_ccsd = (e1 + e2) / overlap + h0
-
+    h0 = ham_data["h0"]
     t = overlap_1 + overlap_2 # <psi|(t1+t2)|phi>/<psi|phi>
-    e_0 = e1_0 + e2_0 # <psi|h1+h2|phi>/<psi|phi>
+    e_0 = h0 + e1_0 + e2_0 # <psi|h1+h2|phi>/<psi|phi>
     e_12 = e1_1 + e1_2 + e2_1 + e2_2 # <psi|(t1+t2)(h1+h2)|phi>/<psi|phi>
 
-    return jnp.real(t), jnp.real(e_0), jnp.real(e_12) # doesn't contain h0!!!
+    return jnp.real(t), jnp.real(e_0), jnp.real(e_12)
 
 @partial(jit, static_argnums=3)
 def uccsd_walker_energy_pt(walkers,ham_data,wave_data,trial):

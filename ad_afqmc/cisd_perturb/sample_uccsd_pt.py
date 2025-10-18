@@ -140,14 +140,11 @@ def _block_scan(
     blk_e0 = jnp.sum(e0*wt)/blk_wt
     blk_e1 = jnp.sum(e1*wt)/blk_wt
 
-    # h0 = ham_data['h0']
-    # ept = jnp.real(h0 + e0 + e1 - blk_t*e0)
     e0 = jnp.where(
         jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
         prop_data["e_estimate"],
         e0,
     )
-    # blk_ept = jnp.sum(ept*wt)/blk_wt
 
     # prop_data["pop_control_ene_shift"] = (
     #     0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
@@ -218,27 +215,6 @@ def propagate_phaseless(
     return prop_data, (wt, t, e0, e1)
 
 def run_afqmc_uccsd_pt(options,nproc=None,option_file='options.bin'):
-    options["dt"] = options.get("dt", 0.005)
-    options["n_exp_terms"] = options.get("n_exp_terms",6)
-    options["n_walkers"] = options.get("n_walkers", 50)
-    options["n_prop_steps"] = options.get("n_prop_steps", 50)
-    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
-    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
-    options["n_blocks"] = options.get("n_blocks", 50)
-    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-    options["n_eql"] = options.get("n_eql", 1)
-    options["ad_mode"] = options.get("ad_mode", None)
-    assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
-    options["orbital_rotation"] = options.get("orbital_rotation", True)
-    options["do_sr"] = options.get("do_sr", True)
-    options["walker_type"] = options.get("walker_type", "uhf")
-    options["symmetry"] = options.get("symmetry", False)
-    options["save_walkers"] = options.get("save_walkers", False)
-    options["trial"] = options.get("trial", "ucisd")
-    options["free_projection"] = options.get("free_projection", False)
-    options["n_batch"] = options.get("n_batch", 1)
-    options["ene0"] = options.get("ene0",0)
-    options["use_gpu"] = options.get("use_gpu", False)
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
@@ -248,7 +224,6 @@ def run_afqmc_uccsd_pt(options,nproc=None,option_file='options.bin'):
         print(f'# running AFQMC on GPU')
         gpu_flag = "--use_gpu"
         mpi_prefix = ""
-        nproc = None
     else:
         print(f'# running AFQMC on CPU')
         gpu_flag = ""
