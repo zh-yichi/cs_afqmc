@@ -2989,17 +2989,98 @@ class ccsd_pt2_ad(rhf):
         u_ji = q
         u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
-        u_occ, _ = jnp.linalg.qr(u_occ)
+        mo_t, _ = jnp.linalg.qr(u_occ,mode='complete')
         # u, _, _ = np.linalg.svd(u_occ) # the whole transformed mo
-        return u_occ
+        return mo_t
+
+    # @partial(jit, static_argnums=0)
+    # def _t2_walker_olp(self,walker,wave_data):
+    #     ''' t_iajb <psi|ijab|phi> '''
+    #     rot_t2 = wave_data['rot_t2']
+    #     nocc = walker.shape[1]
+    #     # G_ia = (walker.dot(jnp.linalg.inv(wave_data["mo_coeff"].T.conj() @ walker))).T
+    #     GF = self._calc_green(walker, wave_data)
+    #     o0 = self._calc_overlap_restricted(walker, wave_data)
+    #     # t_iajb <psi|ijab|phi>/<psi|phi>
+    #     o2 = 2 * jnp.einsum(
+    #         "iajb, ia, jb", rot_t2, GF[:nocc, nocc:], GF[:nocc, nocc:]
+    #     ) - jnp.einsum("iajb, ib, ja", rot_t2, GF[:nocc, nocc:], GF[:nocc, nocc:])
+    #     return o2 * o0
+
+    # @partial(jit, static_argnums=0)
+    # def _t2_olp_exp1(self, x: float, h1_mod: jax.Array, walker: jax.Array,
+    #                 wave_data: dict) -> complex:
+    #     '''
+    #     t_iajb <psi|ijab exp(x*h1_mod)|walker>
+    #     '''
+    #     t = x * h1_mod
+    #     walker_1x = walker + t.dot(walker)
+    #     olp = self._t2_walker_olp(walker_1x,wave_data)
+    #     return olp
+
+    # @partial(jit, static_argnums=0)
+    # def _t2_olp_exp2(self, x: float, chol_i: jax.Array, walker: jax.Array,
+    #                 wave_data: dict) -> complex:
+    #     '''
+    #     t_iajb <psi|ijab exp(x*h2_mod)|walker>
+    #     '''
+    #     walker_2x = (
+    #             walker
+    #             + x * chol_i.dot(walker)
+    #             + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker))
+    #         )
+    #     olp = self._t2_walker_olp(walker_2x,wave_data)
+    #     return olp
+
+    # @partial(jit, static_argnums=0)
+    # def _calc_energy_pt_restricted(self, walker, ham_data, wave_data):
+    #     ''' 
+    #     t = <psi|T2|phi>/<psi|phi>
+    #     e0 = <psi|H|phi>/<psi|phi>
+    #     e1 = <psi|T2(h1+h2)|phi>/<psi|phi>
+    #     '''
+    #     eps=3e-4
+
+    #     norb = self.norb
+    #     # h0 = ham_data['h0']
+    #     h1_mod = ham_data['h1_mod']
+    #     chol = ham_data["chol"].reshape(-1, norb, norb)
+
+    #     # one body
+    #     # t_ij^ab <psi|ijab|phi_1x>
+    #     x = 0.0
+    #     f1 = lambda a: self._t2_olp_exp1(a,h1_mod,walker,wave_data)
+    #     t_olp, d_olp = jvp(f1, [x], [1.0])
+
+    #     # two body
+    #     # t_ij^ab <psi|ijab|phi_2x>
+    #     def scanned_fun(carry, c):
+    #         eps, walker, wave_data = carry
+    #         return carry, self._t2_olp_exp2(eps,c,walker,wave_data)
+
+    #     _, olp_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
+    #     _, olp_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
+    #     _, olp_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
+    #     d_2_olp = (olp_p - 2.0 * olp_0 + olp_m) / eps / eps
+    
+    #     o0 = self._calc_overlap_restricted(walker, wave_data)
+    #     et2 = (d_olp + jnp.sum(d_2_olp) / 2.0 ) / o0
+
+    #     # t2 = _t2_walker_olp(walker,wave_data,trial)/o0
+    #     t2 = t_olp/o0
+    #     e0 = self._calc_energy_restricted(walker,ham_data,wave_data)
+
+    #     return jnp.real(t2), jnp.real(e0), jnp.real(et2)
 
     @partial(jit, static_argnums=0)
-    def _t2_walker_olp(self,walker,wave_data):
+    def _t2_walker_olp(self, walker, wave_data):
         ''' t_iajb <psi|ijab|phi> '''
         rot_t2 = wave_data['rot_t2']
         nocc = walker.shape[1]
-        # GF = (walker.dot(jnp.linalg.inv(walker[: nocc, :]))).T
+        # absorbed trial_mo into t2. G_ia \
+        # = (walker.dot(jnp.linalg.inv(wave_data["mo_coeff"].T.conj() @ walker))).T
         GF = self._calc_green(walker, wave_data)
+        # <psi|phi>
         o0 = self._calc_overlap_restricted(walker, wave_data)
         # t_iajb <psi|ijab|phi>/<psi|phi>
         o2 = 2 * jnp.einsum(
@@ -3008,18 +3089,20 @@ class ccsd_pt2_ad(rhf):
         return o2 * o0
 
     @partial(jit, static_argnums=0)
-    def _t2_olp_exp1(self, x: float, h1_mod: jax.Array, walker: jax.Array,
+    def _t2_exp1(self, x: float, h1_mod: jax.Array, walker: jax.Array,
                     wave_data: dict) -> complex:
         '''
-        t_iajb <psi|ijab exp(x*h1_mod)|walker>
+        t_iajb <psi|ijab exp(x*h1_mod)|walker>/<psi|walker>
         '''
         t = x * h1_mod
         walker_1x = walker + t.dot(walker)
         olp = self._t2_walker_olp(walker_1x,wave_data)
-        return olp
+        o0 = self._calc_overlap_restricted(walker, wave_data)
+        # divide the o0 here so the derivative is more stable
+        return olp/o0
 
     @partial(jit, static_argnums=0)
-    def _t2_olp_exp2(self, x: float, chol_i: jax.Array, walker: jax.Array,
+    def _t2_exp2(self, x: float, chol_i: jax.Array, walker: jax.Array,
                     wave_data: dict) -> complex:
         '''
         t_iajb <psi|ijab exp(x*h2_mod)|walker>
@@ -3030,7 +3113,9 @@ class ccsd_pt2_ad(rhf):
                 + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker))
             )
         olp = self._t2_walker_olp(walker_2x,wave_data)
-        return olp
+        o0 = self._calc_overlap_restricted(walker, wave_data)
+        # divide the o0 here so the derivative is more stable
+        return olp/o0
 
     @partial(jit, static_argnums=0)
     def _calc_energy_pt_restricted(self, walker, ham_data, wave_data):
@@ -3039,36 +3124,32 @@ class ccsd_pt2_ad(rhf):
         e0 = <psi|H|phi>/<psi|phi>
         e1 = <psi|T2(h1+h2)|phi>/<psi|phi>
         '''
-        eps=3e-4
+        eps=1e-4
 
         norb = self.norb
-        # h0 = ham_data['h0']
         h1_mod = ham_data['h1_mod']
         chol = ham_data["chol"].reshape(-1, norb, norb)
 
         # one body
         # t_ij^ab <psi|ijab|phi_1x>
         x = 0.0
-        f1 = lambda a: self._t2_olp_exp1(a,h1_mod,walker,wave_data)
-        t_olp, d_olp = jvp(f1, [x], [1.0])
+        f1 = lambda a: self._t2_exp1(a,h1_mod,walker,wave_data)
+        t_exp1_0, d_exp1 = jvp(f1, [x], [1.0])
 
         # two body
         # t_ij^ab <psi|ijab|phi_2x>
         def scanned_fun(carry, c):
             eps, walker, wave_data = carry
-            return carry, self._t2_olp_exp2(eps,c,walker,wave_data)
+            return carry, self._t2_exp2(eps,c,walker,wave_data)
 
-        _, olp_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
-        _, olp_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
-        _, olp_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
-        d_2_olp = (olp_p - 2.0 * olp_0 + olp_m) / eps / eps
+        _, exp2_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
+        _, exp2_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
+        _, exp2_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
+        d2_exp2 = (exp2_p - 2.0 * exp2_0 + exp2_m) / eps / eps
     
-        o0 = self._calc_overlap_restricted(walker, wave_data)
-        et2 = (d_olp + jnp.sum(d_2_olp) / 2.0 ) / o0
-
-        # t2 = _t2_walker_olp(walker,wave_data,trial)/o0
-        t2 = t_olp/o0
+        t2 = t_exp1_0
         e0 = self._calc_energy_restricted(walker,ham_data,wave_data)
+        et2 = (d_exp1 + jnp.sum(d2_exp2) / 2.0)
 
         return jnp.real(t2), jnp.real(e0), jnp.real(et2)
 
