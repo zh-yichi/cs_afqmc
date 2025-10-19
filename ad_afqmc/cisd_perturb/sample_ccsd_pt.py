@@ -59,6 +59,11 @@ def _block_scan(
     blk_e0 = jnp.sum(e0*wt)/blk_wt
     blk_e1 = jnp.sum(e1*wt)/blk_wt
 
+    blk_ept = blk_e0 + blk_e1 + blk_t * (blk_e0 - ham_data['h0'])
+    prop_data["pop_control_ene_shift"] = (
+            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
+        )
+
     return prop_data, (blk_wt, blk_t, blk_e0, blk_e1)
 
 @partial(jit, static_argnums=(2,3,5))

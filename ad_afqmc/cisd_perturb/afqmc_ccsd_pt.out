@@ -18,8 +18,8 @@
 # n_blocks: 10
 # n_walkers: 10
 # seed: 2
-# walker_type: rhf
-# trial: ccsd_pt
+# walker_type: uhf
+# trial: ucisd
 # dt: 0.005
 # free_projection: False
 # use_gpu: False
@@ -34,31 +34,3 @@
 # orbE: 0
 # maxError: 0.001
 #
-# 
-
-# Propagating with 80 walkers
-# Equilibration sweeps:
-#   Iter 	 energy 	 Walltime
-      0 	 -3.238324 	 9.76
-      1 	 -3.238925 	 23.29 
-      2 	 -3.239652 	 32.99 
-      3 	 -3.238825 	 33.72 
-#
-# Sampling sweeps:
-#  Iter 	 energy 	 error 	 	 Walltime
-     1 	 	 -3.239082 	 0.000383 	  52.97
-     2 	 	 -3.239250 	 0.000288 	  61.27
-     3 	 	 -3.239393 	 0.000232 	  61.64
-     4 	 	 -3.239064 	 0.000352 	  62.01
-     5 	 	 -3.239285 	 0.000340 	  62.39
-     6 	 	 -3.239358 	 0.000312 	  62.76
-     7 	 	 -3.239372 	 0.000276 	  63.13
-     8 	 	 -3.239391 	 0.000247 	  63.50
-     9 	 	 -3.239376 	 0.000225 	  63.86
-# Number of outliers in post: 0 
-Final Results1:
-AFQMC/CCSD_PT energy: -3.239376 +/- 0.000225
-# remove outliers:  0
-Final Results2:
-AFQMC/CCSD_PT energy: -3.239334 +/- 0.000247
-total run time: 63.87
