@@ -186,6 +186,14 @@ def _prep_afqmc(options=None,option_file="options.bin",
         wave_data.update(trial_wave_data)
         trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
+    elif options["trial"] == "ccsd_hf":
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
+        trial = wavefunctions.ccsd_hf(norb, nelec_sp, n_batch=options["n_batch"])
+        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
     elif options["trial"] == "ccsd_pt2":
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])

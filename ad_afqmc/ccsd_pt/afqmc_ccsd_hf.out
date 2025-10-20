@@ -1,0 +1,64 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 8
+#
+# norb: 2
+# nelec: (1, 1)
+#
+# n_eql: 3
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 5
+# n_blocks: 20
+# n_walkers: 20
+# seed: 2
+# walker_type: rhf
+# trial: ccsd_hf
+# dt: 0.005
+# free_projection: False
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# 
+
+# Propagating with 160 walkers
+# Equilibration sweeps:
+#   Iter 	 energy 	 Walltime
+      0 	 -1.096072 	 3.55
+      1 	 -1.111292 	 8.46 
+      2 	 -1.115103 	 12.08 
+      3 	 -1.113427 	 12.22 
+#
+# Sampling sweeps:
+#  Iter 	 energy 	 error 	 	 Walltime
+     2 	 	 -1.111526 	 0.000593 	  22.70
+     4 	 	 -1.113230 	 0.000711 	  22.87
+     6 	 	 -1.112963 	 0.000559 	  23.03
+     8 	 	 -1.113294 	 0.000478 	  23.20
+    10 	 	 -1.113444 	 0.000469 	  23.37
+    12 	 	 -1.113553 	 0.000450 	  23.53
+    14 	 	 -1.113459 	 0.000401 	  23.70
+    16 	 	 -1.113449 	 0.000361 	  23.87
+    18 	 	 -1.113256 	 0.000333 	  24.03
+# Number of outliers in post: 0 
+Final Results1:
+AFQMC/CCSD_PT energy: -1.113441 +/- 0.000334
+# remove outliers:  0
+Final Results2:
+AFQMC/CCSD_PT energy: -1.113434 +/- 0.000425
+total run time: 24.11

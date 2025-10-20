@@ -3338,3 +3338,169 @@ class ccsd_pt2_ad_smt(rhf):
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
+
+@dataclass
+class ccsd_hf(rhf):
+    """
+    A manual implementation of the truncated CCSD wave function guided by HF.
+    <CCSD|H|walkers>/<psi_0|walkers> * <HF|walkers>/<CCSD|walkers>
+    """
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    @partial(jit, static_argnums=0)
+    def _calc_energy_hf_restricted(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> complex:
+        t1, t2 = wave_data["t1"], wave_data["t2"]
+        nocc = self.nelec[0]
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:].copy()
+        greenp = jnp.vstack((green_occ, -jnp.eye(self.norb - nocc)))
+
+        chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
+        # rot_chol = ham_data["rot_chol"]
+        rot_chol = chol[:, : self.nelec[0], :]
+        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+        hg = jnp.einsum("pj,pj->", h1[:nocc, :], green)
+
+        # 0 body energy
+        h0 = ham_data["h0"]
+
+        # 1 body energy
+        # ref
+        e1_0 = 2 * hg
+
+        # single excitations
+        t1g = jnp.einsum("pt,pt->", t1, green_occ, optimize="optimal")
+        e1_1_1 = 4 * t1g * hg
+        gpt1 = greenp @ t1.T
+        t1_green = gpt1 @ green
+        e1_1_2 = -2 * jnp.einsum("ij,ij->", h1, t1_green, optimize="optimal")
+        e1_1 = e1_1_1 + e1_1_2
+
+        # double excitations
+        t2g_c = jnp.einsum("ptqu,pt->qu", t2, green_occ)
+        t2g_e = jnp.einsum("ptqu,pu->qt", t2, green_occ)
+        t2_green_c = (greenp @ t2g_c.T) @ green
+        t2_green_e = (greenp @ t2g_e.T) @ green
+        t2_green = 2 * t2_green_c - t2_green_e
+        t2g = 2 * t2g_c - t2g_e
+        gt2g = jnp.einsum("qu,qu->", t2g, green_occ, optimize="optimal")
+        e1_2_1 = 2 * hg * gt2g
+        e1_2_2 = -2 * jnp.einsum("ij,ij->", h1, t2_green, optimize="optimal")
+        e1_2 = e1_2_1 + e1_2_2
+        # e1 = e1_0 + e1_1 + e1_2
+
+        # two body energy
+        # ref
+        lg = jnp.einsum("gpj,pj->g", rot_chol, green, optimize="optimal")
+        # lg1 = jnp.einsum("gpj,pk->gjk", rot_chol, green, optimize="optimal")
+        lg1 = jnp.einsum("gpj,qj->gpq", rot_chol, green, optimize="optimal")
+        e2_0_1 = 2 * lg @ lg
+        e2_0_2 = -jnp.sum(vmap(lambda x: x * x.T)(lg1))
+        e2_0 = e2_0_1 + e2_0_2
+
+        # single excitations
+        e2_1_1 = 2 * e2_0 * t1g
+        lt1g = jnp.einsum("gij,ij->g", chol, t1_green, optimize="optimal")
+        e2_1_2 = -2 * (lt1g @ lg)
+        t1g1 = t1 @ green_occ.T
+        # e2_1_3 = jnp.einsum("gpq,gpq->", glgpci1, lg1, optimize="optimal")
+        e2_1_3_1 = jnp.einsum("gpq,gqr,rp->", lg1, lg1, t1g1, optimize="optimal")
+        lt1g = jnp.einsum("gip,qi->gpq", ham_data["lt1"], green, optimize="optimal")
+        e2_1_3_2 = -jnp.einsum("gpq,gqp->", lt1g, lg1, optimize="optimal")
+        e2_1_3 = e2_1_3_1 + e2_1_3_2
+        e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3)
+
+        # double excitations
+        e2_2_1 = e2_0 * gt2g
+        lt2g = jnp.einsum("gij,ij->g", chol, t2_green, optimize="optimal")
+        e2_2_2_1 = -lt2g @ lg
+
+        def scanned_fun(carry, x):
+            chol_i, rot_chol_i = x
+            gl_i = jnp.einsum("pj,ji->pi", green, chol_i, optimize="optimal")
+            lt2_green_i = jnp.einsum(
+                "pi,ji->pj", rot_chol_i, t2_green, optimize="optimal"
+            )
+            carry[0] += 0.5 * jnp.einsum(
+                "pi,pi->", gl_i, lt2_green_i, optimize="optimal"
+            )
+            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal").astype(
+                jnp.complex64
+            )
+            l2t2_1 = jnp.einsum(
+                "pt,qu,ptqu->",
+                glgp_i,
+                glgp_i,
+                t2.astype(jnp.float32),
+                optimize="optimal",
+            )
+            l2t2_2 = jnp.einsum(
+                "pu,qt,ptqu->",
+                glgp_i,
+                glgp_i,
+                t2.astype(jnp.float32),
+                optimize="optimal",
+            )
+            carry[1] += 2 * l2t2_1 - l2t2_2
+            return carry, 0.0
+
+        [e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0], (chol, rot_chol))
+        e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
+
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        # e1 = e1_0 + e1_1 + e1_2
+        # e2 = e2_0 + e2_1 + e2_2
+        e0 = h0 + e1_0 + e2_0 # h0 + <psi|(h1+h2)|phi>/<psi|phi>
+        e12 = e1_1 + e1_2 + e2_1 + e2_2 # <psi|(t1+t2)(h1+h2)|phi>/<psi|phi>
+
+        # overlap
+        # overlap_1 = 2 * t1g  # jnp.einsum("ia,ia", ci1, green_occ)
+        # overlap_2 = gt2g
+        # t = 2 * t1g + gt2g # <psi|(t1+t2)|phi>/<psi|phi>
+        olp = 1 + 2 * t1g + gt2g
+        # overlap = 1.0 + overlap_1 + overlap_2
+        # return (e1 + e2) / overlap + e0
+        return jnp.real(olp), jnp.real(e0+e12)
+    
+    @partial(jit, static_argnums=(0)) 
+    def calc_energy_hf_restricted(self,walkers,ham_data,wave_data):
+        olp, e = vmap(
+            self._calc_energy_hf_restricted,in_axes=(0, None, None))(
+            walkers, ham_data, wave_data)
+        return olp, e
+
+
+    @partial(jit, static_argnums=0)
+    def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
+        norb = self.norb
+        ham_data["h1"] = (
+            ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
+        )
+        ham_data["h1"] = (
+            ham_data["h1"].at[1].set((ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0)
+        )
+        ham_data["rot_h1"] = wave_data["mo_coeff"].T.conj() @ (
+            (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+        )
+        ham_data["rot_chol"] = jnp.einsum(
+            "pi,gij->gpj",
+            wave_data["mo_coeff"].T.conj(),
+            ham_data["chol"].reshape(-1, norb, norb),
+        )
+
+        ham_data["lt1"] = jnp.einsum(
+            "git,pt->gip",
+            ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
+            wave_data["t1"],
+            optimize="optimal",
+        )
+        return ham_data
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
