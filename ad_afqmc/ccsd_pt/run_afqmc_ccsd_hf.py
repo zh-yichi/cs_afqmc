@@ -223,7 +223,7 @@ for n in range(sampler.n_blocks):
             e = np.sum(glb_blk_wt * glb_blk_e)/np.sum(glb_blk_wt)
             # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
 
-            ehf = e/o
+            ehf = h0 + e/o
             # (pE/po,pE/pe)
             dE = np.array([-e/o**2,1/o])
             cov_oe = np.cov([glb_blk_o[:(n+1)*size],
