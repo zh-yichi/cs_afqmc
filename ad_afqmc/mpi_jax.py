@@ -218,6 +218,22 @@ def _prep_afqmc(options=None,option_file="options.bin",
         rot_t2 = jnp.einsum('il,jk,lakb->iajb',trial_mo[:nocc,:nocc].T,
                    trial_mo[:nocc,:nocc].T,t2)
         wave_data['rot_t2'] = rot_t2
+    elif options["trial"] == "ccsd_pt2_ad_smt":
+        ham_data['h1_mod'] = h1_mod
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
+        trial = wavefunctions.ccsd_pt2_ad_smt(
+            norb, nelec_sp, n_batch=options["n_batch"])
+        nocc = nelec_sp[0]
+        mo_t = trial.thouless_trans(t1)[:,:nocc]
+        wave_data['mo_tls'] = mo_t
+        wave_data['mo_coeff'] = np.eye(norb)[:,:nocc]
+        rot_t2 = jnp.einsum('il,jk,lakb->iajb',mo_t[:nocc,:nocc].T,
+                   mo_t[:nocc,:nocc].T,t2)
+        wave_data['rot_t2'] = rot_t2
     else:
         try:
             with open("trial.pkl", "rb") as f:

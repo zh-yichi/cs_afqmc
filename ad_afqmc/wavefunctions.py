@@ -2990,7 +2990,6 @@ class ccsd_pt2_ad(rhf):
         u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
         mo_t, _ = jnp.linalg.qr(u_occ,mode='complete')
-        # u, _, _ = np.linalg.svd(u_occ) # the whole transformed mo
         return mo_t
 
     # @partial(jit, static_argnums=0)
@@ -3159,6 +3158,183 @@ class ccsd_pt2_ad(rhf):
             self._calc_energy_pt_restricted,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
         return t, e0, e1
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+
+
+@dataclass
+class ccsd_pt2_ad_smt(rhf):
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    @partial(jit, static_argnums=0)
+    def thouless_trans(self, t1):
+        ''' thouless transformation |psi'> = exp(t1)|psi>
+            gives the transformed mo_occrep in the 
+            original mo basis <psi_p|psi'_i>
+            t = t_ia
+            t_ia = c_ik c.T_ka
+            c_ik = <psi_i|psi'_k>
+        '''
+        q, r = jnp.linalg.qr(t1,mode='complete')
+        u_ji = q
+        u_ai = r.T
+        u_occ = jnp.vstack((u_ji,u_ai))
+        mo_t, _ = jnp.linalg.qr(u_occ,mode='complete')
+        return mo_t
+
+    @partial(jit, static_argnums=0)
+    def _tls_green(self, walker: jax.Array, wave_data: dict) -> jax.Array:
+        tls_gf = (walker.dot(
+                jnp.linalg.inv(wave_data["mo_tls"].T.conj() @ walker))
+                ).T
+        return tls_gf
+
+    @partial(jit, static_argnums=0)
+    def _tls_walker_olp(self, walker, wave_data):
+        ''' 
+        <exp(T1)psi_0|phi>
+        '''
+        # o0 = trial._calc_overlap_restricted(walker, wave_data)
+        # o_tls = _calc_tls_overlap_restricted(walker, ham_data)
+        o_tls = jnp.linalg.det(wave_data["mo_tls"].T.conj() @ walker) ** 2
+        return o_tls
+
+    @partial(jit, static_argnums=0)
+    def _tls_exp1(self, x, h1_mod, walker, wave_data) -> complex:
+        '''
+        <psi|exp(x*h1_mod)|walker>/<psi_0|walker>
+        '''
+        t = x * h1_mod
+        walker_1x = walker + t.dot(walker)
+        t2 = self._tls_walker_olp(walker_1x,wave_data)
+        o0 = self._calc_overlap_restricted(walker, wave_data)
+        return t2/o0
+
+    @partial(jit, static_argnums=0)
+    def _tls_exp2(self, x, chol_i, walker, wave_data) -> complex:
+        '''
+        <psi|exp(x*h2_mod)|walker>/<psi_0|walker>
+        '''
+        walker_2x = (
+                walker
+                + x * chol_i.dot(walker)
+                + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker))
+            )
+        t2 = self._tls_walker_olp(walker_2x,wave_data)
+        o0 = self._calc_overlap_restricted(walker, wave_data)
+        return t2/o0
+
+    @partial(jit, static_argnums=0)
+    def _t2_tls_walker_olp(self, walker, wave_data):
+        ''' 
+        <exp(T1) psi_0|T2|phi>
+        = t_iajb <psi|ijab|phi>/<psi|phi> * <psi|phi>
+        = t_iajb tls_G_iajb * <psi|phi>
+        '''
+        rot_t2 = wave_data['rot_t2']
+        nocc = walker.shape[1]
+        GF = self._tls_green(walker, wave_data)
+        # o0 = trial._calc_overlap_restricted(walker, wave_data)
+        o_tls = self._tls_walker_olp(walker, wave_data)
+        t2 = 2 * jnp.einsum(
+            "iajb, ia, jb", rot_t2, GF[:, nocc:], GF[:, nocc:]
+        ) - jnp.einsum("iajb, ib, ja", rot_t2, GF[:, nocc:], GF[:, nocc:])
+        return t2 * o_tls
+
+    @partial(jit, static_argnums=0)
+    def _t2_tls_exp1(self, x, h1_mod, walker, wave_data) -> complex:
+        '''
+        t_iajb <psi|ijab exp(x*h1_mod)|walker>/<psi_0|walker>
+        '''
+        t = x * h1_mod
+        walker_1x = walker + t.dot(walker)
+        t2 = self._t2_tls_walker_olp(walker_1x,wave_data)
+        o0 = self._calc_overlap_restricted(walker, wave_data)
+        return t2/o0
+
+    @partial(jit, static_argnums=0)
+    def _t2_tls_exp2(self, x, chol_i, walker, wave_data) -> complex:
+        '''
+        t_iajb <psi|ijab exp(x*h2_mod)|walker>/<psi_0|walker>
+        '''
+        walker_2x = (
+                walker
+                + x * chol_i.dot(walker)
+                + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker))
+            )
+        t2 = self._t2_tls_walker_olp(walker_2x,wave_data)
+        o0 = self._calc_overlap_restricted(walker, wave_data)
+        return t2/o0
+
+    @partial(jit, static_argnums=0)
+    def _calc_energy_pt_restricted(self, walker, ham_data, wave_data):
+        ''' 
+        t1 = <psi|phi>/<psi_0|phi>
+        t2 = <psi|T2|phi>/<psi_0|phi>
+        e0 = <psi|H|phi>/<psi_0|phi>
+        e1 = <psi|T2(h1+h2)|phi>/<psi_0|phi>
+        '''
+
+        eps=1e-4
+        norb = self.norb
+        h1_mod = ham_data['h1_mod']
+        chol = ham_data["chol"].reshape(-1, norb, norb)
+
+        # <psi|h1+h2|phi>/<psi_0|phi>
+        # one body
+        # <psi|phi_1x>/<psi_0|phi>
+        x = 0.0
+        f1 = lambda a: self._tls_exp1(a,h1_mod,walker,wave_data)
+        t1, d_exp1 = jvp(f1, [x], [1.0])
+
+        # two body
+        # <psi|phi_2x>/<psi_0|phi>
+        def scanned_fun(carry, c):
+            eps, walker, wave_data = carry
+            return carry, self._tls_exp2(eps,c,walker,wave_data)
+
+        _, exp2_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
+        _, exp2_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
+        _, exp2_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
+        d2_exp2 = (exp2_p - 2.0 * exp2_0 + exp2_m) / eps / eps
+    
+        e0 = (d_exp1 + jnp.sum(d2_exp2) / 2.0 )
+        
+        d_exp1 = d2_exp2 = None
+        exp2_p = exp2_0 = exp2_m = None
+
+        # <psi|T2 (h1+h2)|phi>/<psi_0|phi>
+        # one body
+        # t_ij^ab <psi|ijab|phi_1x>
+        x = 0.0
+        f1 = lambda a: self._t2_tls_exp1(a,h1_mod,walker,wave_data)
+        t2, d_exp1 = jvp(f1, [x], [1.0])
+
+        # two body
+        # t_ij^ab <psi|ijab|phi_2x>
+        def scanned_fun(carry, c):
+            eps, walker, wave_data = carry
+            return carry, self._t2_tls_exp2(eps,c,walker,wave_data)
+
+        _, exp2_p = lax.scan(scanned_fun, (eps, walker, wave_data), chol)
+        _, exp2_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
+        _, exp2_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
+        d2_exp2 = (exp2_p - 2.0 * exp2_0 + exp2_m) / eps / eps
+    
+        e1 = (d_exp1 + jnp.sum(d2_exp2) / 2.0 )
+
+        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
+    
+    @partial(jit, static_argnums=0)
+    def calc_energy_pt_restricted(self,walkers,ham_data,wave_data):
+        t1, t2, e0, e1 = vmap(
+            self._calc_energy_pt_restricted,in_axes=(0, None, None))(
+            walkers, ham_data, wave_data)
+        return t1, t2, e0, e1
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
