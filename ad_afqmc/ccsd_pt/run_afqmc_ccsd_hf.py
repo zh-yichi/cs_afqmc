@@ -56,7 +56,7 @@ comm.Barrier()
 if rank == 0:
     o, e = trial._calc_energy_hf_restricted(
         prop_data['walkers'][0], ham_data, wave_data)
-    ehf = e/o
+    ehf = h0 + e/o
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
@@ -123,7 +123,7 @@ for n in range(1,options["n_eql"]+1):
     # comm.Bcast(blk_e1, root=0)
     
     # blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0-h0)
-    blk_ehf = blk_e/blk_o
+    blk_ehf = h0 + blk_e/blk_o
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
@@ -206,7 +206,7 @@ for n in range(sampler.n_blocks):
     comm.Bcast(blk_e, root=0)
     # comm.Bcast(blk_e1, root=0)
 
-    blk_ehf = blk_e/blk_o
+    blk_ehf = h0 + blk_e/blk_o
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ehf
@@ -227,7 +227,7 @@ for n in range(sampler.n_blocks):
             # (pE/po,pE/pe)
             dE = np.array([-e/o**2,1/o])
             cov_oe = np.cov([glb_blk_o[:(n+1)*size],
-                                glb_blk_e[:(n+1)*size]])
+                             glb_blk_e[:(n+1)*size]])
             ehf_err = np.sqrt(dE @ cov_oe @ dE)/np.sqrt((n+1)*size)
             print(f"  {n:4d} \t \t {ehf:.6f} \t {ehf_err:.6f} \t"
                   f"  {time.time() - init_time:.2f}")
@@ -261,7 +261,7 @@ if rank == 0:
     e = np.sum(glb_blk_wt * glb_blk_e)/np.sum(glb_blk_wt)
     # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
 
-    ehf = e/o
+    ehf = h0 + e/o
     # (pE/po,pE/pe)
     dE = np.array([-e/o**2,1/o])
     cov_oe = np.cov([glb_blk_o,glb_blk_e])

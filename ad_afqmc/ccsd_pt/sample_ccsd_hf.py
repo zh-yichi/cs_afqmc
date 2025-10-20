@@ -41,11 +41,11 @@ def _block_scan(
     o, e = trial.calc_energy_hf_restricted(
         prop_data["walkers"],ham_data,wave_data)
     
-    e = jnp.where(
-        jnp.abs(e - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-        prop_data["e_estimate"],
-        e,
-    )
+    # e = jnp.where(
+    #     jnp.abs(e - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+    #     prop_data["e_estimate"],
+    #     e,
+    # )
     
     wt = prop_data["weights"]
 

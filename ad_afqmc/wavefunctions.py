@@ -3456,7 +3456,7 @@ class ccsd_hf(rhf):
 
         # e1 = e1_0 + e1_1 + e1_2
         # e2 = e2_0 + e2_1 + e2_2
-        e0 = h0 + e1_0 + e2_0 # h0 + <psi|(h1+h2)|phi>/<psi|phi>
+        e0 = e1_0 + e2_0 # <psi|(h1+h2)|phi>/<psi|phi>
         e12 = e1_1 + e1_2 + e2_1 + e2_2 # <psi|(t1+t2)(h1+h2)|phi>/<psi|phi>
 
         # overlap
