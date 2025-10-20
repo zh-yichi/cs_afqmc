@@ -257,6 +257,7 @@ for n in range(sampler.n_blocks):
                                 glb_blk_e0[:(n+1)*size],
                                 glb_blk_e1[:(n+1)*size]])
             ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
+            
             print(f"  {n:4d} \t \t {ept:.6f} \t {ept_err:.6f} \t"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
