@@ -34,7 +34,7 @@ options = {'n_eql': 3,
             'n_ene_blocks': 5,
             'n_sr_blocks': 5,
             'n_blocks': 10,
-            'n_walkers': 10,
+            'n_walkers': 30,
             'seed': 2,
             'walker_type': 'rhf',
             'trial': 'ccsd_pt', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, ucisd

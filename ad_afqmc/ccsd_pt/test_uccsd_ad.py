@@ -2,7 +2,7 @@ from pyscf import gto, scf, cc
 
 a = 1.05835 # bond length in a cluster
 d = 10 # distance between each cluster
-na = 2  # size of a cluster (monomer)
+na = 3  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
 elmt = 'H'
 atoms = ""
@@ -10,7 +10,7 @@ for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
     atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis="sto6g",spin = 0, verbose=4)
+mol = gto.M(atom=atoms, basis="sto6g",spin = nc, verbose=4)
 mol.build()
 
 mf = scf.RHF(mol)
@@ -19,7 +19,7 @@ e = mf.kernel()
 nfrozen = 0
 
 # from pyscf.cc import uccsd
-from ad_afqmc.ccsd_pt import ccsd_pt
+# from ad_afqmc.ccsd_pt import ccsd_pt
 mycc = cc.CCSD(mf,frozen=nfrozen)
 # uccsd.UCCSD.update_amps = ccsd_pt.update_amps
 mycc.kernel()
@@ -33,11 +33,11 @@ options = {'n_eql': 3,
            'n_prop_steps': 50,
             'n_ene_blocks': 5,
             'n_sr_blocks': 5,
-            'n_blocks': 20,
-            'n_walkers': 20,
+            'n_blocks': 10,
+            'n_walkers': 30,
             'seed': 2,
-            'walker_type': 'rhf',
-            'trial': 'ccsd_hf', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, ucisd
+            'walker_type': 'uhf',
+            'trial': 'uccsd_pt_ad', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, ucisd
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
@@ -45,6 +45,6 @@ options = {'n_eql': 3,
             }
 
 from ad_afqmc import pyscf_interface
-from ad_afqmc.ccsd_pt import sample_ccsd_hf
+from ad_afqmc.ccsd_pt import sample_uccsd_pt_ad
 pyscf_interface.prep_afqmc(mycc,options,chol_cut=1e-5)
-sample_ccsd_hf.run_afqmc_ccsd_hf(options,nproc=8)
+sample_uccsd_pt_ad.run_afqmc(options,nproc=8)

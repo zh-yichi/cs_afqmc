@@ -4,7 +4,7 @@ from jax import random
 import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, sampling, stat_utils, mpi_jax
-from ad_afqmc.ccsd_pt import sample_ccsd_pt
+from ad_afqmc.ccsd_pt import sample_uccsd_pt_ad
 import time
 import argparse
 
@@ -30,10 +30,6 @@ ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
     mpi_jax._prep_afqmc())
 
 init_time = time.time()
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
-
 ### initialize propagation
 seed = options["seed"]
 init_walkers = None
@@ -54,8 +50,8 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
-    t, e0, e1 = trial._calc_energy_pt_restricted(
-        prop_data['walkers'][0], ham_data, wave_data)
+    t, e0, e1 = trial._calc_energy_pt(
+        prop_data['walkers'][0][0],prop_data['walkers'][1][0], ham_data, wave_data)
     ept = e0 + e1- t*(e0-h0)
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
@@ -68,7 +64,7 @@ comm.Barrier()
 sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
-        sample_ccsd_pt.propagate_phaseless(
+        sample_uccsd_pt_ad.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler_eq)
 
     blk_wt = np.array([blk_wt], dtype="float32") 
@@ -167,7 +163,7 @@ comm.Barrier()
     
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
-        sample_ccsd_pt.propagate_phaseless(
+        sample_uccsd_pt_ad.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler)
     
     blk_wt = np.array([blk_wt], dtype="float32")
