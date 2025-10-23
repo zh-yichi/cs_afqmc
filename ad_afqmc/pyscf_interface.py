@@ -226,6 +226,7 @@ def prep_afqmc(
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
+            #
             # q2 = basis_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[0][:, norb_frozen:])
             # print("max err a", np.max(abs(q-q2)))
             # q, _ = np.linalg.qr(
@@ -241,6 +242,7 @@ def prep_afqmc(
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
+            #
             # q2 = basis_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[1][:, norb_frozen:])
             # print("max err b", np.max(abs(q-q2)))
             # import pdb

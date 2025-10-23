@@ -109,7 +109,7 @@ def propagate_phaseless(
 
     return prop_data, (wt, o, e)
 
-def run_afqmc_ccsd_hf(options,nproc=None,
+def run_afqmc(options,nproc=None,
                       option_file='options.bin',
                       script='run_afqmc_ccsd_hf.py'):
 

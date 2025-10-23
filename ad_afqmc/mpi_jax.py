@@ -276,6 +276,9 @@ def _prep_afqmc(options=None,option_file="options.bin",
             mo_coeff[0][:, : nelec_sp[0]],
             mo_coeff[1][:, : nelec_sp[1]],
         ]
+        # wave_data["mo_coeff"] = [
+        #     np.eye(norb)[:,:nocc],
+        #     ]
         wave_data["mo_A2B"] = mo_coeff[1].T
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)

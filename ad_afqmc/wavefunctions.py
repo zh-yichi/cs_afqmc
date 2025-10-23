@@ -3645,7 +3645,9 @@ class uccsd_pt2_ad(uhf):
         u_ji = q
         u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
-        mo_t, _ = jnp.linalg.qr(u_occ,mode='complete')
+        mo_t, _ = jnp.linalg.qr(u_occ ,mode='complete')
+        # sgn = jnp.sign(r.diagonal())
+        # mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
         return mo_t
     
     @partial(jit, static_argnums=0)
