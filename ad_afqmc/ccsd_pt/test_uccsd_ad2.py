@@ -37,7 +37,7 @@ options = {'n_eql': 3,
             'n_walkers': 30,
             'seed': 2,
             'walker_type': 'uhf',
-            'trial': 'uccsd_pt_ad', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, ucisd
+            'trial': 'uccsd_pt2_ad', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, ucisd
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
@@ -45,6 +45,6 @@ options = {'n_eql': 3,
             }
 
 from ad_afqmc import pyscf_interface
-from ad_afqmc.ccsd_pt import sample_uccsd_pt_ad
+from ad_afqmc.ccsd_pt import sample_uccsd_pt2
 pyscf_interface.prep_afqmc(mycc,options,chol_cut=1e-5)
-sample_uccsd_pt_ad.run_afqmc(options,nproc=8)
+sample_uccsd_pt2.run_afqmc(options,nproc=8)

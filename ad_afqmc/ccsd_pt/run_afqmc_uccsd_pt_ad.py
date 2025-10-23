@@ -132,7 +132,7 @@ for n in range(1,options["n_eql"]+1):
         # print(
         #     f"  {n:5d} \t {blk_ept[0]:.6f} \t {time.time() - init_time:.2f} "
         # )
-        print(f"  {0:5d} \t {blk_t[0]:.6f} \t"
+        print(f"  {n:5d} \t {blk_t[0]:.6f} \t"
               f"  {blk_e0[0]:.6f} \t {blk_e1[0]:.6f} \t "
               f"  {blk_ept[0]:.6f} \t {time.time() - init_time:.2f}")
     comm.Barrier()
