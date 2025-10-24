@@ -48,17 +48,25 @@ prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
+t1, t2, e0, e1 = trial.calc_energy_pt(prop_data["walkers"], ham_data, wave_data)
+ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2
+ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
+prop_data["e_estimate"] = ept
+prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+
+
 comm.Barrier()
 if rank == 0:
-    t1, t2, e0, e1 = trial._calc_energy_pt(
-        prop_data['walkers'][0][0], prop_data['walkers'][1][0], ham_data, wave_data)
-    ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
+    print(ept)
+    # t1, t2, e0, e1 = trial.calc_energy_pt(
+    #     prop_data['walkers'], ham_data, wave_data)
+    # ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
     print("#   Iter  <exp(t1)>  <t2>  <e0>  <e1>  energy  Walltime")
-    print(f"  {0:5d}  {t1:.6f}  {t2:.6f}"
-          f"  {e0:.6f}   {e1:.6f}   {ept:.6f}"
+    print(f"  {0:5d}  {t1[0]:.6f}  {t2[0]:.6f}"
+          f"  {e0[0]:.6f}   {e1[0]:.6f}   {ept:.6f}"
           f"  {time.time() - init_time:.2f}")
 comm.Barrier()
 
@@ -314,7 +322,7 @@ if rank == 0:
 
     ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
     
-    # (pE/pt1,pE/pt2,pE/pe0,pE/pe1)
+    # dE = (pE/pt1,pE/pt2,pE/pe0,pE/pe1)
     dE = np.array([-1/t1**2*(e0+e1)+2/t1**3*t2*e0,
                    -1/t1**2*e0,
                     1/t1 - 1/t1**2 * t2,

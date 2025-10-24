@@ -1,8 +1,8 @@
 from pyscf import gto, scf, cc
 
-a = 1.05835 # bond length in a cluster
+a = 2 # bond length in a cluster
 d = 10 # distance between each cluster
-na = 3  # size of a cluster (monomer)
+na = 4  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
 elmt = 'H'
 atoms = ""
@@ -10,7 +10,7 @@ for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
     atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis="sto6g",spin = nc, verbose=4)
+mol = gto.M(atom=atoms, basis="sto6g",spin=0*nc, unit='bohr', verbose=4)
 mol.build()
 
 mf = scf.UHF(mol)
@@ -36,7 +36,7 @@ options = {'n_eql': 3,
             'n_blocks': 10,
             'n_walkers': 30,
             'seed': 2,
-            'walker_type': 'uhf',
+            'walker_type': 'rhf',
             'trial': 'uccsd_pt2_ad', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, ucisd
             'dt':0.005,
             'free_projection':False,
