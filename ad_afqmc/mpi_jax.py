@@ -211,6 +211,21 @@ def _prep_afqmc(options=None,option_file="options.bin",
         wave_data.update(trial_wave_data)
         wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
         trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
+    # elif options["trial"] == "ccsd_pt2_ad":
+    #     ham_data['h1_mod'] = h1_mod
+    #     amplitudes = np.load(amp_file)
+    #     t1 = jnp.array(amplitudes["t1"])
+    #     t2 = jnp.array(amplitudes["t2"])
+    #     trial_wave_data = {"t1": t1, "t2": t2}
+    #     wave_data.update(trial_wave_data)
+    #     trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
+    #     nocc = nelec_sp[0]
+    #     trial_mo = trial.thouless_trans(t1)
+    #     # trial_mo = np.eye(norb)[:,:nocc]
+    #     wave_data['mo_coeff'] = trial_mo[:,:nocc]
+    #     rot_t2 = jnp.einsum('il,jk,lakb->iajb',trial_mo[:nocc,:nocc].T,
+    #                trial_mo[:nocc,:nocc].T,t2)
+    #     wave_data['rot_t2'] = rot_t2
     elif options["trial"] == "ccsd_pt2_ad":
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
@@ -218,22 +233,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
         t2 = jnp.array(amplitudes["t2"])
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
-        trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
-        nocc = nelec_sp[0]
-        trial_mo = trial.thouless_trans(t1)
-        # trial_mo = np.eye(norb)[:,:nocc]
-        wave_data['mo_coeff'] = trial_mo[:,:nocc]
-        rot_t2 = jnp.einsum('il,jk,lakb->iajb',trial_mo[:nocc,:nocc].T,
-                   trial_mo[:nocc,:nocc].T,t2)
-        wave_data['rot_t2'] = rot_t2
-    elif options["trial"] == "ccsd_pt2_ad_smt":
-        ham_data['h1_mod'] = h1_mod
-        amplitudes = np.load(amp_file)
-        t1 = jnp.array(amplitudes["t1"])
-        t2 = jnp.array(amplitudes["t2"])
-        trial_wave_data = {"t1": t1, "t2": t2}
-        wave_data.update(trial_wave_data)
-        trial = wavefunctions.ccsd_pt2_ad_smt(
+        trial = wavefunctions.ccsd_pt2_ad(
             norb, nelec_sp, n_batch=options["n_batch"])
         nocc = nelec_sp[0]
         mo_t = trial.thouless_trans(t1)[:,:nocc]
@@ -273,13 +273,10 @@ def _prep_afqmc(options=None,option_file="options.bin",
             norb, nelec_sp, n_batch=options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
         wave_data["mo_coeff"] = [
-            mo_coeff[0][:, : nelec_sp[0]],
-            mo_coeff[1][:, : nelec_sp[1]],
+            mo_coeff[0][:, : noccA],
+            mo_coeff[1][:, : noccB],
         ]
-        # wave_data["mo_coeff"] = [
-        #     np.eye(norb)[:,:nocc],
-        #     ]
-        wave_data["mo_A2B"] = mo_coeff[1].T
+        wave_data["mo_A2B"] = mo_coeff[1].T # <B_p|A_q>
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
@@ -291,6 +288,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
         mo_tb = trial.thouless_trans(t1b)[:,:noccB]
         wave_data['mo_ta'] = mo_ta
         wave_data['mo_tb'] = mo_tb
+        wave_data['mo_tb_A'] = wave_data["mo_A2B"].T @ mo_tb
         wave_data["rot_t2AA"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_ta[:noccA,:noccA].T,mo_ta[:noccA,:noccA].T,t2aa)
         wave_data["rot_t2BB"] = jnp.einsum('ik,jl,kalb->iajb',

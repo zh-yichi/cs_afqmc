@@ -2,9 +2,9 @@ from pyscf import gto, scf, cc
 
 a = 2 # bond length in a cluster
 d = 10 # distance between each cluster
-na = 4  # size of a cluster (monomer)
+na = 2  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
-elmt = 'H'
+elmt = 'O'
 atoms = ""
 for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
@@ -24,10 +24,12 @@ mycc = cc.CCSD(mf,frozen=nfrozen)
 # uccsd.UCCSD.update_amps = ccsd_pt.update_amps
 mycc.kernel()
 
-# mycc.t1 = 5*mycc.t1
-# eris = mycc.ao2mo(mycc.mo_coeff)
-# eccsd = mycc.energy(mycc.t1, mycc.t2, eris)
-# print('ccsd energy with t1 t2: ', mf.e_tot+eccsd)
+mycc.t1 = (10*mycc.t1[0],10*mycc.t1[1])
+eris = mycc.ao2mo(mycc.mo_coeff)
+eccs = mycc.energy(mycc.t1, (0*mycc.t2[0],0*mycc.t2[1],0*mycc.t2[2]), eris)
+print('ccs energy with 10*t1 0*t2: ', mf.e_tot+eccs)
+eccsd = mycc.energy(mycc.t1, mycc.t2, eris)
+print('ccsd energy with 10*t1 t2: ', mf.e_tot+eccsd)
 
 options = {'n_eql': 3,
            'n_prop_steps': 50,

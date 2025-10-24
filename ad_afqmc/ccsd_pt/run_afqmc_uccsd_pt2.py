@@ -57,7 +57,7 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
-    print(ept)
+    # print(ept)
     # t1, t2, e0, e1 = trial.calc_energy_pt(
     #     prop_data['walkers'], ham_data, wave_data)
     # ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0

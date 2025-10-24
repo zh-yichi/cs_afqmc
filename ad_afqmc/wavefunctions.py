@@ -3663,9 +3663,11 @@ class uccsd_pt2_ad(uhf):
         u_ji = q
         u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
-        mo_t, _ = jnp.linalg.qr(u_occ ,mode='complete')
-        # sgn = jnp.sign(r.diagonal())
-        # mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
+        q, _ = jnp.linalg.qr(u_occ)# ,mode='complete')
+        sgn = jnp.sign((q).diagonal())
+        # choose the mo_t s.t it has positive olp with the original mo
+        # <psi'_i|psi_i> > 0
+        mo_t = jnp.einsum("ij,j->ij", q, sgn)
         return mo_t
     
     @partial(jit, static_argnums=0)
@@ -3676,11 +3678,11 @@ class uccsd_pt2_ad(uhf):
         wave_data: dict,
     ) -> complex:
         '''<exp(T1)HF|walker>'''
-
+        # everything in alpha basis
         # walker_dn = wave_data['mo_B'].T @ walker_dn
         olp = jnp.linalg.det(
             wave_data["mo_ta"].T.conj() @ walker_up
-        ) * jnp.linalg.det(wave_data["mo_tb"].T.conj() @ walker_dn)
+        ) * jnp.linalg.det(wave_data["mo_tb_A"].T.conj() @ walker_dn)
 
         return olp
 
@@ -3688,21 +3690,21 @@ class uccsd_pt2_ad(uhf):
     def _tls_exp1(self, x: float, h1_mod: jax.Array, walker_up: jax.Array,
                         walker_dn: jax.Array, wave_data: dict):
         '''
-        unrestricted <ep(T1)HF|exp(x*h1_mod)|walker>/<HF|walker>
+        unrestricted <ep(T1)HF|exp(x*h1_mod)|walker>
         '''
         walker_up_1x = walker_up + x * h1_mod.dot(walker_up)
         walker_dn_1x = walker_dn + x * h1_mod.dot(walker_dn)
-        walker_dn_1x = wave_data['mo_A2B'] @ walker_dn_1x
+        # walker_dn_1x = wave_data['mo_A2B'] @ walker_dn_1x
         olp = self._tls_olp(walker_up_1x, walker_dn_1x, wave_data)
-        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
 
-        return olp/o0
+        return olp
 
     @partial(jit, static_argnums=0)
     def _tls_exp2(self, x: float, chol_i: jax.Array, walker_up: jax.Array,
                     walker_dn: jax.Array, wave_data: dict) -> complex:
         '''
-        <exp(T1)HF|exp(x*h2_mod)|walker>/<HF|walker>
+        <exp(T1)HF|exp(x*h2_mod)|walker>
         '''
 
         walker_up_2x = (
@@ -3715,11 +3717,11 @@ class uccsd_pt2_ad(uhf):
             + x * chol_i.dot(walker_dn)
             + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker_dn))
         )
-        walker_dn_2x = wave_data['mo_A2B'] @ walker_dn_2x
+        # walker_dn_2x = wave_data['mo_A2B'] @ walker_dn_2x
         olp = self._tls_olp(walker_up_2x,walker_dn_2x,wave_data)
-        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
         
-        return olp/o0
+        return olp
     
     @partial(jit, static_argnums=0)
     def _ut2_walker_olp(
@@ -3729,15 +3731,13 @@ class uccsd_pt2_ad(uhf):
         noccA, t2AA = self.nelec[0], wave_data["rot_t2AA"]
         noccB, t2BB = self.nelec[1], wave_data["rot_t2BB"]
         t2AB = wave_data["rot_t2AB"]
-        # convert trial_mo_dn into beta mo_basis
-        # wave_data["mo_B"] = <psi_a|psi_b>
-        mo_A = wave_data['mo_ta'] #@ wave_data["mo_coeff"][0]
-        mo_B = wave_data['mo_tb'] #@ wave_data["mo_B"].T @ wave_data["mo_coeff"][1]
+        mo_A = wave_data['mo_ta'] # in alpha basis
+        mo_B = wave_data['mo_tb'] # in beta basis
         green_a = (
             walker_up.dot(jnp.linalg.inv(mo_A.T.conj() @ walker_up))
         ).T
         # convert walker_dn into beta mo_basis
-        # s.t. green_b in beta basis thus can be contracted with beta amplitude
+        # s.t. green_b can be contracted with beta amplitude
         walker_dn = wave_data["mo_A2B"] @ walker_dn
         green_b = (
             walker_dn.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn))
@@ -3756,21 +3756,21 @@ class uccsd_pt2_ad(uhf):
     def _ut2_exp1(self, x: float, h1_mod: jax.Array, walker_up: jax.Array,
                   walker_dn: jax.Array, wave_data: dict):
         '''
-        unrestricted <ep(T1)HF|T2 exp(x*h1_mod)|walker>/<HF|walker>
+        unrestricted <ep(T1)HF|T2 exp(x*h1_mod)|walker>
         '''
         walker_up_1x = walker_up + x * h1_mod.dot(walker_up)
         walker_dn_1x = walker_dn + x * h1_mod.dot(walker_dn)
         
         olp = self._ut2_walker_olp(walker_up_1x, walker_dn_1x, wave_data)
-        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
 
-        return olp/o0
+        return olp
 
     @partial(jit, static_argnums=0)
     def _ut2_exp2(self, x: float, chol_i: jax.Array, walker_up: jax.Array,
                   walker_dn: jax.Array, wave_data: dict) -> complex:
         '''
-        t_ia <psi_i^a|exp(x*h2_mod)|walker>/<HF|walker>
+        t_ia <psi_i^a|exp(x*h2_mod)|walker>
         '''
 
         walker_up_2x = (
@@ -3785,9 +3785,9 @@ class uccsd_pt2_ad(uhf):
         )
         
         olp = self._ut2_walker_olp(walker_up_2x,walker_dn_2x,wave_data)
-        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
         
-        return olp/o0
+        return olp
 
     @partial(jit, static_argnums=0)
     def _calc_energy_pt(self, walker_up, walker_dn, ham_data, wave_data):
@@ -3843,7 +3843,8 @@ class uccsd_pt2_ad(uhf):
 
         e1 = (d_exp1 + jnp.sum(d2_exp2) / 2.0 )
 
-        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        return jnp.real(t1/o0), jnp.real(t2/o0), jnp.real(e0/o0), jnp.real(e1/o0)
 
     @singledispatchmethod
     def calc_energy_pt(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:

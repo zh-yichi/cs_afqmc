@@ -80,6 +80,9 @@ def prep_afqmc(
             "# If you import pyscf cc modules and use MPI for AFQMC in the same script, finalize MPI before calling the AFQMC driver."
         )
         mf = mf_or_cc._scf
+        # print(mf.mo_coeff)
+        # mo_copy = mf.mo_coeff.copy()
+        # print(mo_copy)
         cc = mf_or_cc
         if cc.frozen is not None:
             norb_frozen = cc.frozen
@@ -215,10 +218,12 @@ def prep_afqmc(
 
     # write trial mo coefficients
     trial_coeffs = np.empty((2, nbasis, nbasis))
-    overlap = mf.get_ovlp(mol)
+    overlap = mf.get_ovlp()
     if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
         uhfCoeffs = np.empty((nbasis, 2 * nbasis))
         if isinstance(mf, scf.uhf.UHF):
+            # alpha
+            print('# recovered !!')
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
                 .T.dot(overlap)
@@ -226,15 +231,9 @@ def prep_afqmc(
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
-            #
-            # q2 = basis_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[0][:, norb_frozen:])
-            # print("max err a", np.max(abs(q-q2)))
-            # q, _ = np.linalg.qr(
-            #    basis_coeff[:, norb_frozen:]
-            #    .T.dot(overlap)
-            #    .dot(mf.mo_coeff[0][:, norb_frozen:])
-            # )
             uhfCoeffs[:, :nbasis] = q
+            q = r = sgn = None
+            # beta
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
                 .T.dot(overlap)
@@ -242,17 +241,20 @@ def prep_afqmc(
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
-            #
-            # q2 = basis_coeff[:, norb_frozen:].T.dot(overlap).dot(mf.mo_coeff[1][:, norb_frozen:])
-            # print("max err b", np.max(abs(q-q2)))
-            # import pdb
-            # pdb.set_trace()
-            # q, _ = np.linalg.qr(
-            #     basis_coeff[:, norb_frozen:]
-            #     .T.dot(overlap)
-            #     .dot(mf.mo_coeff[1][:, norb_frozen:])
-            # )
             uhfCoeffs[:, nbasis:] = q
+            trial_coeffs[0] = uhfCoeffs[:, :nbasis]
+            trial_coeffs[1] = uhfCoeffs[:, nbasis:]
+            # print(mf.mo_coeff[0])
+            # print(mf.mo_coeff[1])
+            # print(mo_copy)
+            # mo_a = np.eye(nbasis)
+            # mo_b_A = (mo_copy[0][:, norb_frozen:].T
+            #     @ overlap
+            #     @ mo_copy[1][:, norb_frozen:])
+            # print(mo_b_A)
+            # trial_coeffs[0] = mo_a
+            # trial_coeffs[1] = mo_b_A
+            np.savez(mo_file, mo_coeff=trial_coeffs)
         else:
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
@@ -264,10 +266,10 @@ def prep_afqmc(
             uhfCoeffs[:, :nbasis] = q
             uhfCoeffs[:, nbasis:] = q
 
-        trial_coeffs[0] = uhfCoeffs[:, :nbasis]
-        trial_coeffs[1] = uhfCoeffs[:, nbasis:]
+            trial_coeffs[0] = uhfCoeffs[:, :nbasis]
+            trial_coeffs[1] = uhfCoeffs[:, nbasis:]
         # np.savetxt("uhf.txt", uhfCoeffs)
-        np.savez(mo_file, mo_coeff=trial_coeffs)
+            np.savez(mo_file, mo_coeff=trial_coeffs)
 
     elif isinstance(mf, scf.rhf.RHF):
         q, _ = np.linalg.qr(
