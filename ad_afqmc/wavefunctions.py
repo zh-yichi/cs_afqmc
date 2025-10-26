@@ -3664,11 +3664,11 @@ class uccsd_pt2_ad(uhf):
         u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
         mo_t, _ = jnp.linalg.qr(u_occ)# ,mode='complete')
-        sgn = jnp.sign((mo_t).diagonal())
-        # print(sgn)
-        # choose the mo_t s.t it has positive olp with the original mo
-        # <psi'_i|psi_i> > 0
-        mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
+        # sgn = jnp.sign((mo_t).diagonal())
+        # # print(sgn)
+        # # choose the mo_t s.t it has positive olp with the original mo
+        # # <psi'_i|psi_i> > 
+        # mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
         return mo_t
     
     @partial(jit, static_argnums=0)
