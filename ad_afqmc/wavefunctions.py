@@ -3663,11 +3663,12 @@ class uccsd_pt2_ad(uhf):
         u_ji = q
         u_ai = r.T
         u_occ = jnp.vstack((u_ji,u_ai))
-        q, _ = jnp.linalg.qr(u_occ)# ,mode='complete')
-        sgn = jnp.sign((q).diagonal())
+        mo_t, _ = jnp.linalg.qr(u_occ)# ,mode='complete')
+        sgn = jnp.sign((mo_t).diagonal())
+        # print(sgn)
         # choose the mo_t s.t it has positive olp with the original mo
         # <psi'_i|psi_i> > 0
-        mo_t = jnp.einsum("ij,j->ij", q, sgn)
+        mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
         return mo_t
     
     @partial(jit, static_argnums=0)
@@ -3679,7 +3680,6 @@ class uccsd_pt2_ad(uhf):
     ) -> complex:
         '''<exp(T1)HF|walker>'''
         # everything in alpha basis
-        # walker_dn = wave_data['mo_B'].T @ walker_dn
         olp = jnp.linalg.det(
             wave_data["mo_ta"].T.conj() @ walker_up
         ) * jnp.linalg.det(wave_data["mo_tb_A"].T.conj() @ walker_dn)
@@ -3694,11 +3694,11 @@ class uccsd_pt2_ad(uhf):
         '''
         walker_up_1x = walker_up + x * h1_mod.dot(walker_up)
         walker_dn_1x = walker_dn + x * h1_mod.dot(walker_dn)
-        # walker_dn_1x = wave_data['mo_A2B'] @ walker_dn_1x
-        olp = self._tls_olp(walker_up_1x, walker_dn_1x, wave_data)
-        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
 
-        return olp
+        olp = self._tls_olp(walker_up_1x, walker_dn_1x, wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+
+        return olp/o0
 
     @partial(jit, static_argnums=0)
     def _tls_exp2(self, x: float, chol_i: jax.Array, walker_up: jax.Array,
@@ -3717,11 +3717,11 @@ class uccsd_pt2_ad(uhf):
             + x * chol_i.dot(walker_dn)
             + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker_dn))
         )
-        # walker_dn_2x = wave_data['mo_A2B'] @ walker_dn_2x
+
         olp = self._tls_olp(walker_up_2x,walker_dn_2x,wave_data)
-        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
         
-        return olp
+        return olp/o0
     
     @partial(jit, static_argnums=0)
     def _ut2_walker_olp(
@@ -3736,15 +3736,14 @@ class uccsd_pt2_ad(uhf):
         green_a = (
             walker_up.dot(jnp.linalg.inv(mo_A.T.conj() @ walker_up))
         ).T
-        # convert walker_dn into beta mo_basis
-        # s.t. green_b can be contracted with beta amplitude
-        walker_dn = wave_data["mo_A2B"] @ walker_dn
+        # convert walker_dn into beta mo_basis s.t.
+        # green_b can be contracted with beta amplitude
+        walker_dn_B = wave_data["mo_A2B"] @ walker_dn
         green_b = (
-            walker_dn.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn))
+            walker_dn_B.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn_B))
         ).T
         green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
-        o0 = self._tls_olp(walker_up,walker_dn,wave_data)
-        # o1 = jnp.einsum("ia,ia", t1A, green_a) + jnp.einsum("ia,ia", t1B, green_b)
+        o0 = self._tls_olp(walker_up,walker_dn,wave_data) # in alpha basis
         o2 = (
             0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
             + 0.5 * jnp.einsum("iajb, ia, jb", t2BB, green_b, green_b)
@@ -3762,9 +3761,9 @@ class uccsd_pt2_ad(uhf):
         walker_dn_1x = walker_dn + x * h1_mod.dot(walker_dn)
         
         olp = self._ut2_walker_olp(walker_up_1x, walker_dn_1x, wave_data)
-        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
 
-        return olp
+        return olp/o0
 
     @partial(jit, static_argnums=0)
     def _ut2_exp2(self, x: float, chol_i: jax.Array, walker_up: jax.Array,
@@ -3785,9 +3784,9 @@ class uccsd_pt2_ad(uhf):
         )
         
         olp = self._ut2_walker_olp(walker_up_2x,walker_dn_2x,wave_data)
-        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
-        
-        return olp
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+
+        return olp/o0
 
     @partial(jit, static_argnums=0)
     def _calc_energy_pt(self, walker_up, walker_dn, ham_data, wave_data):
@@ -3843,8 +3842,8 @@ class uccsd_pt2_ad(uhf):
 
         e1 = (d_exp1 + jnp.sum(d2_exp2) / 2.0 )
 
-        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
-        return jnp.real(t1/o0), jnp.real(t2/o0), jnp.real(e0/o0), jnp.real(e1/o0)
+        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
 
     @singledispatchmethod
     def calc_energy_pt(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:

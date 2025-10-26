@@ -6,14 +6,14 @@
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 8
+# Number of MPI ranks: 5
 #
-# norb: 10
-# nelec: (8, 8)
+# norb: 4
+# nelec: (2, 2)
 #
 # n_eql: 3
 # n_prop_steps: 50
-# n_ene_blocks: 5
+# n_ene_blocks: 1
 # n_sr_blocks: 5
 # n_blocks: 10
 # n_walkers: 30
@@ -36,7 +36,13 @@
 #
 # 
 
-# Propagating with 240 walkers
+# Propagating with 150 walkers
 # Equilibration sweeps:
 #   Iter  <exp(t1)>  <t2>  <e0>  <e1>  energy  Walltime
-      0  0.991825  -0.000000  -179.402423   -0.106483   -148.988418  49.83
+      0  0.994240  -0.000000  -4.231037   -0.076156   -2.165477  17.45
+      1  0.993121  0.072324  -4.295557   -0.321121   -2.166997  35.75
+      2  0.994809  0.070103  -4.299374   -0.313864   -2.166094  53.02
+      3  0.995761  0.080838  -4.312774   -0.351136   -2.165486  54.88
+#
+# Sampling sweeps:
+#  Iter 	 energy 	 error 	 	 Walltime

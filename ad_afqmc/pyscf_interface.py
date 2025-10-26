@@ -119,10 +119,10 @@ def prep_afqmc(
         # ccsd trial #
             if isinstance(cc, UCCSD):
                 t2aa = cc.t2[0] # + 2 * np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[0])
-                t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
+                # t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
                 t2aa = t2aa.transpose(0, 2, 1, 3)
                 t2bb = cc.t2[2] # + 2 * np.einsum("ia,jb->ijab", cc.t1[1], cc.t1[1])
-                t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
+                # t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
                 t2bb = t2bb.transpose(0, 2, 1, 3)
                 t2ab = cc.t2[1] # + np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[1])
                 t2ab = t2ab.transpose(0, 2, 1, 3)
@@ -149,9 +149,11 @@ def prep_afqmc(
     # choose the orbital basis
     if basis_coeff is None:
         if isinstance(mf, scf.uhf.UHF):
-            basis_coeff = mf.mo_coeff[0]
+            mo_copy = mf.mo_coeff.copy()
+            basis_coeff = mf.mo_coeff[0].copy()
         else:
-            basis_coeff = mf.mo_coeff
+            mo_copy = mf.mo_coeff.copy()
+            basis_coeff = mf.mo_coeff.copy()
 
     # calculate cholesky integrals
     print("# Calculating Cholesky integrals")
@@ -223,21 +225,20 @@ def prep_afqmc(
         uhfCoeffs = np.empty((nbasis, 2 * nbasis))
         if isinstance(mf, scf.uhf.UHF):
             # alpha
-            print('# recovered !!')
+            # print(mf.mo_coeff)
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
                 .T.dot(overlap)
-                .dot(mf.mo_coeff[0][:, norb_frozen:])
+                .dot(mo_copy[0][:, norb_frozen:])
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
             uhfCoeffs[:, :nbasis] = q
-            q = r = sgn = None
             # beta
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
                 .T.dot(overlap)
-                .dot(mf.mo_coeff[1][:, norb_frozen:])
+                .dot(mo_copy[1][:, norb_frozen:])
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
