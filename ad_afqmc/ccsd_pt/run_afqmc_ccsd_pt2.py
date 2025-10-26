@@ -4,7 +4,7 @@ from jax import random
 import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, sampling, stat_utils, mpi_jax
-from ad_afqmc.ccsd_pt import sample_ccsd_pt2_smt
+from ad_afqmc.ccsd_pt import sample_ccsd_pt2
 import time
 import argparse
 
@@ -30,10 +30,6 @@ ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
     mpi_jax._prep_afqmc())
 
 init_time = time.time()
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
-
 ### initialize propagation
 seed = options["seed"]
 init_walkers = None
@@ -52,22 +48,32 @@ prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
+t1, t2, e0, e1 = trial.calc_energy_pt(prop_data["walkers"], ham_data, wave_data)
+ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2
+ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
+prop_data["e_estimate"] = ept
+prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+
+
 comm.Barrier()
 if rank == 0:
-    t1, t2, e0, e1 = trial._calc_energy_pt_restricted(
-        prop_data['walkers'][0], ham_data, wave_data)
-    ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
+    # print(ept)
+    # t1, t2, e0, e1 = trial.calc_energy_pt(
+    #     prop_data['walkers'], ham_data, wave_data)
+    # ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
-    print("#   Iter \t energy \t Walltime")
-    print(f"  {0:5d} \t {ept:.6f} \t {time.time() - init_time:.2f}")
+    print("#   Iter  <exp(t1)>  <t2>  <e0>  <e1>  energy  Walltime")
+    print(f"  {0:5d}  {t1[0]:.6f}  {t2[0]:.6f}"
+          f"  {e0[0]:.6f}   {e1[0]:.6f}   {ept:.6f}"
+          f"  {time.time() - init_time:.2f}")
 comm.Barrier()
 
 sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1) =\
-        sample_ccsd_pt2_smt.propagate_phaseless(
+        sample_ccsd_pt2.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler_eq)
 
     blk_wt = np.array([blk_wt], dtype="float32") 
@@ -144,9 +150,12 @@ for n in range(1,options["n_eql"]+1):
 
     comm.Barrier()
     if rank == 0:
-        print(
-            f"  {n:5d} \t {blk_ept[0]:.6f} \t {time.time() - init_time:.2f} "
-        )
+        # print(
+        #     f"  {n:5d} \t {blk_ept[0]:.6f} \t {time.time() - init_time:.2f} "
+        # )
+        print(f"  {n:5d}  {blk_t1[0]:.6f}  {blk_t2[0]:.6f}"
+             f"  {blk_e0[0]:.6f}   {blk_e1[0]:.6f}   {blk_ept[0]:.6f}"
+             f"  {time.time() - init_time:.2f}")
     comm.Barrier()
 
 comm.Barrier()
@@ -173,7 +182,7 @@ comm.Barrier()
     
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1) =\
-        sample_ccsd_pt2_smt.propagate_phaseless(
+        sample_ccsd_pt2.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler)
     
     blk_wt = np.array([blk_wt], dtype="float32")
@@ -290,14 +299,30 @@ if rank == 0:
     glb_blk_e0 = samples_clean[:, 3]
     glb_blk_e1 = samples_clean[:, 4]
 
-    t1 = np.sum(glb_blk_wt * glb_blk_t1)/np.sum(glb_blk_wt)
-    t2 = np.sum(glb_blk_wt * glb_blk_t2)/np.sum(glb_blk_wt)
-    e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-    e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
+    glb_wt = np.sum(glb_blk_wt)
+    rho_t1 = (glb_blk_wt * glb_blk_t1)/glb_wt
+    rho_t2 = (glb_blk_wt * glb_blk_t2)/glb_wt
+    rho_e0 = (glb_blk_wt * glb_blk_e0)/glb_wt
+    rho_e1 = (glb_blk_wt * glb_blk_e1)/glb_wt
+    
+    t1 = np.sum(rho_t1)
+    t2 = np.sum(rho_t2)
+    e0 = np.sum(rho_e0)
+    e1 = np.sum(rho_e1)
+
+    t1_err = np.std(rho_t1)
+    t2_err = np.std(rho_t2)
+    e0_err = np.std(rho_e0)
+    e1_err = np.std(rho_e1)
+
+    # t1 = np.sum(glb_blk_wt * glb_blk_t1)/np.sum(glb_blk_wt)
+    # t2 = np.sum(glb_blk_wt * glb_blk_t2)/np.sum(glb_blk_wt)
+    # e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
+    # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
 
     ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
     
-    # (pE/pt1,pE/pt2,pE/pe0,pE/pe1)
+    # dE = (pE/pt1,pE/pt2,pE/pe0,pE/pe1)
     dE = np.array([-1/t1**2*(e0+e1)+2/t1**3*t2*e0,
                    -1/t1**2*e0,
                     1/t1 - 1/t1**2 * t2,
@@ -313,7 +338,12 @@ if rank == 0:
     ept = f"{ept:.6f}"
 
     print(f"Final Results1:")
-    print(f"AFQMC/CCSD_PT energy: {ept} +/- {ept_err}")
+    print(f'# h0 = {h0:.8f}')
+    print(f"# <exp(t1)> = {t1:.6f} +/- {t1_err:.6f}")
+    print(f"# <t2> = {t2:.6f} +/- {t2_err:.6f}")
+    print(f"# <e0> = {e0:.6f} +/- {e0_err:.6f}")
+    print(f"# <e1> = {e1:.6f} +/- {e1_err:.6f}")
+    print(f"# AFQMC/UCCSD_PT2 energy (covariance): {ept} +/- {ept_err}")
 
     d = np.abs(ept_samples-np.median(ept_samples))
     d_med = np.median(d) + 1e-7
@@ -327,8 +357,7 @@ if rank == 0:
     ept = f"{ept_mean:.6f}"
     ept_err = f"{ept_std/np.sqrt(n):.6f}"
 
-    print(f"Final Results2:")
-    print(f"AFQMC/CCSD_PT energy: {ept} +/- {ept_err}")
-    print(f"total run time: {time.time() - init_time:.2f}")
+    print(f"# AFQMC/UCCSD_PT2 energy (direct obs): {ept} +/- {ept_err}")
+    print(f"# total run time: {time.time() - init_time:.2f}")
 
 comm.Barrier()

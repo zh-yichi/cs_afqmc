@@ -38,7 +38,7 @@ def _block_scan(
 
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    t1, t2, e0, e1 = trial.calc_energy_pt_restricted(
+    t1, t2, e0, e1 = trial.calc_energy_pt(
         prop_data["walkers"],ham_data,wave_data)
     
     # e0 = jnp.where(

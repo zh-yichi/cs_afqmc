@@ -237,7 +237,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
             norb, nelec_sp, n_batch=options["n_batch"])
         nocc = nelec_sp[0]
         mo_t = trial.thouless_trans(t1)[:,:nocc]
-        wave_data['mo_tls'] = mo_t
+        wave_data['mo_t'] = mo_t
         wave_data['mo_coeff'] = np.eye(norb)[:,:nocc]
         rot_t2 = jnp.einsum('il,jk,lakb->iajb',mo_t[:nocc,:nocc].T,
                    mo_t[:nocc,:nocc].T,t2)
