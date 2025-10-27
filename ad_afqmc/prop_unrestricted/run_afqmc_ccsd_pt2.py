@@ -5,6 +5,7 @@ import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, sampling, stat_utils, mpi_jax
 from ad_afqmc.ccsd_pt import sample_ccsd_pt2
+from ad_afqmc.prop_unrestricted import prop_unrestricted
 import time
 import argparse
 
@@ -27,7 +28,7 @@ rank = comm.Get_rank()
 print = partial(print, flush=True)
 
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
-    mpi_jax._prep_afqmc())
+    prop_unrestricted._prep_afqmc())
 
 init_time = time.time()
 ### initialize propagation
@@ -73,11 +74,11 @@ if rank == 0:
           f"  {time.time() - init_time:.2f}")
 comm.Barrier()
 
-sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
+# sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1) =\
         sample_ccsd_pt2.propagate_phaseless(
-            prop_data, ham_data, prop, trial, wave_data, sampler_eq)
+            prop_data, ham_data, prop, trial, wave_data, sampler)
 
     blk_wt = np.array([blk_wt], dtype="float32") 
     blk_t1 = np.array([blk_t1], dtype="float32")

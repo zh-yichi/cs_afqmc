@@ -1,0 +1,86 @@
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-33-generic
+# Version: #33~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 17:02:30 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-33-generic
+# Version: #33~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 17:02:30 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 1
+#
+# norb: 8
+# nelec: (6, 6)
+#
+# n_eql: 3
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 10
+# n_blocks: 10
+# n_walkers: 200
+# seed: 2
+# walker_type: uhf
+# trial: uccsd_pt2_ad
+# dt: 0.005
+# free_projection: False
+# use_gpu: True
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# 
+
+# Propagating with 200 walkers
+# Equilibration sweeps:
+#   Iter  <exp(t1)>  <t2>  <e0>  <e1>  energy  Walltime
+      0  0.999924  0.000000  -48.784838   -0.093891   -149.031612  3.88
+      1  1.000090  0.121519  -48.876812   -5.953032   -149.035665  20.46
+      2  1.000087  0.152973  -48.871929   -7.497358   -149.038735  36.60
+      3  1.000041  0.133342  -48.872036   -6.534622   -149.037375  46.56
+#
+# Sampling sweeps:
+#  Iter 	 energy 	 error 	 	 Walltime
+     1 	 	 -149.037058 	 0.000156 	  66.56
+     2 	 	 -149.037540 	 0.000499 	  76.54
+     3 	 	 -149.037341 	 0.000405 	  86.53
+     4 	 	 -149.037163 	 0.000354 	  96.50
+     5 	 	 -149.037014 	 0.000324 	  106.48
+     6 	 	 -149.036957 	 0.000277 	  116.47
+     7 	 	 -149.037090 	 0.000275 	  126.45
+     8 	 	 -149.036839 	 0.000348 	  136.43
+     9 	 	 -149.036729 	 0.000331 	  146.42
+# Number of outliers in post: 0 
+Final Results1:
+# h0 = -100.14916621
+# <exp(t1)> = 1.000062 +/- 0.000022
+# <t2> = 0.111649 +/- 0.001414
+# <e0> = -48.870628 +/- 0.001232
+# <e1> = -5.475977 +/- 0.069136
+# AFQMC/UCCSD_PT2 energy (covariance): -149.036727 +/- 0.000331
+# remove outliers:  0
+# AFQMC/UCCSD_PT2 energy (direct obs): -149.036713 +/- 0.000334
+# total run time: 146.42

@@ -121,6 +121,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
     wave_data = {}
     wave_data["prjlo"] = options["prjlo"]
     mo_coeff = jnp.array(np.load(mo_file)["mo_coeff"])
+    # mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
     wave_data["rdm1"] = jnp.array(
         [
             mo_coeff[0][:, : nelec_sp[0]] @ mo_coeff[0][:, : nelec_sp[0]].T,

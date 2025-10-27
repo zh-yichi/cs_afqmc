@@ -340,9 +340,11 @@ def prep_afqmc(
         nbasis = mc.ncas
         nao = mf.mol.nao
         chol_a = chol_a.reshape((-1, nao, nao))
+        # a2b = <B|A>
+        # <B|L|B> = <B|A><A|L|A><A|B>
+        # if separate build chol might not be the same number
         s1e = mf.get_ovlp()
         a2b = mf.mo_coeff[1].T @ s1e @ mf.mo_coeff[0]
-        # if separate build chol might not be the same number
         chol_b = np.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
         chol_a = chol_a[:, mc.ncore[0] : mc.ncore[0] + mc.ncas,
                         mc.ncore[0] : mc.ncore[0] + mc.ncas]
@@ -353,6 +355,8 @@ def prep_afqmc(
         v0_b = 0.5 * np.einsum("nik,njk->ij", chol_b, chol_b, optimize="optimal")
         h1e = np.array(h1e)
         h1e_mod = np.array(h1e - np.array([v0_a,v0_b]))
+        # print(h1e[1]-h1e[0])
+        # print(h1e_mod[1]-h1e_mod[0])
         chol = np.array(
             [chol_a.reshape(chol_a.shape[0], -1),
              chol_b.reshape(chol_b.shape[0], -1)])
@@ -362,69 +366,69 @@ def prep_afqmc(
         print(f"# Number of basis functions: {nbasis}")
         print(f"# Number of Cholesky vectors: {chol_a.shape[0]}\n#")
 
-    # write trial mo coefficients
-    trial_coeffs = np.empty((2, nbasis, nbasis))
-    overlap = mf.get_ovlp()
-    if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
-        uhfCoeffs = np.empty((nbasis, 2 * nbasis))
-        if isinstance(mf, scf.uhf.UHF):
-            # alpha
-            # print(mf.mo_coeff)
-            q, r = np.linalg.qr(
-                basis_coeff[:, norb_frozen:]
-                .T.dot(overlap)
-                .dot(mo_copy[0][:, norb_frozen:])
-            )
-            sgn = np.sign(r.diagonal())
-            q = np.einsum("ij,j->ij", q, sgn)
-            uhfCoeffs[:, :nbasis] = q
-            # beta
-            q, r = np.linalg.qr(
-                basis_coeff[:, norb_frozen:]
-                .T.dot(overlap)
-                .dot(mo_copy[1][:, norb_frozen:])
-            )
-            sgn = np.sign(r.diagonal())
-            q = np.einsum("ij,j->ij", q, sgn)
-            uhfCoeffs[:, nbasis:] = q
-            trial_coeffs[0] = uhfCoeffs[:, :nbasis]
-            trial_coeffs[1] = uhfCoeffs[:, nbasis:]
-            # print(mf.mo_coeff[0])
-            # print(mf.mo_coeff[1])
-            # print(mo_copy)
-            # mo_a = np.eye(nbasis)
-            # mo_b_A = (mo_copy[0][:, norb_frozen:].T
-            #     @ overlap
-            #     @ mo_copy[1][:, norb_frozen:])
-            # print(mo_b_A)
-            # trial_coeffs[0] = mo_a
-            # trial_coeffs[1] = mo_b_A
-            np.savez(mo_file, mo_coeff=trial_coeffs)
-        else:
-            q, r = np.linalg.qr(
-                basis_coeff[:, norb_frozen:]
-                .T.dot(overlap)
-                .dot(mf.mo_coeff[:, norb_frozen:])
-            )
-            sgn = np.sign(r.diagonal())
-            q = np.einsum("ij,j->ij", q, sgn)
-            uhfCoeffs[:, :nbasis] = q
-            uhfCoeffs[:, nbasis:] = q
+    # # write trial mo coefficients
+    # trial_coeffs = np.empty((2, nbasis, nbasis))
+    # overlap = mf.get_ovlp()
+    # if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
+    #     uhfCoeffs = np.empty((nbasis, 2 * nbasis))
+    #     if isinstance(mf, scf.uhf.UHF):
+    #         # alpha
+    #         # print(mf.mo_coeff)
+    #         q, r = np.linalg.qr(
+    #             basis_coeff[:, norb_frozen:]
+    #             .T.dot(overlap)
+    #             .dot(mo_copy[0][:, norb_frozen:])
+    #         )
+    #         sgn = np.sign(r.diagonal())
+    #         q = np.einsum("ij,j->ij", q, sgn)
+    #         uhfCoeffs[:, :nbasis] = q
+    #         # beta
+    #         q, r = np.linalg.qr(
+    #             basis_coeff[:, norb_frozen:]
+    #             .T.dot(overlap)
+    #             .dot(mo_copy[1][:, norb_frozen:])
+    #         )
+    #         sgn = np.sign(r.diagonal())
+    #         q = np.einsum("ij,j->ij", q, sgn)
+    #         uhfCoeffs[:, nbasis:] = q
+    #         trial_coeffs[0] = uhfCoeffs[:, :nbasis]
+    #         trial_coeffs[1] = uhfCoeffs[:, nbasis:]
+    #         # print(mf.mo_coeff[0])
+    #         # print(mf.mo_coeff[1])
+    #         # print(mo_copy)
+    #         # mo_a = np.eye(nbasis)
+    #         # mo_b_A = (mo_copy[0][:, norb_frozen:].T
+    #         #     @ overlap
+    #         #     @ mo_copy[1][:, norb_frozen:])
+    #         # print(mo_b_A)
+    #         # trial_coeffs[0] = mo_a
+    #         # trial_coeffs[1] = mo_b_A
+    #         np.savez(mo_file, mo_coeff=trial_coeffs)
+    #     else:
+    #         q, r = np.linalg.qr(
+    #             basis_coeff[:, norb_frozen:]
+    #             .T.dot(overlap)
+    #             .dot(mf.mo_coeff[:, norb_frozen:])
+    #         )
+    #         sgn = np.sign(r.diagonal())
+    #         q = np.einsum("ij,j->ij", q, sgn)
+    #         uhfCoeffs[:, :nbasis] = q
+    #         uhfCoeffs[:, nbasis:] = q
 
-            trial_coeffs[0] = uhfCoeffs[:, :nbasis]
-            trial_coeffs[1] = uhfCoeffs[:, nbasis:]
-        # np.savetxt("uhf.txt", uhfCoeffs)
-            np.savez(mo_file, mo_coeff=trial_coeffs)
+    #         trial_coeffs[0] = uhfCoeffs[:, :nbasis]
+    #         trial_coeffs[1] = uhfCoeffs[:, nbasis:]
+    #     # np.savetxt("uhf.txt", uhfCoeffs)
+    #         np.savez(mo_file, mo_coeff=trial_coeffs)
 
-    elif isinstance(mf, scf.rhf.RHF):
-        q, _ = np.linalg.qr(
-            basis_coeff[:, norb_frozen:]
-            .T.dot(overlap)
-            .dot(mf.mo_coeff[:, norb_frozen:])
-        )
-        trial_coeffs[0] = q
-        trial_coeffs[1] = q
-        np.savez(mo_file, mo_coeff=trial_coeffs)
+    # elif isinstance(mf, scf.rhf.RHF):
+    #     q, _ = np.linalg.qr(
+    #         basis_coeff[:, norb_frozen:]
+    #         .T.dot(overlap)
+    #         .dot(mf.mo_coeff[:, norb_frozen:])
+    #     )
+    #     trial_coeffs[0] = q
+    #     trial_coeffs[1] = q
+    #     np.savez(mo_file, mo_coeff=trial_coeffs)
     
     pyscf_interface.write_dqmc(
         h1e,
@@ -435,36 +439,22 @@ def prep_afqmc(
         enuc,
         ms=mol.spin,
         filename=chol_file,
-        mo_coeffs=trial_coeffs,
     )
 
-import argparse
 import pickle
 import time
 import h5py
 import numpy as np
 from ad_afqmc import config
-
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--use_gpu", action="store_true")
-#     args = parser.parse_args()
-
-#     if args.use_gpu:
-#         config.afqmc_config["use_gpu"] = True
-
-# config.setup_jax()
-# MPI = config.setup_comm()
-# comm = MPI.COMM_WORLD
-# size = comm.Get_size()
-# rank = comm.Get_rank()
-
 from functools import partial
-from ad_afqmc import hamiltonian, propagation, sampling, wavefunctions
+from ad_afqmc import hamiltonian, propagation, sampling
+from ad_afqmc.prop_unrestricted import wavefunctions
 print = partial(print, flush=True)
 
-def _prep_afqmc(options=None,option_file="options.bin",mo_file="mo_coeff.npz",
-                amp_file="amplitudes.npz",chol_file="FCIDUMP_chol"):
+def _prep_afqmc(options=None,
+                option_file="options.bin",
+                amp_file="amplitudes.npz",
+                chol_file="FCIDUMP_chol"):
     
     with h5py.File(chol_file, "r") as fh5:
         [nelec, nmo, ms, nchol] = fh5["header"]
@@ -506,16 +496,10 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file="mo_coeff.npz",
     options["symmetry"] = options.get("symmetry", False)
     options["save_walkers"] = options.get("save_walkers", False)
     options["trial"] = options.get("trial", None)
-    # if options["trial"] is None:
-    #     if rank == 0:
-    #         print(f"# No trial specified in options.")
     options["ene0"] = options.get("ene0", 0.0)
     options["free_projection"] = options.get("free_projection", False)
     options["n_batch"] = options.get("n_batch", 1)
     options["LNO"] = options.get("LNO",False)
-    # if options["LNO"]:
-    #     if rank == 0:
-    #         print("# Using Local Natural Orbital Approximation")
     options['prjlo'] = options.get('prjlo',None)
     options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
@@ -541,26 +525,19 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file="mo_coeff.npz",
             observable = [observable_op, observable_constant]
     except:
         observable = None
-    # print('nchol: ', nchol)
+
     ham = hamiltonian.hamiltonian(nmo)
     ham_data = {}
     ham_data["h0"] = h0
     ham_data["h1"] = jnp.array(h1)
     ham_data["h1_mod"] = jnp.array(h1_mod)
+    nchol = chol[0].shape[0]
     ham_data["chol"] = jnp.array([chol[0].reshape(chol[0].shape[0], -1),
                                   chol[1].reshape(chol[1].shape[0], -1)])
     ham_data["ene0"] = options["ene0"]
 
     wave_data = {}
-    wave_data["prjlo"] = options["prjlo"]
-    # mo_coeff = jnp.array(np.load(mo_file)["mo_coeff"])
     mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
-    # wave_data["rdm1"] = jnp.array(
-    #     [
-    #         mo_coeff[0][:, : nelec_sp[0]] @ mo_coeff[0][:, : nelec_sp[0]].T,
-    #         mo_coeff[1][:, : nelec_sp[1]] @ mo_coeff[1][:, : nelec_sp[1]].T,
-    #     ]
-    # )
     if options["trial"] == "rhf":
         trial = wavefunctions.rhf(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = mo_coeff[0][:, : nelec_sp[0]]
@@ -619,14 +596,6 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file="mo_coeff.npz",
         wave_data.update(trial_wave_data)
         trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
-    # elif options["trial"] == "ccsd_hf":
-    #     amplitudes = np.load(amp_file)
-    #     t1 = jnp.array(amplitudes["t1"])
-    #     t2 = jnp.array(amplitudes["t2"])
-    #     trial_wave_data = {"t1": t1, "t2": t2}
-    #     wave_data.update(trial_wave_data)
-    #     trial = wavefunctions.ccsd_hf(norb, nelec_sp, n_batch=options["n_batch"])
-    #     wave_data["mo_coeff"] = mo_coeff[:,:nelec_sp[0]]
     elif options["trial"] == "ccsd_pt2":
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
@@ -765,6 +734,7 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file="mo_coeff.npz",
         options["n_sr_blocks"],
         options["n_blocks"],
     )
+    sampler.n_chol = nchol
 
     if rank == 0:
         print(f"# norb: {norb}")
@@ -795,7 +765,7 @@ def _prep_afqmc(options=None,option_file="options.bin",mo_file="mo_coeff.npz",
 import os
 def run_afqmc(options,nproc=None,
               option_file='options.bin',
-              script='run_unrestricted_test.py'):
+              script='run_afqmc_ccsd_pt2.py'):
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
