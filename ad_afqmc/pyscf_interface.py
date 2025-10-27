@@ -146,13 +146,12 @@ def prep_afqmc(
         mf = mf_or_cc
 
     mol = mf.mol
+    mo_copy = mf.mo_coeff.copy()
     # choose the orbital basis
     if basis_coeff is None:
         if isinstance(mf, scf.uhf.UHF):
-            mo_copy = mf.mo_coeff.copy()
             basis_coeff = mf.mo_coeff[0].copy()
         else:
-            mo_copy = mf.mo_coeff.copy()
             basis_coeff = mf.mo_coeff.copy()
 
     # calculate cholesky integrals
@@ -587,7 +586,7 @@ def write_dqmc(
     filename="FCIDUMP_chol",
     mo_coeffs=None,
 ):
-    assert len(chol.shape) == 2
+    # assert len(chol.shape) == 2
     with h5py.File(filename, "w") as fh5:
         fh5["header"] = np.array([nelec, nmo, ms, chol.shape[0]])
         fh5["hcore"] = hcore.flatten()

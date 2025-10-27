@@ -1,0 +1,52 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 5
+#
+# norb: 4
+# nelec: (2, 2)
+#
+# n_eql: 3
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 10
+# n_blocks: 10
+# n_walkers: 30
+# seed: 2
+# walker_type: uhf
+# trial: uhf
+# dt: 0.005
+# free_projection: False
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+##################################
+[[ 3.45776940e-06 -1.24900090e-16  6.04110732e-06 -4.44089210e-16]
+ [-1.03216047e-16  1.79605639e-06  0.00000000e+00 -4.08778759e-06]
+ [ 6.04110732e-06 -5.55111512e-16 -3.45776940e-06  3.05311332e-16]
+ [-3.88578059e-16 -4.08778759e-06  4.44089210e-16 -1.79605639e-06]]
+##################################
+# 
+
+# Propagating with 150 walkers
+# Equilibration sweeps:
+#   Iter 	 energy 	 Walltime
+      0 	 -2.088692 	 7.90
