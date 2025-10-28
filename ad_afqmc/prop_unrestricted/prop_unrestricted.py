@@ -319,7 +319,7 @@ def prep_afqmc(
         print(f"# Number of basis functions: {nbasis}")
         print(f"# Number of Cholesky vectors: {chol.shape[0]}\n#")
         chol = chol.reshape((-1, nbasis, nbasis))
-        v0 = 0.5 * np.einsum("nik,njk->ij", chol, chol, optimize="optimal")
+        v0 = 0.5 * jnp.einsum("nik,njk->ij", chol, chol, optimize="optimal")
         h1e_mod = h1e - v0
         chol = chol.reshape((chol.shape[0], -1))
             
@@ -345,19 +345,18 @@ def prep_afqmc(
         # if separate build chol might not be the same number
         s1e = mf.get_ovlp()
         a2b = mf.mo_coeff[1].T @ s1e @ mf.mo_coeff[0]
-        chol_b = np.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
+        chol_b = jnp.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
         chol_a = chol_a[:, mc.ncore[0] : mc.ncore[0] + mc.ncas,
                         mc.ncore[0] : mc.ncore[0] + mc.ncas]
         chol_b = chol_b.reshape((-1, nao, nao))
         chol_b = chol_b[:, mc.ncore[1] : mc.ncore[1] + mc.ncas, 
                         mc.ncore[1] : mc.ncore[1] + mc.ncas]
-        v0_a = 0.5 * np.einsum("nik,njk->ij", chol_a, chol_a, optimize="optimal")
-        v0_b = 0.5 * np.einsum("nik,njk->ij", chol_b, chol_b, optimize="optimal")
-        h1e = np.array(h1e)
-        h1e_mod = np.array(h1e - np.array([v0_a,v0_b]))
-        # print(h1e[1]-h1e[0])
-        # print(h1e_mod[1]-h1e_mod[0])
-        chol = np.array(
+        v0_a = 0.5 * jnp.einsum("nik,njk->ij", chol_a, chol_a, optimize="optimal")
+        v0_b = 0.5 * jnp.einsum("nik,njk->ij", chol_b, chol_b, optimize="optimal")
+        h1e = jnp.array(h1e)
+        h1e_mod = jnp.array(h1e - jnp.array([v0_a,v0_b]))
+
+        chol = jnp.array(
             [chol_a.reshape(chol_a.shape[0], -1),
              chol_b.reshape(chol_b.shape[0], -1)])
         print("# Finished calculating Cholesky integrals\n#")
@@ -366,69 +365,6 @@ def prep_afqmc(
         print(f"# Number of basis functions: {nbasis}")
         print(f"# Number of Cholesky vectors: {chol_a.shape[0]}\n#")
 
-    # # write trial mo coefficients
-    # trial_coeffs = np.empty((2, nbasis, nbasis))
-    # overlap = mf.get_ovlp()
-    # if isinstance(mf, (scf.uhf.UHF, scf.rohf.ROHF)):
-    #     uhfCoeffs = np.empty((nbasis, 2 * nbasis))
-    #     if isinstance(mf, scf.uhf.UHF):
-    #         # alpha
-    #         # print(mf.mo_coeff)
-    #         q, r = np.linalg.qr(
-    #             basis_coeff[:, norb_frozen:]
-    #             .T.dot(overlap)
-    #             .dot(mo_copy[0][:, norb_frozen:])
-    #         )
-    #         sgn = np.sign(r.diagonal())
-    #         q = np.einsum("ij,j->ij", q, sgn)
-    #         uhfCoeffs[:, :nbasis] = q
-    #         # beta
-    #         q, r = np.linalg.qr(
-    #             basis_coeff[:, norb_frozen:]
-    #             .T.dot(overlap)
-    #             .dot(mo_copy[1][:, norb_frozen:])
-    #         )
-    #         sgn = np.sign(r.diagonal())
-    #         q = np.einsum("ij,j->ij", q, sgn)
-    #         uhfCoeffs[:, nbasis:] = q
-    #         trial_coeffs[0] = uhfCoeffs[:, :nbasis]
-    #         trial_coeffs[1] = uhfCoeffs[:, nbasis:]
-    #         # print(mf.mo_coeff[0])
-    #         # print(mf.mo_coeff[1])
-    #         # print(mo_copy)
-    #         # mo_a = np.eye(nbasis)
-    #         # mo_b_A = (mo_copy[0][:, norb_frozen:].T
-    #         #     @ overlap
-    #         #     @ mo_copy[1][:, norb_frozen:])
-    #         # print(mo_b_A)
-    #         # trial_coeffs[0] = mo_a
-    #         # trial_coeffs[1] = mo_b_A
-    #         np.savez(mo_file, mo_coeff=trial_coeffs)
-    #     else:
-    #         q, r = np.linalg.qr(
-    #             basis_coeff[:, norb_frozen:]
-    #             .T.dot(overlap)
-    #             .dot(mf.mo_coeff[:, norb_frozen:])
-    #         )
-    #         sgn = np.sign(r.diagonal())
-    #         q = np.einsum("ij,j->ij", q, sgn)
-    #         uhfCoeffs[:, :nbasis] = q
-    #         uhfCoeffs[:, nbasis:] = q
-
-    #         trial_coeffs[0] = uhfCoeffs[:, :nbasis]
-    #         trial_coeffs[1] = uhfCoeffs[:, nbasis:]
-    #     # np.savetxt("uhf.txt", uhfCoeffs)
-    #         np.savez(mo_file, mo_coeff=trial_coeffs)
-
-    # elif isinstance(mf, scf.rhf.RHF):
-    #     q, _ = np.linalg.qr(
-    #         basis_coeff[:, norb_frozen:]
-    #         .T.dot(overlap)
-    #         .dot(mf.mo_coeff[:, norb_frozen:])
-    #     )
-    #     trial_coeffs[0] = q
-    #     trial_coeffs[1] = q
-    #     np.savez(mo_file, mo_coeff=trial_coeffs)
     
     pyscf_interface.write_dqmc(
         h1e,

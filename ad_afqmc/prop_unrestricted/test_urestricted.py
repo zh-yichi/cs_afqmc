@@ -36,7 +36,7 @@ mf.kernel(dm0=dm)
 # mf.max_cycle = -1
 # mf.kernel(dm0=dm)
 
-nfrozen = 2
+nfrozen = 4
 
 mycc = cc.CCSD(mf,frozen=nfrozen)
 mycc.kernel()
