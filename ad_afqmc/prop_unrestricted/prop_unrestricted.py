@@ -700,8 +700,7 @@ def _prep_afqmc(options=None,
 
 import os
 def run_afqmc(options,nproc=None,
-              option_file='options.bin',
-              script='run_afqmc_ccsd_pt2.py'):
+              option_file='options.bin'):
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
@@ -717,8 +716,12 @@ def run_afqmc(options,nproc=None,
         mpi_prefix = "mpirun "
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
+    if options['trial'] == 'uccsd_pt_ad':
+        script='run_afqmc_ccsd_pt.py'
+    if options['trial'] == 'uccsd_pt2_ad':
+        script='run_afqmc_ccsd_pt2.py'
     path = os.path.abspath(__file__)
-    dir_path = os.path.dirname(path)  
+    dir_path = os.path.dirname(path)
     script = f"{dir_path}/{script}"
     print(f'# AFQMC script: {script}')
     

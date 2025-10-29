@@ -349,6 +349,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
         options["n_sr_blocks"],
         options["n_blocks"],
     )
+    sampler.n_chol = nchol
 
     if rank == 0:
         print(f"# norb: {norb}")

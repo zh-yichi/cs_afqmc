@@ -1,14 +1,10 @@
 import os
-from dataclasses import dataclass
 from functools import partial
-from typing import Any, Tuple
-import numpy as np
+from typing import Tuple
 import pickle
 import jax
 import jax.numpy as jnp
 from jax import jit, lax, random
-from ad_afqmc import wavefunctions
-from ad_afqmc.hamiltonian import hamiltonian
 from ad_afqmc.propagation import propagator
 from ad_afqmc.wavefunctions import wave_function
 from ad_afqmc.sampling import sampler
@@ -29,7 +25,7 @@ def _block_scan(
         shape=(
             sample.n_prop_steps,
             prop.n_walkers,
-            ham_data["chol"].shape[0],
+            sample.n_chol,
         ),
     )
     _step_scan_wrapper = lambda x, y: sample._step_scan(

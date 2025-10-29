@@ -3,8 +3,9 @@ from jax import random
 #from mpi4py import MPI
 import numpy as np
 from jax import numpy as jnp
-from ad_afqmc import config, sampling, stat_utils, mpi_jax
+from ad_afqmc import config, sampling, stat_utils
 from ad_afqmc.ccsd_pt import sample_ccsd_pt
+from ad_afqmc.prop_unrestricted import prop_unrestricted
 import time
 import argparse
 
@@ -27,7 +28,7 @@ rank = comm.Get_rank()
 print = partial(print, flush=True)
 
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
-    mpi_jax._prep_afqmc())
+    prop_unrestricted._prep_afqmc())
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
@@ -53,26 +54,28 @@ prop_data["key"] = random.PRNGKey(seed + rank)
 
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
+t, e0, e1 = trial.calc_energy_pt(
+    prop_data['walkers'], ham_data, wave_data)
+ept_sp = e0 + e1- t*(e0-h0)
+ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
+prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
-    t, e0, e1 = trial._calc_energy_pt_restricted(
-        prop_data['walkers'][0], ham_data, wave_data)
-    ept = e0 + e1- t*(e0-h0)
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
     print("#   Iter \t <t> \t \t <e0> \t \t <e1> \t \t   energy \t Walltime")
-    print(f"  {0:5d} \t {t:.6f} \t {e0:.6f} \t {e1:.6f} \t "
+    print(f"  {0:5d} \t {t[0]:.6f} \t {e0[0]:.6f} \t {e1[0]:.6f} \t "
           f"  {ept:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
-sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
+# sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
         sample_ccsd_pt.propagate_phaseless(
-            prop_data, ham_data, prop, trial, wave_data, sampler_eq)
+            prop_data, ham_data, prop, trial, wave_data, sampler)
 
     blk_wt = np.array([blk_wt], dtype="float32") 
     blk_t = np.array([blk_t], dtype="float32")
@@ -148,9 +151,9 @@ comm.Barrier()
 if rank == 0:
     print("#\n# Sampling sweeps:")
     print("#  Iter \t "
-          "   <t> \t error \t \t"
-          "   <e0> \t error \t \t "
-          "   <e1> \t error \t \t"
+        #   "   <t> \t error \t \t"
+        #   "   <e0> \t error \t \t "
+        #   "   <e1> \t error \t \t"
           "   energy \t error \t \t Walltime")
 comm.Barrier()
 
@@ -282,9 +285,9 @@ for n in range(sampler.n_blocks):
             ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
 
             print(f"  {n:4d} \t \t"
-                  f"  {t:.6f} \t {t_err:.6f} \t"
-                  f"  {e0:.6f} \t {e0_err:.6f} \t"
-                  f"  {e1:.6f} \t {e1_err:.6f} \t"
+                #   f"  {t:.6f} \t {t_err:.6f} \t"
+                #   f"  {e0:.6f} \t {e0_err:.6f} \t"
+                #   f"  {e1:.6f} \t {e1_err:.6f} \t"
                   f"  {ept:.6f} \t {ept_err:.6f} \t"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
