@@ -189,7 +189,6 @@ def prep_afqmc(
     basis_coeff: Optional[np.ndarray] = None,
     norb_frozen: int = 0,
     chol_cut: float = 1e-5,
-    mo_file = "mo_coeff.npz",
     amp_file = "amplitudes.npz",
     chol_file = "FCIDUMP_chol"
 ):
@@ -213,9 +212,6 @@ def prep_afqmc(
             "# If you import pyscf cc modules and use MPI for AFQMC in the same script, finalize MPI before calling the AFQMC driver."
         )
         mf = mf_or_cc._scf
-        # print(mf.mo_coeff)
-        # mo_copy = mf.mo_coeff.copy()
-        # print(mo_copy)
         cc = mf_or_cc
         if cc.frozen is not None:
             norb_frozen = cc.frozen
@@ -279,33 +275,31 @@ def prep_afqmc(
         mf = mf_or_cc
 
     mol = mf.mol
-    mo_copy = mf.mo_coeff.copy()
     # choose the orbital basis
     if basis_coeff is None:
         if isinstance(mf, scf.uhf.UHF):
-            basis_coeff = mf.mo_coeff[0].copy()
+            basis_coeff = mf.mo_coeff[0]
         else:
-            basis_coeff = mf.mo_coeff.copy()
+            basis_coeff = mf.mo_coeff
 
     # calculate cholesky integrals
     print("# Calculating Cholesky integrals")
-    # h1e, chol, nelec, enuc, nbasis = [None] * 5
     
     DFbas = None
     if getattr(mf, "with_df", None) is not None:
         print('# Decomposing ERI with DF')
-        DFbas = mf.with_df.auxmol.basis  # type: ignore
+        DFbas = mf.with_df.auxmol.basis 
 
     # assert norb_frozen * 2 < sum(
     #     nelec
     # ), "Frozen orbitals exceed number of electrons"
-    if 'r' in trial.lower():
+    if 'u' not in trial.lower():
         mc = mcscf.CASSCF(
             mf, mol.nao - norb_frozen, mol.nelectron - 2 * norb_frozen
         )
-        nelec = mc.nelecas  # type: ignore
-        mc.mo_coeff = basis_coeff  # type: ignore
-        h1e, enuc = mc.get_h1eff()  # type: ignore
+        nelec = mc.nelecas
+        mc.mo_coeff = basis_coeff
+        h1e, enuc = mc.get_h1eff()
         chol = chol.reshape((-1, nbasis, nbasis))
         chol = chol[:, mc.ncore : mc.ncore + mc.ncas, 
                     mc.ncore : mc.ncore + mc.ncas]
