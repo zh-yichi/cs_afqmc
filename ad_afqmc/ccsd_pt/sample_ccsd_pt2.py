@@ -25,7 +25,7 @@ def _block_scan(
         shape=(
             sample.n_prop_steps,
             prop.n_walkers,
-            sample.n_chol,
+            ham_data["chol"].shape[0],
         ),
     )
     _step_scan_wrapper = lambda x, y: sample._step_scan(

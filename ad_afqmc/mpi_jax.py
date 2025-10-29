@@ -250,7 +250,8 @@ def _prep_afqmc(options=None,option_file="options.bin",
             mo_coeff[0][:, : nelec_sp[0]],
             mo_coeff[1][:, : nelec_sp[1]],
         ]
-        wave_data["mo_B"] = mo_coeff[1]
+        # wave_data["mo_B"] = mo_coeff[1]
+        wave_data["mo_A2B"] = mo_coeff[1].T # <B_p|A_q>
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
@@ -259,7 +260,7 @@ def _prep_afqmc(options=None,option_file="options.bin",
         t2ab = jnp.array(amplitudes["t2ab"])
         t2bb = jnp.array(amplitudes["t2bb"])
         mo_a_A = wave_data['mo_coeff'][0]
-        mo_b_B = wave_data["mo_B"].T @ wave_data['mo_coeff'][1]
+        mo_b_B = wave_data["mo_A2B"] @ wave_data['mo_coeff'][1]
         noccA, noccB = trial.nelec[0], trial.nelec[1]
         wave_data["rot_t1A"] = mo_a_A[:noccA,:noccA].T @ t1a
         wave_data["rot_t2AA"] = jnp.einsum('ik,jl,kalb->iajb',

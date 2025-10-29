@@ -29,6 +29,8 @@ print = partial(print, flush=True)
 ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
     mpi_jax._prep_afqmc())
 
+# sampler.n_chol = ham_data["chol"].shape[0]
+
 init_time = time.time()
 ### initialize propagation
 seed = options["seed"]
