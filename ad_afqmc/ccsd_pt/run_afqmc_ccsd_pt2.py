@@ -54,7 +54,7 @@ prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 t1, t2, e0, e1 = trial.calc_energy_pt(prop_data["walkers"], ham_data, wave_data)
-ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2
+ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2 
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
 prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]

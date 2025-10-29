@@ -146,13 +146,13 @@ def prep_afqmc(
         mf = mf_or_cc
 
     mol = mf.mol
-    mo_copy = mf.mo_coeff.copy()
+    # mo_copy = mf.mo_coeff.copy()
     # choose the orbital basis
     if basis_coeff is None:
         if isinstance(mf, scf.uhf.UHF):
-            basis_coeff = mf.mo_coeff[0].copy()
+            basis_coeff = mf.mo_coeff[0]
         else:
-            basis_coeff = mf.mo_coeff.copy()
+            basis_coeff = mf.mo_coeff
 
     # calculate cholesky integrals
     print("# Calculating Cholesky integrals")
@@ -228,7 +228,7 @@ def prep_afqmc(
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
                 .T.dot(overlap)
-                .dot(mo_copy[0][:, norb_frozen:])
+                .dot(mf.mo_coeff[0][:, norb_frozen:])
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
@@ -237,7 +237,7 @@ def prep_afqmc(
             q, r = np.linalg.qr(
                 basis_coeff[:, norb_frozen:]
                 .T.dot(overlap)
-                .dot(mo_copy[1][:, norb_frozen:])
+                .dot(mf.mo_coeff[1][:, norb_frozen:])
             )
             sgn = np.sign(r.diagonal())
             q = np.einsum("ij,j->ij", q, sgn)
