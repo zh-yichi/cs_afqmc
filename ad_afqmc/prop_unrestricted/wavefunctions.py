@@ -3282,12 +3282,14 @@ class uccsd_pt2_ad(uhf):
         q, r = jnp.linalg.qr(t1,mode='complete')
         u_ji = q
         u_ai = r.T
-        u_occ = jnp.vstack((u_ji,u_ai))
-        mo_t, _ = jnp.linalg.qr(u_occ)# ,mode='complete')
-        sgn = jnp.sign((mo_t).diagonal())
+        mo_t = jnp.vstack((u_ji,u_ai))
+        mo_t, _ = jnp.linalg.qr(mo_t)# ,mode='complete')
+        # this sgn is a problem when
+        # turn on mol point group symmetry
+        # sgn = jnp.sign((mo_t).diagonal())
         # choose the mo_t s.t it has positive olp with the original mo
         # <psi'_i|psi_i>
-        mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
+        # mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
         return mo_t
     
     @partial(jit, static_argnums=0)

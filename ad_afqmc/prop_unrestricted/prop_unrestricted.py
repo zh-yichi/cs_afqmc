@@ -593,7 +593,7 @@ def _prep_afqmc(options=None,
             mo_coeff[0][:, : noccA],
             mo_coeff[1][:, : noccB],
         ]
-        wave_data["mo_A2B"] = mo_coeff[1].T # <B_p|A_q>
+        #wave_data["mo_A2B"] = mo_coeff[1].T # <B_p|A_q>
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
@@ -605,26 +605,13 @@ def _prep_afqmc(options=None,
         mo_tb = trial.thouless_trans(t1b)[:,:noccB]
         wave_data['mo_ta'] = mo_ta
         wave_data['mo_tb'] = mo_tb
-        wave_data['mo_tb_A'] = wave_data["mo_A2B"].T @ mo_tb
+        #wave_data['mo_tb_A'] = wave_data["mo_A2B"].T @ mo_tb
         wave_data["rot_t2AA"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_ta[:noccA,:noccA].T,mo_ta[:noccA,:noccA].T,t2aa)
         wave_data["rot_t2BB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_tb[:noccB,:noccB].T,mo_tb[:noccB,:noccB].T,t2bb)
         wave_data["rot_t2AB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_ta[:noccA,:noccA].T,mo_tb[:noccB,:noccB].T,t2ab)
-    else:
-        try:
-            with open("trial.pkl", "rb") as f:
-                [trial, trial_wave_data] = pickle.load(f)
-            wave_data.update(trial_wave_data)
-            if rank == 0:
-                print(f"# Read trial of type {type(trial).__name__} from trial.pkl.")
-        except:
-            if rank == 0:
-                print(
-                    "# trial.pkl not found, make sure to construct the trial separately."
-                )
-            trial = None
 
     if options["walker_type"] == "rhf":
         if options["symmetry"]:
