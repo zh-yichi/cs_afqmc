@@ -57,9 +57,6 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
-    # e = jnp.real(trial._calc_energy(
-    #     prop_data['walkers'][0][0],
-    #     prop_data['walkers'][1][0], ham_data, wave_data))
     e_init = prop_data["e_estimate"]
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')

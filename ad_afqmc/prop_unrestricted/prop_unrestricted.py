@@ -134,50 +134,11 @@ def _apply_trotprop(
     ]
     return walkers
 
-@partial(jit, static_argnums=(0, 4, 5))
-def _block_scan(self,prop_data,_x,ham_data,prop,trial,wave_data):
-    """Block scan function. Propagation and energy calculation."""
-    prop_data["key"], subkey = random.split(prop_data["key"])
-    fields = random.normal(
-        subkey,
-        shape=(
-            self.n_prop_steps,
-            prop.n_walkers,
-            ham_data["chol"][0].shape[0],
-        ),
-    )
-    _step_scan_wrapper = lambda x, y: self._step_scan(
-        x, y, ham_data, prop, trial, wave_data
-    )
-    prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-    prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-        prop_data["weights"]
-    )
-    prop_data = prop.orthonormalize_walkers(prop_data)
-    prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    energy_samples = jnp.real(
-        trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
-    )
-    energy_samples = jnp.where(
-        jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-        prop_data["e_estimate"],
-        energy_samples,
-    )
-    block_weight = jnp.sum(prop_data["weights"])
-    block_energy = jnp.sum(energy_samples * prop_data["weights"]) / block_weight
-    prop_data["pop_control_ene_shift"] = (
-        0.9 * prop_data["pop_control_ene_shift"] + 0.1 * block_energy
-    )
-    return prop_data, (block_energy, block_weight)
-
-import struct
-import time
 from functools import partial
 from typing import Optional, Union
 import h5py
 import jax.numpy as jnp
 import numpy as np
-import scipy
 from pyscf import __config__, mcscf, scf
 from pyscf.cc.ccsd import CCSD
 from pyscf.cc.uccsd import UCCSD
@@ -372,13 +333,12 @@ def prep_afqmc(
     )
 
 import pickle
-import time
 import h5py
 import numpy as np
 from ad_afqmc import config
 from functools import partial
-from ad_afqmc import hamiltonian, propagation, sampling
-from ad_afqmc.prop_unrestricted import wavefunctions
+from ad_afqmc import hamiltonian
+from ad_afqmc.prop_unrestricted import wavefunctions, propagation, sampling
 print = partial(print, flush=True)
 
 def _prep_afqmc(options=None,
@@ -593,7 +553,6 @@ def _prep_afqmc(options=None,
             mo_coeff[0][:, : noccA],
             mo_coeff[1][:, : noccB],
         ]
-        #wave_data["mo_A2B"] = mo_coeff[1].T # <B_p|A_q>
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
@@ -605,7 +564,6 @@ def _prep_afqmc(options=None,
         mo_tb = trial.thouless_trans(t1b)[:,:noccB]
         wave_data['mo_ta'] = mo_ta
         wave_data['mo_tb'] = mo_tb
-        #wave_data['mo_tb_A'] = wave_data["mo_A2B"].T @ mo_tb
         wave_data["rot_t2AA"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_ta[:noccA,:noccA].T,mo_ta[:noccA,:noccA].T,t2aa)
         wave_data["rot_t2BB"] = jnp.einsum('ik,jl,kalb->iajb',
@@ -618,7 +576,6 @@ def _prep_afqmc(options=None,
             ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
         else:
             ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
-        #print(f'using {options["n_exp_terms"]} exp_terms')
         prop = propagation.propagator_restricted(
             options["dt"], 
             options["n_walkers"], 
@@ -650,8 +607,8 @@ def _prep_afqmc(options=None,
         options["n_ene_blocks"],
         options["n_sr_blocks"],
         options["n_blocks"],
+        n_chol = nchol
     )
-    sampler.n_chol = nchol
 
     if rank == 0:
         print(f"# norb: {norb}")
@@ -663,19 +620,19 @@ def _prep_afqmc(options=None,
         print("#")
 
     # from ad_afqmc.ccsd_pt import prop_unrestricted
-    import types
+    # import types
 
-    trial._build_measurement_intermediates = types.MethodType(
-        _build_measurement_intermediates, trial)
+    # trial._build_measurement_intermediates = types.MethodType(
+    #     _build_measurement_intermediates, trial)
 
-    prop._build_propagation_intermediates = types.MethodType(
-        _build_propagation_intermediates, prop)
+    # prop._build_propagation_intermediates = types.MethodType(
+    #     _build_propagation_intermediates, prop)
 
-    prop._apply_trotprop = types.MethodType(
-        _apply_trotprop, prop)
+    # prop._apply_trotprop = types.MethodType(
+    #     _apply_trotprop, prop)
     
-    sampler._block_scan = types.MethodType(
-        _block_scan, sampler)
+    # sampler._block_scan = types.MethodType(
+    #     _block_scan, sampler)
 
     return ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
 
@@ -699,8 +656,10 @@ def run_afqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     if options['trial'] == 'uccsd_pt_ad':
         script='run_afqmc_ccsd_pt.py'
-    if options['trial'] == 'uccsd_pt2_ad':
+    elif options['trial'] == 'uccsd_pt2_ad':
         script='run_afqmc_ccsd_pt2.py'
+    else:
+        script='run_unrestricted_test.py'
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
     script = f"{dir_path}/{script}"

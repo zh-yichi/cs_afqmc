@@ -719,26 +719,20 @@ class uhf(wave_function):
         h0, rot_h1, rot_chol = ham_data["h0"], ham_data["rot_h1"], ham_data["rot_chol"]
         ene0 = h0
         green_walker = self._calc_green(walker_up, walker_dn, wave_data)
-        ene1 = jnp.sum(green_walker[0] * rot_h1[0]) + jnp.sum(
-            green_walker[1] * rot_h1[1]
-        )
-        f_up = jnp.einsum(
-            "gij,jk->gik", rot_chol[0], green_walker[0].T, optimize="optimal"
-        )
-        f_dn = jnp.einsum(
-            "gij,jk->gik", rot_chol[1], green_walker[1].T, optimize="optimal"
-        )
+        ene1 = jnp.sum(green_walker[0] * rot_h1[0]) \
+             + jnp.sum(green_walker[1] * rot_h1[1])
+        f_up = jnp.einsum("gij,jk->gik", rot_chol[0], green_walker[0].T,
+                          optimize="optimal")
+        f_dn = jnp.einsum("gij,jk->gik", rot_chol[1], green_walker[1].T,
+                          optimize="optimal")
         c_up = vmap(jnp.trace)(f_up)
         c_dn = vmap(jnp.trace)(f_dn)
         exc_up = jnp.sum(vmap(lambda x: x * x.T)(f_up))
         exc_dn = jnp.sum(vmap(lambda x: x * x.T)(f_dn))
-        ene2 = (
-            jnp.sum(c_up * c_up)
-            + jnp.sum(c_dn * c_dn)
-            + 2.0 * jnp.sum(c_up * c_dn)
-            - exc_up
-            - exc_dn
-        ) / 2.0
+        ene2 = (jnp.sum(c_up * c_up)
+              + jnp.sum(c_dn * c_dn)
+              + 2.0 * jnp.sum(c_up * c_dn)
+              - exc_up - exc_dn) / 2.0
 
         return ene2 + ene1 + ene0
 
@@ -814,7 +808,7 @@ class uhf(wave_function):
         ]
         return wave_data
 
-    @partial(jit, static_argnums=0)
+    @partial(jit, static_argnums=(0,))
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
         ham_data["h1"] = (
             ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
@@ -830,12 +824,12 @@ class uhf(wave_function):
             jnp.einsum(
                 "pi,gij->gpj",
                 wave_data["mo_coeff"][0].T.conj(),
-                ham_data["chol"].reshape(-1, self.norb, self.norb),
+                ham_data["chol"][0].reshape(-1, self.norb, self.norb),
             ),
             jnp.einsum(
                 "pi,gij->gpj",
                 wave_data["mo_coeff"][1].T.conj(),
-                ham_data["chol"].reshape(-1, self.norb, self.norb),
+                ham_data["chol"][1].reshape(-1, self.norb, self.norb),
             ),
         ]
         return ham_data
@@ -1918,17 +1912,14 @@ class UCISD(wave_function_auto):
         noccA, ci1A, ci2AA = self.nelec[0], wave_data["ci1A"], wave_data["ci2AA"]
         noccB, ci1B, ci2BB = self.nelec[1], wave_data["ci1B"], wave_data["ci2BB"]
         ci2AB = wave_data["ci2AB"]
-        moA, moB = wave_data["mo_coeff"][0], wave_data["mo_coeff"][1]
+        # moA, moB = wave_data["mo_coeff"][0], wave_data["mo_coeff"][1]
+        # walker_dn_B = moB.T.dot(
+        #     walker_dn[:, :noccB]
+        # )  # put walker_dn in the basis of alpha reference
 
-        walker_dn_B = moB.T.dot(
-            walker_dn[:, :noccB]
-        )  # put walker_dn in the basis of alpha reference
+        GFA, GFB = self._calc_green(walker_up, walker_dn)
 
-        GFA, GFB = self._calc_green(walker_up, walker_dn_B)
-
-        o0 = jnp.linalg.det(walker_up[:noccA, :]) * jnp.linalg.det(
-            walker_dn_B[:noccB, :]
-        )
+        o0 = jnp.linalg.det(walker_up[:noccA, :]) * jnp.linalg.det(walker_dn[:noccB, :])
 
         o1 = jnp.einsum("ia,ia", ci1A, GFA[:, noccA:]) + jnp.einsum(
             "ia,ia", ci1B, GFB[:, noccB:]
@@ -2361,6 +2352,14 @@ class ucisd(wave_function):
     nelec: Tuple[int, int]
     n_batch: int = 1
 
+    def _calc_rdm1(self, wave_data: dict) -> jax.Array:
+        noccA, noccB = self.nelec[0], self.nelec[1]
+        dm_up = (wave_data["mo_coeff"][0][:,:noccA] 
+                 @ wave_data["mo_coeff"][0][:,:noccA].T.conj())
+        dm_dn = (wave_data["mo_coeff"][1][:,:noccB] 
+                 @ wave_data["mo_coeff"][1][:,:noccB].T.conj())
+        return jnp.array([dm_up, dm_dn])
+
     @partial(jit, static_argnums=0)
     def _calc_overlap(
         self, walker_up: jax.Array, walker_dn: jax.Array, wave_data: dict
@@ -2368,22 +2367,14 @@ class ucisd(wave_function):
         noccA, ci1A, ci2AA = self.nelec[0], wave_data["ci1A"], wave_data["ci2AA"]
         noccB, ci1B, ci2BB = self.nelec[1], wave_data["ci1B"], wave_data["ci2BB"]
         ci2AB = wave_data["ci2AB"]
-        _, moB = wave_data["mo_coeff"][0], wave_data["mo_coeff"][1]
-        walker_dn_B = moB.T.dot(walker_dn[:, :noccB])
-        green_a = (walker_up.dot(jnp.linalg.inv(walker_up[: walker_up.shape[1], :]))).T
-        green_b = (
-            walker_dn_B.dot(jnp.linalg.inv(walker_dn_B[: walker_dn_B.shape[1], :]))
-        ).T
+        green_a = (walker_up.dot(jnp.linalg.inv(walker_up[: noccA, :]))).T
+        green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[: noccB, :]))).T
         green_a, green_b = green_a[:, noccA:], green_b[:, noccB:]
-        o0 = jnp.linalg.det(walker_up[:noccA, :]) * jnp.linalg.det(
-            walker_dn_B[:noccB, :]
-        )
+        o0 = jnp.linalg.det(walker_up[:noccA, :]) * jnp.linalg.det(walker_dn[:noccB, :])
         o1 = jnp.einsum("ia,ia", ci1A, green_a) + jnp.einsum("ia,ia", ci1B, green_b)
-        o2 = (
-            0.5 * jnp.einsum("iajb, ia, jb", ci2AA, green_a, green_a)
+        o2 = (0.5 * jnp.einsum("iajb, ia, jb", ci2AA, green_a, green_a)
             + 0.5 * jnp.einsum("iajb, ia, jb", ci2BB, green_b, green_b)
-            + jnp.einsum("iajb, ia, jb", ci2AB, green_a, green_b)
-        )
+            + jnp.einsum("iajb, ia, jb", ci2AB, green_a, green_b))
         return (1.0 + o1 + o2) * o0
 
     @partial(jit, static_argnums=0)
@@ -2398,16 +2389,15 @@ class ucisd(wave_function):
         nocc_a, ci1_a, ci2_aa = self.nelec[0], wave_data["ci1A"], wave_data["ci2AA"]
         nocc_b, ci1_b, ci2_bb = self.nelec[1], wave_data["ci1B"], wave_data["ci2BB"]
         ci2_ab = wave_data["ci2AB"]
-        walker_dn_b = wave_data["mo_coeff"][1].T.dot(walker_dn[:, :nocc_b])
         green_a = (walker_up.dot(jnp.linalg.inv(walker_up[:nocc_a, :]))).T
-        green_b = (walker_dn_b.dot(jnp.linalg.inv(walker_dn_b[:nocc_b, :]))).T
+        green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[:nocc_b, :]))).T
         green_occ_a = green_a[:, nocc_a:].copy()
         green_occ_b = green_b[:, nocc_b:].copy()
         greenp_a = jnp.vstack((green_occ_a, -jnp.eye(self.norb - nocc_a)))
         greenp_b = jnp.vstack((green_occ_b, -jnp.eye(self.norb - nocc_b)))
 
-        chol_a = ham_data["chol"].reshape(-1, self.norb, self.norb)
-        chol_b = ham_data["chol_b"].reshape(-1, self.norb, self.norb)
+        chol_a = ham_data["chol"][0].reshape(-1, self.norb, self.norb)
+        chol_b = ham_data["chol"][1].reshape(-1, self.norb, self.norb)
         rot_chol_a = chol_a[:, : self.nelec[0], :]
         rot_chol_b = chol_b[:, : self.nelec[1], :]
         lg_a = jnp.einsum("gpj,pj->g", rot_chol_a, green_a, optimize="optimal")
@@ -2466,7 +2456,6 @@ class ucisd(wave_function):
         nocc_a, ci1_a, ci2_aa = self.nelec[0], wave_data["ci1A"], wave_data["ci2AA"]
         nocc_b, ci1_b, ci2_bb = self.nelec[1], wave_data["ci1B"], wave_data["ci2BB"]
         ci2_ab = wave_data["ci2AB"]
-        # walker_dn_b = wave_data["mo_coeff"][1].T.dot(walker_dn[:, :nocc_b])
         green_a = (walker_up.dot(jnp.linalg.inv(walker_up[:nocc_a, :]))).T
         green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[:nocc_b, :]))).T
         green_occ_a = green_a[:, nocc_a:].copy()
@@ -2478,8 +2467,8 @@ class ucisd(wave_function):
         chol_b = ham_data["chol"][1].reshape(-1, self.norb, self.norb)
         rot_chol_a = chol_a[:, :nocc_a, :]
         rot_chol_b = chol_b[:, :nocc_b, :]
-        h1_a = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        h1_b = ham_data["h1_b"]
+        h1_a = ham_data["h1"][0]
+        h1_b = ham_data["h1"][1]
         hg_a = jnp.einsum("pj,pj->", h1_a[:nocc_a, :], green_a)
         hg_b = jnp.einsum("pj,pj->", h1_b[:nocc_b, :], green_b)
         hg = hg_a + hg_b
@@ -2644,30 +2633,22 @@ class ucisd(wave_function):
         e2 = e2_0 + e2_1 + e2_2
 
         # overlap
-        overlap_1 = ci1g  # jnp.einsum("ia,ia", ci1, green_occ)
+        overlap_1 = ci1g
         overlap_2 = gci2g
         overlap = 1.0 + overlap_1 + overlap_2
         return (e1 + e2) / overlap + e0
 
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-        mo_coeff_b = wave_data["mo_coeff"][1]
-        ham_data["h1_b"] = mo_coeff_b.T @ ham_data["h1"][1] @ mo_coeff_b
-        ham_data["chol_b"] = jnp.einsum(
-            "pi,gij,jq->gpq",
-            mo_coeff_b.T,
-            ham_data["chol"].reshape(-1, self.norb, self.norb),
-            mo_coeff_b,
-        )
         ham_data["lci1_a"] = jnp.einsum(
             "git,pt->gip",
-            ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
+            ham_data["chol"][0].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
             wave_data["ci1A"],
             optimize="optimal",
         )
         ham_data["lci1_b"] = jnp.einsum(
             "git,pt->gip",
-            ham_data["chol_b"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[1] :],
+            ham_data["chol"][1].reshape(-1, self.norb, self.norb)[:, :, self.nelec[1] :],
             wave_data["ci1B"],
             optimize="optimal",
         )
@@ -2696,7 +2677,6 @@ class ccsd_pt(rhf):
         greenp = jnp.vstack((green_occ, -jnp.eye(self.norb - nocc)))
 
         chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
-        # rot_chol = ham_data["rot_chol"]
         rot_chol = chol[:, : self.nelec[0], :]
         h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
         hg = jnp.einsum("pj,pj->", h1[:nocc, :], green)
@@ -3101,9 +3081,9 @@ class ccsd_pt2_ad(rhf):
         _, exp2_0 = lax.scan(scanned_fun, (0.0, walker, wave_data), chol)
         _, exp2_m = lax.scan(scanned_fun, (-1.0 * eps, walker, wave_data), chol)
         d2_exp2 = (exp2_p - 2.0 * exp2_0 + exp2_m) / eps / eps
-    
+
         e0 = (d_exp1 + jnp.sum(d2_exp2) / 2.0 )
-        
+
         d_exp1, d2_exp2 = None, None
         exp2_p, exp2_0, exp2_m = None, None, None
 
@@ -3156,8 +3136,10 @@ class uccsd_pt_ad(uhf):
         noccA, t1A, t2AA = self.nelec[0], wave_data["rot_t1A"], wave_data["rot_t2AA"]
         noccB, t1B, t2BB = self.nelec[1], wave_data["rot_t1B"], wave_data["rot_t2BB"]
         t2AB = wave_data["rot_t2AB"]
-        green_a = (walker_up.dot(jnp.linalg.inv(wave_data["mo_coeff"][0].T.conj() @ walker_up))).T
-        green_b = (walker_dn.dot(jnp.linalg.inv(wave_data["mo_coeff"][1].T.conj() @ walker_dn))).T
+        # green_a = (walker_up.dot(jnp.linalg.inv(wave_data["mo_coeff"][0].T.conj() @ walker_up))).T
+        # green_b = (walker_dn.dot(jnp.linalg.inv(wave_data["mo_coeff"][1].T.conj() @ walker_dn))).T
+        green_a = (walker_up.dot(jnp.linalg.inv(walker_up[:noccA,:noccA]))).T
+        green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[:noccB,:noccB]))).T
         green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
         o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
         o1 = jnp.einsum("ia,ia", t1A, green_a) + jnp.einsum("ia,ia", t1B, green_b)
@@ -3300,10 +3282,9 @@ class uccsd_pt2_ad(uhf):
         wave_data: dict,
     ) -> complex:
         '''<exp(T1)HF|walker>'''
-        # everything in alpha basis
-        olp = jnp.linalg.det(
-            wave_data["mo_ta"].T.conj() @ walker_up
-        ) * jnp.linalg.det(wave_data["mo_tb"].T.conj() @ walker_dn)
+
+        olp = jnp.linalg.det(wave_data["mo_ta"].T.conj() @ walker_up
+            ) * jnp.linalg.det(wave_data["mo_tb"].T.conj() @ walker_dn)
 
         return olp
 
@@ -3313,6 +3294,7 @@ class uccsd_pt2_ad(uhf):
         '''
         unrestricted <ep(T1)HF|exp(x*h1_mod)|walker>
         '''
+
         walker_up_1x = walker_up + x * h1_mod[0].dot(walker_up)
         walker_dn_1x = walker_dn + x * h1_mod[1].dot(walker_dn)
 
@@ -3358,11 +3340,9 @@ class uccsd_pt2_ad(uhf):
         green_b = (walker_dn.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn))).T
         green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
         o0 = self._tls_olp(walker_up,walker_dn,wave_data)
-        o2 = (
-            0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
+        o2 = (0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
             + 0.5 * jnp.einsum("iajb, ia, jb", t2BB, green_b, green_b)
-            + jnp.einsum("iajb, ia, jb", t2AB, green_a, green_b)
-        )
+            + jnp.einsum("iajb, ia, jb", t2AB, green_a, green_b))
         return o2 * o0
 
     @partial(jit, static_argnums=0)

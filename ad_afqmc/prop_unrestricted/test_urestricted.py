@@ -5,39 +5,20 @@ a = 2 # bond length in a cluster
 d = 10 # distance between each cluster
 na = 2  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
-elmt = 'O'
+s = 0 # spin per monomer
+elmt = 'H'
 atoms = ""
 for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
     atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis="sto6g",spin=0*nc, unit='bohr', verbose=4)
+mol = gto.M(atom=atoms, basis="sto6g",spin=s*nc, unit='bohr', verbose=4)
 mol.build()
 
 mf = scf.UHF(mol)
-# mf.chkfile = './o2.chk'
-# mf.init_guess = 'chk'
-# mf.max_cycle = -1
-e = mf.kernel()
-# mf.mo_coeff[1] = mf.mo_coeff[0].copy()
+mf.kernel()
 
-mo = mf.stability()[0]
-dm = mf.make_rdm1(mo,mf.mo_occ)
-mf.kernel(dm0=dm)
-mo = mf.stability()[0]
-dm = mf.make_rdm1(mo,mf.mo_occ)
-mf.kernel(dm0=dm)
-mo = mf.stability()[0]
-mdm = mf.make_rdm1(mo,mf.mo_occ)
-mf.kernel(dm0=dm)
-
-# mf.mo_coeff[1] = mf.mo_coeff[0].copy()
-# dm = mf.make_rdm1(mf.mo_coeff,mf.mo_occ)
-# mf.max_cycle = -1
-# mf.kernel(dm0=dm)
-
-nfrozen = 4
-
+nfrozen = 0
 mycc = cc.CCSD(mf,frozen=nfrozen)
 mycc.kernel()
 
@@ -46,14 +27,14 @@ options = {'n_eql': 3,
             'n_ene_blocks': 5,
             'n_sr_blocks': 10,
             'n_blocks': 10,
-            'n_walkers': 200,
+            'n_walkers': 5,
             'seed': 2,
             'walker_type': 'uhf',
             'trial': 'uccsd_pt2_ad', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, uccsd_pt, uccsd_pt_ad, uccsd_pt2_ad
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
-            'use_gpu': True,
+            'use_gpu': False,
             }
 
 from jax import config
@@ -62,9 +43,9 @@ config.update("jax_enable_x64", True)
 # from ad_afqmc import config as af_config
 # af_config.afqmc_config = {"use_gpu": True}
 
-from ad_afqmc import pyscf_interface, run_afqmc
+# from ad_afqmc import pyscf_interface, run_afqmc
 from ad_afqmc.prop_unrestricted import prop_unrestricted
-prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-6)
-prop_unrestricted.run_afqmc(options)
+prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-5)
+prop_unrestricted.run_afqmc(options,nproc=5)
 # pyscf_interface.prep_afqmc(mf,options,chol_cut=1e-5)
 # run_afqmc.run_afqmc(options,nproc=5)
