@@ -376,7 +376,7 @@ class propagator_unrestricted(propagator_restricted):
                 1.0j
                 * jnp.sqrt(self.dt)
                 * field_batch.dot(ham_data["chol"][1]).reshape(
-                    batch_size, walkers[0].shape[1], walkers[0].shape[1]
+                    batch_size, walkers[1].shape[1], walkers[1].shape[1]
                 )
             )
             # alpha

@@ -3460,3 +3460,235 @@ class uccsd_pt2_ad(uhf):
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
+
+@dataclass
+class uccsd_pt2_true_ad(uhf):
+    """differential form of the CCSD_PT2 (exact T1) wave function."""
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    @partial(jit, static_argnums=0)
+    def thouless_trans(self, t1):
+        ''' thouless transformation |psi'> = exp(t1)|psi>
+            gives the transformed mo_occrep in the 
+            original mo basis <psi_p|psi'_i>
+            t = t_ia
+            t_ia = c_ik c.T_ka
+            c_ik = <psi_i|psi'_k>
+        '''
+        q, r = jnp.linalg.qr(t1,mode='complete')
+        u_ji = q
+        u_ai = r.T
+        mo_t = jnp.vstack((u_ji,u_ai))
+        mo_t, _ = jnp.linalg.qr(mo_t)# ,mode='complete')
+        # this sgn is a problem when
+        # turn on mol point group symmetry
+        # sgn = jnp.sign((mo_t).diagonal())
+        # choose the mo_t s.t it has positive olp with the original mo
+        # <psi'_i|psi_i>
+        # mo_t = jnp.einsum("ij,j->ij", mo_t, sgn)
+        return mo_t
+    
+    @partial(jit, static_argnums=0)
+    def _tls_olp(
+        self,
+        walker_up: jax.Array,
+        walker_dn: jax.Array,
+        wave_data: dict,
+    ) -> complex:
+        '''<exp(T1)HF|walker>'''
+
+        olp = jnp.linalg.det(wave_data["mo_ta"].T.conj() @ walker_up
+            ) * jnp.linalg.det(wave_data["mo_tb"].T.conj() @ walker_dn)
+
+        return olp
+
+    @partial(jit, static_argnums=0)
+    def _tls_exp1(self, x: float, h1_mod: jax.Array, walker_up: jax.Array,
+                        walker_dn: jax.Array, wave_data: dict):
+        '''
+        unrestricted <ep(T1)HF|exp(x*h1_mod)|walker>
+        '''
+
+        walker_up_1x = walker_up + x * h1_mod[0].dot(walker_up)
+        walker_dn_1x = walker_dn + x * h1_mod[1].dot(walker_dn)
+
+        olp = self._tls_olp(walker_up_1x, walker_dn_1x, wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+
+        return olp/o0
+
+    @partial(jit, static_argnums=0)
+    def _tls_exp2(self, x: float, chol_i: jax.Array, walker_up: jax.Array,
+                    walker_dn: jax.Array, wave_data: dict) -> complex:
+        '''
+        <exp(T1)HF|exp(x*h2_mod)|walker>
+        '''
+
+        walker_up_2x = (
+            walker_up
+            + x * chol_i[0].dot(walker_up)
+            + x**2 / 2.0 * chol_i[0].dot(chol_i[0].dot(walker_up))
+        )
+        walker_dn_2x = (
+            walker_dn
+            + x * chol_i[1].dot(walker_dn)
+            + x**2 / 2.0 * chol_i[1].dot(chol_i[1].dot(walker_dn))
+        )
+
+        olp = self._tls_olp(walker_up_2x,walker_dn_2x,wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        
+        return olp/o0
+    
+    @partial(jit, static_argnums=0)
+    def _ut2_walker_olp(
+        self, walker_up: jax.Array, walker_dn: jax.Array, wave_data: dict
+    ) -> complex:
+        '''<exp(T1)HF|(t1+t2)|walker> = (t_ia G_ia + t_iajb G_iajb) * <exp(T1)HF|walker>'''
+        noccA, t2AA = self.nelec[0], wave_data["rot_t2AA"]
+        noccB, t2BB = self.nelec[1], wave_data["rot_t2BB"]
+        t2AB = wave_data["rot_t2AB"]
+        mo_A = wave_data['mo_ta'] # in alpha basis
+        mo_B = wave_data['mo_tb'] # in beta basis
+        green_a = (walker_up.dot(jnp.linalg.inv(mo_A.T.conj() @ walker_up))).T
+        green_b = (walker_dn.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn))).T
+        green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
+        o0 = self._tls_olp(walker_up,walker_dn,wave_data)
+        o2 = (0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
+            + 0.5 * jnp.einsum("iajb, ia, jb", t2BB, green_b, green_b)
+            + jnp.einsum("iajb, ia, jb", t2AB, green_a, green_b))
+        return o2 * o0
+
+    @partial(jit, static_argnums=0)
+    def _ut2_exp1(self, x: float, h1_mod: jax.Array, walker_up: jax.Array,
+                  walker_dn: jax.Array, wave_data: dict):
+        '''
+        unrestricted <ep(T1)HF|T2 exp(x*h1_mod)|walker>
+        '''
+        walker_up_1x = walker_up + x * h1_mod[0].dot(walker_up)
+        walker_dn_1x = walker_dn + x * h1_mod[1].dot(walker_dn)
+        
+        olp = self._ut2_walker_olp(walker_up_1x, walker_dn_1x, wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+
+        return olp/o0
+
+    @partial(jit, static_argnums=0)
+    def _ut2_exp2(self, x: float, chol_i: jax.Array, walker_up: jax.Array,
+                  walker_dn: jax.Array, wave_data: dict) -> complex:
+        '''
+        t_ia <psi_i^a|exp(x*h2_mod)|walker>
+        '''
+
+        walker_up_2x = (
+            walker_up
+            + x * chol_i[0].dot(walker_up)
+            + x**2 / 2.0 * chol_i[0].dot(chol_i[0].dot(walker_up))
+        )
+        walker_dn_2x = (
+            walker_dn
+            + x * chol_i[1].dot(walker_dn)
+            + x**2 / 2.0 * chol_i[1].dot(chol_i[1].dot(walker_dn))
+        )
+        
+        olp = self._ut2_walker_olp(walker_up_2x,walker_dn_2x,wave_data)
+        o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+
+        return olp/o0
+    
+    @partial(jit, static_argnums=0)
+    def _d2_tls_exp2_i(self,chol_i,walker_up,walker_dn,wave_data):
+        x = 0.0
+        f = lambda a: self._tls_exp2(a,chol_i,walker_up,walker_dn,wave_data)
+        _, d2f = jax.jvp(lambda x: jax.jvp(f, [x], [1.0])[1], [x], [1.0])
+        return d2f
+
+    @partial(jit, static_argnums=0)
+    def _d2_ut2_exp2_i(self,chol_i,walker_up,walker_dn,wave_data):
+        x = 0.0
+        f = lambda a: self._ut2_exp2(a,chol_i,walker_up,walker_dn,wave_data)
+        _, d2f = jax.jvp(lambda x: jax.jvp(f, [x], [1.0])[1], [x], [1.0])
+        return d2f
+
+    @partial(jit, static_argnums=0)
+    def _d2_tls_exp2(self,walker_up,walker_dn,ham_data,wave_data):
+        norb = self.norb
+        chol = ham_data["chol"].reshape(2, -1, norb, norb)
+        chol = chol.transpose(1,0,2,3)
+        d2_exp2_batch = jax.vmap(self._d2_tls_exp2_i, in_axes=(0,None,None,None))
+        d2_exp2s = d2_exp2_batch(chol,walker_up,walker_dn,wave_data)
+        h2 = jnp.sum(d2_exp2s)/2
+        return h2
+
+    @partial(jit, static_argnums=0)
+    def _d2_ut2_exp2(self,walker_up,walker_dn,ham_data,wave_data):
+        norb = self.norb
+        chol = ham_data["chol"].reshape(2, -1, norb, norb)
+        chol = chol.transpose(1,0,2,3)
+        d2_exp2_batch = jax.vmap(self._d2_ut2_exp2_i, in_axes=(0,None,None,None))
+        d2_exp2s = d2_exp2_batch(chol,walker_up,walker_dn,wave_data)
+        h2 = jnp.sum(d2_exp2s)/2
+        return h2
+
+    @partial(jit, static_argnums=0)
+    def _calc_energy_pt(self, walker_up, walker_dn, ham_data, wave_data):
+        '''
+        t1 = <exp(T1)HF|walker>/<HF|walker>
+        t2 = <exp(T1)HF|T1+T2|walker>/<HF|walker>
+        e0 = <exp(T1)HF|h1+h2|walker>/<HF|walker>
+        e1 = <exp(T1)HF|(T1+T2)(h1+h2)|walker>/<HF|walker>
+        '''
+
+        norb = self.norb
+        h1_mod = ham_data['h1_mod']
+        chol = ham_data["chol"].reshape(2, -1, norb, norb)
+        chol = chol.transpose(1,0,2,3)
+
+        # e0 = <exp(T1)HF|h1+h2|walker>/<HF|walker> #
+        # one body
+        x = 0.0
+        f1 = lambda a: self._tls_exp1(a,h1_mod,walker_up,walker_dn,wave_data)
+        t1, d_exp1_0 = jvp(f1, [x], [1.0])
+
+        # two body
+        d2_exp2_0 = self._d2_tls_exp2(walker_up,walker_dn,ham_data,wave_data)
+
+        e0 = d_exp1_0 + d2_exp2_0
+        
+        # e1 = <exp(T1)HF|(T1+T2)(h1+h2)|walker>/<HF|walker>
+        # one body
+        x = 0.0
+        f1 = lambda a: self._ut2_exp1(a,h1_mod,walker_up,walker_dn,wave_data)
+        t2, d_exp1_1 = jvp(f1, [x], [1.0])
+
+        # two body
+        d2_exp2_1 = self._d2_ut2_exp2(walker_up,walker_dn,ham_data,wave_data)
+
+        e1 = d_exp1_1 + d2_exp2_1
+
+        # o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
+        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
+
+    @singledispatchmethod
+    def calc_energy_pt(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
+        raise NotImplementedError("Walker type not supported")
+
+    @calc_energy_pt.register
+    def _(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
+        t1, t2, e0, e1 = vmap(
+            self._calc_energy_pt, in_axes=(0, 0, None, None))(
+            walkers[0], walkers[1], ham_data, wave_data)
+        return t1, t2, e0, e1
+    
+    @calc_energy_pt.register
+    def _(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
+        t1, t2, e0, e1 = vmap(
+            self._calc_energy_pt, in_axes=(0, 0, None, None))(
+            walkers, walkers, ham_data, wave_data)
+        return t1, t2, e0, e1
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
