@@ -40,6 +40,8 @@ def _block_scan(
     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
     t1, t2, e0, e1 = trial.calc_energy_pt(
         prop_data["walkers"],ham_data,wave_data)
+    e_hf = jnp.real(trial.calc_energy(
+        prop_data["walkers"],ham_data,wave_data))
     
     # e0 = jnp.where(
     #     jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
@@ -54,11 +56,12 @@ def _block_scan(
     blk_t2 = jnp.sum(t2*wt)/blk_wt
     blk_e0 = jnp.sum(e0*wt)/blk_wt
     blk_e1 = jnp.sum(e1*wt)/blk_wt
+    blk_ehf = jnp.sum(e_hf*wt)/blk_wt
 
     # blk_ept = blk_e0 + blk_e1 + blk_t * (blk_e0 - ham_data['h0'])
-    # prop_data["pop_control_ene_shift"] = (
-    #         0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
-    #     )
+    prop_data["pop_control_ene_shift"] = (
+            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ehf
+        )
 
     return prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1)
 

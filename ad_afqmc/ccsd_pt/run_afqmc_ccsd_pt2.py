@@ -57,15 +57,10 @@ t1, t2, e0, e1 = trial.calc_energy_pt(prop_data["walkers"], ham_data, wave_data)
 ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2 
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
 prop_data["e_estimate"] = ept
-prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-
+# prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
-    # print(ept)
-    # t1, t2, e0, e1 = trial.calc_energy_pt(
-    #     prop_data['walkers'], ham_data, wave_data)
-    # ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
@@ -155,9 +150,6 @@ for n in range(1,options["n_eql"]+1):
 
     comm.Barrier()
     if rank == 0:
-        # print(
-        #     f"  {n:5d} \t {blk_ept[0]:.6f} \t {time.time() - init_time:.2f} "
-        # )
         print(f"  {n:5d}  {blk_t1[0]:.6f}  {blk_t2[0]:.6f}"
              f"  {blk_e0[0]:.6f}   {blk_e1[0]:.6f}   {blk_ept[0]:.6f}"
              f"  {time.time() - init_time:.2f}")
