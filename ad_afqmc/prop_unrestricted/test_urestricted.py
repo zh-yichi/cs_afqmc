@@ -3,11 +3,11 @@ import numpy as np
 
 a = 2 # bond length in a cluster
 d = 10 # distance between each cluster
-na = 2  # size of a cluster (monomer)
+na = 3  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
-s = 0 # spin per monomer
-elmt = 'O'
-bs = 'ccpvdz'
+s = 1 # spin per monomer
+elmt = 'H'
+bs = 'sto6g'
 atoms = ""
 for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
@@ -26,25 +26,25 @@ mycc.kernel()
 options = {'n_eql': 3,
            'n_prop_steps': 50,
             'n_ene_blocks': 5,
-            'n_sr_blocks': 10,
+            'n_sr_blocks': 5,
             'n_blocks': 10,
-            'n_walkers': 100,
+            'n_walkers': 10,
             'seed': 2,
             'walker_type': 'uhf',
-            'trial': 'uccsd_pt2_ad', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, uccsd_pt, uccsd_pt_ad, uccsd_pt2_ad
+            'trial': 'uccsd_pt2_ad',
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
-            'use_gpu': True,
+            'use_gpu': False,
             }
 
 # from jax import config
 # config.update("jax_enable_x64", True)
 # config.set
 
-from ad_afqmc import config
-config.afqmc_config = {"use_gpu": True}
-config.setup_jax()
+# from ad_afqmc import config
+# config.afqmc_config = {"use_gpu": True}
+# config.setup_jax()
 
 # from ad_afqmc import pyscf_interface, run_afqmc
 from ad_afqmc.prop_unrestricted import prop_unrestricted

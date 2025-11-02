@@ -1,42 +1,28 @@
-# Hostname: sharmagroup-rn
+# Hostname: yichi-thinkpad
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Using GPU.
-# System: Linux
-# Node Name: sharmagroup-rn
-# Release: 6.14.0-33-generic
-# Version: #33~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 17:02:30 UTC 2
-# Machine: x86_64
-# Processor: x86_64
-# Hostname: sharmagroup-rn
+# Hostname: yichi-thinkpad
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Using GPU.
-# System: Linux
-# Node Name: sharmagroup-rn
-# Release: 6.14.0-33-generic
-# Version: #33~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Sep 19 17:02:30 UTC 2
-# Machine: x86_64
-# Processor: x86_64
-# Number of MPI ranks: 1
+# Number of MPI ranks: 5
 #
-# norb: 28
-# nelec: (8, 8)
+# norb: 3
+# nelec: (2, 1)
 #
 # n_eql: 3
 # n_prop_steps: 50
 # n_ene_blocks: 5
-# n_sr_blocks: 10
+# n_sr_blocks: 5
 # n_blocks: 10
-# n_walkers: 100
+# n_walkers: 10
 # seed: 2
 # walker_type: uhf
 # trial: uccsd_pt2_ad
 # dt: 0.005
 # free_projection: False
-# use_gpu: True
+# use_gpu: False
 # n_exp_terms: 6
 # orbital_rotation: True
 # do_sr: True
@@ -50,33 +36,33 @@
 #
 # 
 
-# Propagating with 100 walkers
+# Propagating with 50 walkers
 # Equilibration sweeps:
 #   Iter  <exp(t1)>  <t2>  <e0>  <e1>  energy  Walltime
-      0  0.999042  0.000000  -181.347287   -0.353151   -149.874665  4.67
-      1  1.000683  0.109368  -182.001266   -19.899704   -149.885330  50.37
-      2  1.000966  0.147039  -182.071915   -26.735319   -149.885723  95.65
-      3  1.001061  0.176905  -182.090698   -32.174328   -149.893570  136.91
+      0  -0.997754  0.000000  2.787921   0.029043   -1.573306  19.08
+      1  -1.001220  -0.026603  2.818873   0.082988   -1.573515  38.46
+      2  -1.002911  -0.035736  2.830468   0.101952   -1.573344  54.68
+      3  -1.001596  -0.040587  2.831017   0.111384   -1.573177  54.97
 #
 # Sampling sweeps:
 #  Iter 	 energy 	 error 	 	 Walltime
-     1 	 	 -149.890350 	 0.002899 	  219.55
-     2 	 	 -149.891205 	 0.001762 	  260.87
-     3 	 	 -149.890610 	 0.001424 	  302.19
-     4 	 	 -149.890602 	 0.001118 	  343.52
-     5 	 	 -149.891376 	 0.001138 	  384.89
-     6 	 	 -149.891182 	 0.001014 	  426.26
-     7 	 	 -149.892048 	 0.001248 	  467.64
-     8 	 	 -149.891899 	 0.001129 	  509.02
-     9 	 	 -149.892151 	 0.001031 	  550.54
+     1 	 	 -1.573323 	 0.000093 	  71.01
+     2 	 	 -1.573298 	 0.000074 	  86.05
+     3 	 	 -1.573320 	 0.000054 	  86.33
+     4 	 	 -1.573356 	 0.000048 	  86.62
+     5 	 	 -1.573356 	 0.000040 	  86.91
+     6 	 	 -1.573357 	 0.000038 	  87.20
+     7 	 	 -1.573358 	 0.000034 	  87.49
+     8 	 	 -1.573348 	 0.000032 	  87.78
+     9 	 	 -1.573350 	 0.000031 	  88.07
 # Number of outliers in post: 0 
 Final Results1:
-# h0 = 32.00000000
-# <exp(t1)> = 1.000908 +/- 0.000046
-# <t2> = 0.189487 +/- 0.002842
-# <e0> = -182.063904 +/- 0.008766
-# <e1> = -34.460957 +/- 0.516711
-# AFQMC/UCCSD_PT2 energy (covariance): -149.892185 +/- 0.001031
+# h0 = 1.25000000
+# <exp(t1)> = -1.002779 +/- 0.000036
+# <t2> = -0.036132 +/- 0.000130
+# <e0> = 2.829942 +/- 0.000051
+# <e1> = 0.103223 +/- 0.000245
+# AFQMC/UCCSD_PT2 energy (covariance): -1.573350 +/- 0.000031
 # remove outliers:  0
-# AFQMC/UCCSD_PT2 energy (direct obs): -149.891968 +/- 0.001036
-# total run time: 550.54
+# AFQMC/UCCSD_PT2 energy (direct obs): -1.573346 +/- 0.000021
+# total run time: 88.07

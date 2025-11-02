@@ -208,13 +208,13 @@ def prep_afqmc(
         elif 'cc' in trial.lower():
         # ccsd trial #
             if isinstance(cc, UCCSD):
-                t2aa = cc.t2[0] # + 2 * np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[0])
-                # t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
+                t2aa = cc.t2[0]
+                t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
                 t2aa = t2aa.transpose(0, 2, 1, 3)
-                t2bb = cc.t2[2] # + 2 * np.einsum("ia,jb->ijab", cc.t1[1], cc.t1[1])
-                # t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
+                t2bb = cc.t2[2]
+                t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
                 t2bb = t2bb.transpose(0, 2, 1, 3)
-                t2ab = cc.t2[1] # + np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[1])
+                t2ab = cc.t2[1]
                 t2ab = t2ab.transpose(0, 2, 1, 3)
                 t1a = np.array(cc.t1[0])
                 t1b = np.array(cc.t1[1])
@@ -544,6 +544,28 @@ def _prep_afqmc(options=None,
             mo_b_B[:noccB,:noccB].T,mo_b_B[:noccB,:noccB].T,t2bb)
         wave_data["rot_t2AB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_a_A[:noccA,:noccA].T,mo_b_B[:noccB,:noccB].T,t2ab)
+    elif options["trial"] == "uccsd_pt2":
+        trial = wavefunctions.uccsd_pt2(
+            norb, nelec_sp, n_batch = options["n_batch"])
+        noccA, noccB = trial.nelec[0], trial.nelec[1]
+        wave_data["mo_coeff"] = [
+            mo_coeff[0][:, : noccA],
+            mo_coeff[1][:, : noccB],
+        ]
+        ham_data['h1_mod'] = h1_mod
+        amplitudes = np.load(amp_file)
+        t1a = jnp.array(amplitudes["t1a"])
+        t1b = jnp.array(amplitudes["t1b"])
+        t2aa = jnp.array(amplitudes["t2aa"])
+        t2ab = jnp.array(amplitudes["t2ab"])
+        t2bb = jnp.array(amplitudes["t2bb"])
+        mo_ta = trial.thouless_trans(t1a)[:,:noccA]
+        mo_tb = trial.thouless_trans(t1b)[:,:noccB]
+        wave_data['mo_ta'] = mo_ta
+        wave_data['mo_tb'] = mo_tb
+        wave_data["t2aa"] = t2aa
+        wave_data["t2bb"] = t2bb
+        wave_data["t2ab"] = t2ab
     elif options["trial"] == "uccsd_pt2_ad":
         trial = wavefunctions.uccsd_pt2_ad(
             norb, nelec_sp, n_batch=options["n_batch"])
@@ -678,10 +700,11 @@ def run_afqmc(options,nproc=None,
         mpi_prefix = "mpirun "
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
-    if  '_pt_' in options['trial']:
-        script='run_afqmc_ccsd_pt.py'
-    elif '_pt2_' in options['trial']:
-        script='run_afqmc_ccsd_pt2.py'
+    if  'pt' in options['trial']:
+        if '2' in options['trial']:
+            script='run_afqmc_ccsd_pt2.py'
+        else:
+            script='run_afqmc_ccsd_pt.py'
     else:
         script='run_unrestricted_test.py'
     path = os.path.abspath(__file__)
