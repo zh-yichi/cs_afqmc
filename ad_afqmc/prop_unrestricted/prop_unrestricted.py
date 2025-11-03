@@ -653,8 +653,9 @@ def _prep_afqmc(options=None,
         options["n_ene_blocks"],
         options["n_sr_blocks"],
         options["n_blocks"],
-        n_chol = nchol
     )
+
+    sampler.n_chol = nchol
 
     if rank == 0:
         print(f"# norb: {norb}")
@@ -683,7 +684,7 @@ def _prep_afqmc(options=None,
     return ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
 
 import os
-def run_afqmc(options,nproc=None,
+def run_afqmc(options,nproc=None,dbg=False,
               option_file='options.bin'):
 
     with open(option_file, 'wb') as f:
@@ -702,7 +703,10 @@ def run_afqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     if  'pt' in options['trial']:
         if '2' in options['trial']:
-            script='run_afqmc_ccsd_pt2.py'
+            if dbg:
+                script='run_afqmc_ccsd_pt2_dbg.py'
+            else:
+                script='run_afqmc_ccsd_pt2.py'
         else:
             script='run_afqmc_ccsd_pt.py'
     else:
