@@ -28,10 +28,10 @@ options = {'n_eql': 3,
             'n_ene_blocks': 5,
             'n_sr_blocks': 5,
             'n_blocks': 10,
-            'n_walkers': 10,
+            'n_walkers': 1,
             'seed': 2,
             'walker_type': 'uhf',
-            'trial': 'uccsd_pt2_ad',
+            'trial': 'uccsd_pt2',
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
@@ -49,6 +49,6 @@ options = {'n_eql': 3,
 # from ad_afqmc import pyscf_interface, run_afqmc
 from ad_afqmc.prop_unrestricted import prop_unrestricted
 prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-5)
-prop_unrestricted.run_afqmc(options,nproc=5,dbg=True)
+prop_unrestricted.run_afqmc(options,nproc=1,dbg=True)
 # pyscf_interface.prep_afqmc(mf,options,chol_cut=1e-5)
 # run_afqmc.run_afqmc(options,nproc=5)

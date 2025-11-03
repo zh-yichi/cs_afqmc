@@ -100,7 +100,6 @@ for n in range(1,options["n_eql"]+1):
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_e, root=0)
 
-
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
