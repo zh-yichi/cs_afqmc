@@ -120,8 +120,10 @@ class sampler:
         prop_data["n_killed_walkers"] /= (
             self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
         )
-        return jnp.sum(block_energy * block_weight) / jnp.sum(block_weight), prop_data
-
+        # return jnp.sum(block_energy * block_weight) / jnp.sum(block_weight), prop_data
+        weight = jnp.sum(block_weight)
+        energy = jnp.sum(block_energy * block_weight) / weight
+        return prop_data, (weight, energy)
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

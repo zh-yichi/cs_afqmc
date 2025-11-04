@@ -67,10 +67,10 @@ comm.Barrier()
 
 # sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
 for n in range(1,options["n_eql"]+1):
-    blk_e, prop_data = sampler.propagate_phaseless(
+    prop_data, (blk_wt, blk_e) = sampler.propagate_phaseless(
             ham, ham_data, prop, prop_data, trial, wave_data)
 
-    blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float32")
     blk_e = np.array([blk_e], dtype="float32")
     
     blk_wt_e = np.array([blk_e * blk_wt], dtype="float32")
@@ -129,10 +129,10 @@ if rank == 0:
 comm.Barrier()
     
 for n in range(sampler.n_blocks):
-    blk_e, prop_data = sampler.propagate_phaseless(
+    prop_data, (blk_wt, blk_e) = sampler.propagate_phaseless(
             ham, ham_data, prop, prop_data, trial, wave_data)
     
-    blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float32")
     blk_e = np.array([blk_e], dtype="float32")
 
     gather_wt = None

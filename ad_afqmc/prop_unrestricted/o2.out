@@ -1,0 +1,389 @@
+#INFO: **** input file is /home/sharmagroup/sharmagroup/cs_afqmc/ad_afqmc/prop_unrestricted/test_urestricted.py ****
+from pyscf import gto, scf, cc
+import numpy as np
+
+a = 2 # bond length in a cluster
+d = 10 # distance between each cluster
+na = 2  # size of a cluster (monomer)
+nc = 1 # set as integer multiple of monomers
+s = 2 # spin per monomer
+elmt = 'O'
+bs = 'sto6g'
+atoms = ""
+for n in range(nc*na):
+    shift = ((n - n % na) // na) * (d-a)
+    atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
+
+mol = gto.M(atom=atoms, basis=bs,spin=s*nc, unit='bohr', verbose=4)
+mol.build()
+
+mf = scf.UHF(mol)
+mf.kernel()
+
+nfrozen = 0
+mycc = cc.CCSD(mf,frozen=nfrozen)
+mycc.kernel()
+
+options = {'n_eql': 10,
+           'n_prop_steps': 50,
+            'n_ene_blocks': 5,
+            'n_sr_blocks': 5,
+            'n_blocks': 10,
+            'n_walkers': 1,
+            'seed': 2,
+            'walker_type': 'uhf',
+            'trial': 'uhf',
+            'dt':0.005,
+            'free_projection':False,
+            'ad_mode':None,
+            'use_gpu': True,
+            }
+
+# from jax import config
+# config.update("jax_enable_x64", True)
+# config.set
+
+from ad_afqmc import config
+config.afqmc_config = {"use_gpu": True}
+config.setup_jax()
+
+# from ad_afqmc import pyscf_interface, run_afqmc
+from ad_afqmc.prop_unrestricted import prop_unrestricted
+prop_unrestricted.prep_afqmc(mf,options,chol_cut=1e-5)
+prop_unrestricted.run_afqmc(options,nproc=1,dbg=True)
+# pyscf_interface.prep_afqmc(mf,options,chol_cut=1e-5)
+# run_afqmc.run_afqmc(options,nproc=5)
+
+options = {'n_eql': 10,
+           'n_prop_steps': 50,
+            'n_ene_blocks': 5,
+            'n_sr_blocks': 5,
+            'n_blocks': 10,
+            'n_walkers': 1,
+            'seed': 2,
+            'walker_type': 'uhf',
+            'trial': 'uccsd_pt2',
+            'dt':0.005,
+            'free_projection':False,
+            'ad_mode':None,
+            'use_gpu': True,
+            }
+
+prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-5)
+prop_unrestricted.run_afqmc(options,nproc=1,dbg=True)#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='sharmagroup-rn', release='6.14.0-34-generic', version='#34~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep 23 15:35:20 UTC 2', machine='x86_64')  Threads 16
+Python 3.11.14 (main, Oct 21 2025, 18:31:21) [GCC 11.2.0]
+numpy 2.3.1  scipy 1.16.2  h5py 3.14.0
+Date: Mon Nov  3 11:42:50 2025
+PySCF version 2.11.0
+PySCF path  /home/sharmagroup/sharmagroup/pyscf
+GIT HEAD (branch master) 3d1768f5e33b144b606c3d2c81c12ee54d794501
+
+[CONFIG] conf_file None
+[INPUT] verbose = 4
+[INPUT] num. atoms = 2
+[INPUT] num. electrons = 16
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 2
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = bohr
+[INPUT] Symbol           X                Y                Z      unit          X                Y                Z       unit  Magmom
+[INPUT]  1 O      0.000000000000   0.000000000000   0.000000000000 AA    0.000000000000   0.000000000000   0.000000000000 Bohr   0.0
+[INPUT]  2 O      1.058354421840   0.000000000000   0.000000000000 AA    2.000000000000   0.000000000000   0.000000000000 Bohr   0.0
+
+nuclear repulsion = 32
+number of shells = 6
+number of NR pGTOs = 60
+number of NR cGTOs = 10
+basis = sto6g
+ecp = {}
+CPU time:         0.25
+
+
+******** <class 'pyscf.scf.uhf.UHF'> ********
+method = UHF
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+diis_damp = 0
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /tmp/tmp6fithy14
+max_memory 4000 MB (current use 109 MB)
+number electrons alpha = 9  beta = 7
+Set gradient conv threshold to 3.16228e-05
+init E= -149.699418977121
+  alpha nocc = 9  HOMO = -0.0637978180695592  LUMO = 0.857403619976182
+  beta  nocc = 7  HOMO = -0.594246634515055  LUMO = -0.0637978180695601
+
+WARN: system HOMO -0.0637978180695592 >= system LUMO -0.0637978180695601
+
+cycle= 1 E= -148.96232091016  delta_E= 0.737  |g|= 0.106  |ddm|=  1.8
+  alpha nocc = 9  HOMO = -0.382929015067092  LUMO = 0.959538345041201
+  beta  nocc = 7  HOMO = -0.57193911846586  LUMO = 0.323622224030551
+cycle= 2 E= -148.967446917551  delta_E= -0.00513  |g|= 0.0241  |ddm|= 0.15
+  alpha nocc = 9  HOMO = -0.382245460294441  LUMO = 0.962193768572485
+  beta  nocc = 7  HOMO = -0.56608153250611  LUMO = 0.327603115855798
+cycle= 3 E= -148.967841563069  delta_E= -0.000395  |g|= 0.00415  |ddm|= 0.0499
+  alpha nocc = 9  HOMO = -0.382276675948648  LUMO = 0.961634773766746
+  beta  nocc = 7  HOMO = -0.565278190402756  LUMO = 0.328313894521924
+cycle= 4 E= -148.967854111007  delta_E= -1.25e-05  |g|= 0.000567  |ddm|= 0.00983
+  alpha nocc = 9  HOMO = -0.382378906934693  LUMO = 0.961489762992569
+  beta  nocc = 7  HOMO = -0.565330541178441  LUMO = 0.328325096160226
+cycle= 5 E= -148.967854353811  delta_E= -2.43e-07  |g|= 7.44e-07  |ddm|= 0.00147
+  alpha nocc = 9  HOMO = -0.382378517584424  LUMO = 0.96148807842462
+  beta  nocc = 7  HOMO = -0.565330266889414  LUMO = 0.328325387835537
+cycle= 6 E= -148.967854353811  delta_E= -3.69e-13  |g|= 1.55e-08  |ddm|= 1.55e-06
+  alpha nocc = 9  HOMO = -0.382378522572271  LUMO = 0.961488092044844
+  beta  nocc = 7  HOMO = -0.565330270766831  LUMO = 0.32832538509554
+Extra cycle  E= -148.967854353811  delta_E= 8.53e-14  |g|= 7.71e-10  |ddm|= 2.82e-09
+converged SCF energy = -148.967854353811  <S^2> = 2.0032182  2S+1 = 3.0021447
+
+******** <class 'pyscf.cc.uccsd.UCCSD'> ********
+CC2 = 0
+CCSD nocc = (np.int64(9), np.int64(7)), nmo = (10, 10)
+frozen orbitals 0
+max_cycle = 50
+direct = 0
+conv_tol = 1e-07
+conv_tol_normt = 1e-06
+diis_space = 6
+diis_start_cycle = 0
+diis_start_energy_diff = 1e+09
+max_memory 4000 MB (current use 117 MB)
+Init t2, MP2 energy = -0.0639204812864481
+Init E_corr(UCCSD) = -0.0639204812864481
+cycle = 1  E_corr(UCCSD) = -0.0731755217605303  dE = -0.00925504047  norm(t1,t2) = 0.0300074
+cycle = 2  E_corr(UCCSD) = -0.0749265478703173  dE = -0.00175102611  norm(t1,t2) = 0.00987327
+cycle = 3  E_corr(UCCSD) = -0.0757442993660419  dE = -0.000817751496  norm(t1,t2) = 0.00431108
+cycle = 4  E_corr(UCCSD) = -0.0757385247836614  dE = 5.77458238e-06  norm(t1,t2) = 0.000756789
+cycle = 5  E_corr(UCCSD) = -0.0757444301881661  dE = -5.9054045e-06  norm(t1,t2) = 8.49233e-05
+cycle = 6  E_corr(UCCSD) = -0.0757441743548685  dE = 2.55833298e-07  norm(t1,t2) = 8.61718e-06
+cycle = 7  E_corr(UCCSD) = -0.0757443594898003  dE = -1.85134932e-07  norm(t1,t2) = 1.62857e-06
+cycle = 8  E_corr(UCCSD) = -0.0757443304824512  dE = 2.90073491e-08  norm(t1,t2) = 4.06835e-07
+UCCSD converged
+E(UCCSD) = -149.0435986842938  E_corr = -0.07574433048245116
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-34-generic
+# Version: #34~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep 23 15:35:20 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+#
+# Preparing AFQMC calculation
+# Calculating Cholesky integrals
+# Finished calculating Cholesky integrals
+#
+# Size of the correlation space:
+# Number of electrons: (9, 7)
+# Number of basis functions: 10
+# Number of Cholesky vectors: 42
+#
+# running AFQMC on GPU
+# AFQMC script: /home/sharmagroup/sharmagroup/cs_afqmc/ad_afqmc/prop_unrestricted/run_unrestricted_test.py
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-34-generic
+# Version: #34~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep 23 15:35:20 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-34-generic
+# Version: #34~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep 23 15:35:20 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 1
+#
+# norb: 10
+# nelec: (9, 7)
+#
+# n_eql: 10
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 5
+# n_blocks: 10
+# n_walkers: 1
+# seed: 2
+# walker_type: uhf
+# trial: uhf
+# dt: 0.005
+# free_projection: False
+# use_gpu: True
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# 
+
+# Propagating with 1 walkers
+# Equilibration sweeps:
+#   Iter 	 energy 	 Walltime
+      0 	 -148.967844 	 1.90
+      1 	 -149.006760 	 4.60 
+      2 	 -148.985825 	 6.92 
+      3 	 -149.037277 	 7.86 
+      4 	 -149.012054 	 8.78 
+      5 	 -149.020294 	 9.71 
+      6 	 -149.039322 	 10.64 
+      7 	 -149.070389 	 11.57 
+      8 	 -149.005783 	 12.50 
+      9 	 -149.005829 	 13.43 
+     10 	 -149.012558 	 14.36 
+#
+# Sampling sweeps:
+#  Iter 	 energy 	 error 	 	 Walltime
+     1 	 	 -149.039734 	   None   	  16.22
+     2 	 	 -149.040619 	   None   	  17.15
+     3 	 	 -149.031067 	   None   	  18.08
+     4 	 	 -149.031403 	 0.014298 	  19.01
+     5 	 	 -149.026169 	 0.012762 	  19.93
+     6 	 	 -149.020432 	 0.012335 	  20.86
+     7 	 	 -149.023071 	 0.010947 	  21.79
+     8 	 	 -149.018997 	 0.010503 	  22.72
+     9 	 	 -149.020035 	 0.009406 	  23.65
+# Number of outliers in post: 0 
+#
+# Mean: -1.49020035e+02
+# Block size    # of blocks         Mean                Error
+      1               10       -1.49020035e+02       9.405608e-03
+      2                5       -1.49020035e+02       6.090507e-03
+      3                3       -1.49018997e+02       1.345602e-02
+# Stocahstic error estimate: 9.405608e-03
+#
+Final Results:
+AFQMC energy: -149.020035 +/- 0.009406
+total run time: 23.65
+#
+# Preparing AFQMC calculation
+# If you import pyscf cc modules and use MPI for AFQMC in the same script, finalize MPI before calling the AFQMC driver.
+# Calculating Cholesky integrals
+# Finished calculating Cholesky integrals
+#
+# Size of the correlation space:
+# Number of electrons: (9, 7)
+# Number of basis functions: 10
+# Number of Cholesky vectors: 42
+#
+# running AFQMC on GPU
+# AFQMC script: /home/sharmagroup/sharmagroup/cs_afqmc/ad_afqmc/prop_unrestricted/run_afqmc_ccsd_pt2_dbg.py
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-34-generic
+# Version: #34~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep 23 15:35:20 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Using GPU.
+# System: Linux
+# Node Name: sharmagroup-rn
+# Release: 6.14.0-34-generic
+# Version: #34~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Sep 23 15:35:20 UTC 2
+# Machine: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 1
+#
+# norb: 10
+# nelec: (9, 7)
+#
+# n_eql: 10
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 5
+# n_blocks: 10
+# n_walkers: 1
+# seed: 2
+# walker_type: uhf
+# trial: uccsd_pt2
+# dt: 0.005
+# free_projection: False
+# use_gpu: True
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# 
+
+# Propagating with 1 walkers
+# Equilibration sweeps:
+#   Iter 	 <exp(t1)> 	 <t2> 	 	    <e0> 	 <e1> 	 	 energy 	    <ehf> 	 Walltime
+      0 	 0.999899 	 0.000000 	  -180.949545 	 -0.075742 	 -149.043588 	  -148.967844 	 3.01
+      1 	 1.000612 	 0.016768 	  -181.116608 	 -3.073157 	 -149.043857 	  -149.006760 	 6.99
+      2 	 1.000520 	 0.002440 	  -181.079086 	 -0.500782 	 -149.044203 	  -148.985825 	 10.54
+      3 	 1.000881 	 0.029864 	  -181.196106 	 -5.413615 	 -149.043575 	  -149.037277 	 11.59
+      4 	 0.999938 	 0.011131 	  -181.000565 	 -2.046556 	 -149.043543 	  -149.012054 	 12.65
+      5 	 0.999428 	 0.017440 	  -180.917328 	 -3.180080 	 -149.043947 	  -149.020294 	 13.70
+      6 	 1.000391 	 0.033375 	  -181.109512 	 -6.047697 	 -149.044353 	  -149.039322 	 14.75
+      7 	 1.000659 	 0.052584 	  -181.188843 	 -9.496182 	 -149.044376 	  -149.070389 	 15.80
+      8 	 1.000254 	 0.015193 	  -181.051651 	 -2.788179 	 -149.043816 	  -149.005783 	 16.85
+      9 	 1.000231 	 0.020265 	  -181.047516 	 -3.707358 	 -149.044989 	  -149.005829 	 17.91
+     10 	 1.000250 	 0.017860 	  -181.057465 	 -3.264404 	 -149.043832 	  -149.012558 	 18.96
+#
+# Sampling sweeps:
+#  Iter 	 pt_energy 	 error 	 	 hf_energy 	 Walltime
+     1 	 	 -149.044225 	 0.000522 	  -149.039734 	 21.10
+     2 	 	 -149.044142 	 0.000266 	  -149.040619 	 22.15
+     3 	 	 -149.044137 	 0.000103 	  -149.031082 	 23.21
+     4 	 	 -149.043976 	 0.000193 	  -149.031403 	 24.26
+     5 	 	 -149.043890 	 0.000181 	  -149.026169 	 25.31
+     6 	 	 -149.043930 	 0.000190 	  -149.020432 	 26.36
+     7 	 	 -149.044020 	 0.000169 	  -149.023071 	 27.42
+     8 	 	 -149.044161 	 0.000230 	  -149.018997 	 28.47
+     9 	 	 -149.044306 	 0.000252 	  -149.020035 	 29.52
+# Number of outliers in post: 0 
+Final Results1:
+# h0 = 32.00000000
+# <exp(t1)> = 1.000552 +/- 0.000839
+# <t2> = 0.020498 +/- 0.001544
+# <e0> = -181.119171 +/- 0.150934
+# <e1> = -3.735673 +/- 0.277112
+# <ehf> = -149.020020 +/- 0.121478
+# AFQMC/UCCSD_PT2 energy (covariance): -149.044306 +/- 0.000252
+# remove outliers:  0
+# AFQMC/UCCSD_PT2 energy (direct obs): -149.043915 +/- 0.000280
+# total run time: 29.52

@@ -41,11 +41,6 @@ ham_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
 ham_data = ham.build_propagation_intermediates(ham_data, prop, trial, wave_data)
 h0 = ham_data['h0']
 
-# init_walkers = [
-#                 jnp.array([wave_data['mo_coeff'][0] + 0.0j] * prop.n_walkers),
-#                 jnp.array([wave_data['mo_coeff'][0] + 0.0j] * prop.n_walkers)
-#                 ]
-
 prop_data = prop.init_prop_data(trial, wave_data, ham_data, init_walkers)
 if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
     raise ValueError(
@@ -55,14 +50,6 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
 prop_data["key"] = random.PRNGKey(seed + rank)
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
-# prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-# print('walkers: ',prop_data["walkers"])
-# print('trial: ',wave_data['mo_coeff'])
-
-# print('ta: ',wave_data['mo_ta'])
-# print('tb: ', wave_data['mo_tb'])
-# print('<ta|w>: ', wave_data['mo_ta'].T @ init_walkers[0][0])
-# print('<tb|w>: ',wave_data['mo_tb'].T @ init_walkers[1][0])
 
 t1, t2, e0, e1 = trial.calc_energy_pt(prop_data["walkers"], ham_data, wave_data)
 ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2

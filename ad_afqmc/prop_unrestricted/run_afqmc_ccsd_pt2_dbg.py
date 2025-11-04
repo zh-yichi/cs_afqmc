@@ -3,7 +3,7 @@ from jax import random
 #from mpi4py import MPI
 import numpy as np
 from jax import numpy as jnp
-from ad_afqmc import config, sampling, stat_utils
+from ad_afqmc import config, stat_utils
 from ad_afqmc.ccsd_pt import sample_ccsd_pt2_dbg
 from ad_afqmc.prop_unrestricted import prop_unrestricted
 import time
@@ -80,8 +80,8 @@ for n in range(1,options["n_eql"]+1):
         sample_ccsd_pt2_dbg.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler)
 
-    # blk_wt = np.array([blk_wt], dtype="float32") 
-    blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float32")
+    # blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
     blk_t1 = np.array([blk_t1], dtype="float32")
     blk_t2 = np.array([blk_t2], dtype="float32")
     blk_e0 = np.array([blk_e0], dtype="float32")
@@ -203,8 +203,8 @@ for n in range(sampler.n_blocks):
         sample_ccsd_pt2_dbg.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler)
     
-    # blk_wt = np.array([blk_wt], dtype="float32")
-    blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float32")
+    # blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
     blk_t1 = np.array([blk_t1], dtype="float32")
     blk_t2 = np.array([blk_t2], dtype="float32")
     blk_e0 = np.array([blk_e0], dtype="float32")
