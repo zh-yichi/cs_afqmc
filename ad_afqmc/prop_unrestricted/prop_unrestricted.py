@@ -544,6 +544,26 @@ def _prep_afqmc(options=None,
             mo_b_B[:noccB,:noccB].T,mo_b_B[:noccB,:noccB].T,t2bb)
         wave_data["rot_t2AB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_a_A[:noccA,:noccA].T,mo_b_B[:noccB,:noccB].T,t2ab)
+    elif options["trial"] == "uccsd_pt":
+        trial = wavefunctions.uccsd_pt(
+            norb, nelec_sp, n_batch = options["n_batch"])
+        noccA, noccB = trial.nelec[0], trial.nelec[1]
+        wave_data["mo_coeff"] = [
+            mo_coeff[0][:, : noccA],
+            mo_coeff[1][:, : noccB],
+        ]
+        ham_data['h1_mod'] = h1_mod
+        amplitudes = np.load(amp_file)
+        t1a = jnp.array(amplitudes["t1a"])
+        t1b = jnp.array(amplitudes["t1b"])
+        t2aa = jnp.array(amplitudes["t2aa"])
+        t2ab = jnp.array(amplitudes["t2ab"])
+        t2bb = jnp.array(amplitudes["t2bb"])
+        wave_data['t1a'] = t1a
+        wave_data['t1b'] = t1b
+        wave_data["t2aa"] = t2aa
+        wave_data["t2bb"] = t2bb
+        wave_data["t2ab"] = t2ab
     elif options["trial"] == "uccsd_pt2":
         trial = wavefunctions.uccsd_pt2(
             norb, nelec_sp, n_batch = options["n_batch"])
