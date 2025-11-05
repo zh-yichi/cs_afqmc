@@ -80,26 +80,26 @@ for n in range(1,options["n_eql"]+1):
         sample_ccsd_pt2_dbg.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler)
 
-    blk_wt = np.array([blk_wt], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float64")
     # blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
-    blk_t1 = np.array([blk_t1], dtype="float32")
-    blk_t2 = np.array([blk_t2], dtype="float32")
-    blk_e0 = np.array([blk_e0], dtype="float32")
-    blk_e1 = np.array([blk_e1], dtype="float32")
-    blk_ehf = np.array([blk_ehf], dtype="float32")
+    blk_t1 = np.array([blk_t1], dtype="float64")
+    blk_t2 = np.array([blk_t2], dtype="float64")
+    blk_e0 = np.array([blk_e0], dtype="float64")
+    blk_e1 = np.array([blk_e1], dtype="float64")
+    blk_ehf = np.array([blk_ehf], dtype="float64")
 
-    blk_wt_t1 = np.array([blk_t1 * blk_wt], dtype="float32")
-    blk_wt_t2 = np.array([blk_t2 * blk_wt], dtype="float32")
-    blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float32")
-    blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float32")
-    blk_wt_ehf = np.array([blk_ehf * blk_wt], dtype="float32")
+    blk_wt_t1 = np.array([blk_t1 * blk_wt], dtype="float64")
+    blk_wt_t2 = np.array([blk_t2 * blk_wt], dtype="float64")
+    blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float64")
+    blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float64")
+    blk_wt_ehf = np.array([blk_ehf * blk_wt], dtype="float64")
 
-    tot_blk_wt = np.zeros(1, dtype="float32")
-    tot_blk_t1 = np.zeros(1, dtype="float32")
-    tot_blk_t2 = np.zeros(1, dtype="float32")
-    tot_blk_e0 = np.zeros(1, dtype="float32")
-    tot_blk_e1 = np.zeros(1, dtype="float32")
-    tot_blk_ehf = np.zeros(1, dtype="float32")
+    tot_blk_wt = np.zeros(1, dtype="float64")
+    tot_blk_t1 = np.zeros(1, dtype="float64")
+    tot_blk_t2 = np.zeros(1, dtype="float64")
+    tot_blk_e0 = np.zeros(1, dtype="float64")
+    tot_blk_e1 = np.zeros(1, dtype="float64")
+    tot_blk_ehf = np.zeros(1, dtype="float64")
 
     comm.Reduce(
         [blk_wt, MPI.FLOAT],
@@ -189,13 +189,13 @@ glb_blk_ehf = None
 
 comm.Barrier()
 if rank == 0:
-    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_t1 = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_t2 = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_ehf = np.zeros(size * sampler.n_blocks,dtype="float32")
-    ept_samples = np.zeros(sampler.n_blocks,dtype="float32")
+    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_t1 = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_t2 = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_ehf = np.zeros(size * sampler.n_blocks,dtype="float64")
+    ept_samples = np.zeros(sampler.n_blocks,dtype="float64")
 comm.Barrier()
     
 for n in range(sampler.n_blocks):
@@ -203,13 +203,13 @@ for n in range(sampler.n_blocks):
         sample_ccsd_pt2_dbg.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data, sampler)
     
-    blk_wt = np.array([blk_wt], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float64")
     # blk_wt = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
-    blk_t1 = np.array([blk_t1], dtype="float32")
-    blk_t2 = np.array([blk_t2], dtype="float32")
-    blk_e0 = np.array([blk_e0], dtype="float32")
-    blk_e1 = np.array([blk_e1], dtype="float32")
-    blk_ehf = np.array([blk_ehf], dtype="float32")
+    blk_t1 = np.array([blk_t1], dtype="float64")
+    blk_t2 = np.array([blk_t2], dtype="float64")
+    blk_e0 = np.array([blk_e0], dtype="float64")
+    blk_e1 = np.array([blk_e1], dtype="float64")
+    blk_ehf = np.array([blk_ehf], dtype="float64")
 
     gather_wt = None
     gather_t1 = None
@@ -220,12 +220,12 @@ for n in range(sampler.n_blocks):
 
     comm.Barrier()
     if rank == 0:
-        gather_wt = np.zeros(size, dtype="float32")
-        gather_t1 = np.zeros(size, dtype="float32")
-        gather_t2 = np.zeros(size, dtype="float32")
-        gather_e0 = np.zeros(size, dtype="float32")
-        gather_e1 = np.zeros(size, dtype="float32")
-        gather_ehf = np.zeros(size, dtype="float32")
+        gather_wt = np.zeros(size, dtype="float64")
+        gather_t1 = np.zeros(size, dtype="float64")
+        gather_t2 = np.zeros(size, dtype="float64")
+        gather_e0 = np.zeros(size, dtype="float64")
+        gather_e1 = np.zeros(size, dtype="float64")
+        gather_ehf = np.zeros(size, dtype="float64")
     comm.Barrier()
 
     comm.Gather(blk_wt, gather_wt, root=0)

@@ -3547,6 +3547,146 @@ class uccsd_pt2(uhf):
         e1 = (e1_2 + e2_2) * t1 # <exp(T1)HF|T2 (h1+h2)|walker>/<HF|walker>
 
         return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
+    
+    @partial(jit, static_argnums=0)
+    def _calc_energy_pt2(
+        self,
+        walker_up: jax.Array,
+        walker_dn: jax.Array,
+        ham_data: dict,
+        wave_data: dict,
+    ) -> complex:
+        nocc_a, t2_aa = self.nelec[0], wave_data["t2aa"]
+        nocc_b, t2_bb = self.nelec[1], wave_data["t2bb"]
+        t2_ab = wave_data["t2ab"]
+        mo_a, mo_b = wave_data['mo_ta'], wave_data['mo_tb']
+        chol_a = ham_data["chol"][0].reshape(-1, self.norb, self.norb)
+        chol_b = ham_data["chol"][1].reshape(-1, self.norb, self.norb)
+        h1_a = ham_data["h1"][0]
+        h1_b = ham_data["h1"][1]
+
+        # full green's function G_pq
+        green_a = (walker_up @ (jnp.linalg.inv(mo_a.T @ walker_up)) @ mo_a.T).T
+        green_b = (walker_dn @ (jnp.linalg.inv(mo_b.T @ walker_dn)) @ mo_b.T).T
+        greenp_a = (green_a - jnp.eye(self.norb))[:,nocc_a:]
+        greenp_b = (green_b - jnp.eye(self.norb))[:,nocc_b:]
+
+        hg_a = jnp.einsum("pq,pq->", h1_a, green_a)
+        hg_b = jnp.einsum("pq,pq->", h1_b, green_b)
+        hg = hg_a + hg_b # <exp(T1)HF|h1|walker>/<exp(T1)HF|walker>
+
+        # <exp(T1)HF|h1|walker>/<exp(T1)HF|walker>
+        # one body energy
+        e1_0 = hg
+
+        # <exp(T1)HF|h2|walker>/<exp(T1)HF|walker>
+        # two body energy
+        def scanned_e2_0(carry, x):
+            chol_a_i, chol_b_i = x
+            lg_a_i = jnp.einsum("pr,qr->pq", chol_a_i, green_a, optimize="optimal")
+            lg_b_i = jnp.einsum("pr,qr->pq", chol_b_i, green_b, optimize="optimal")
+            # lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
+            # lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
+            e2_0_1_i = (jnp.trace(lg_a_i) + jnp.trace(lg_b_i))**2 / 2.0
+            e2_0_2_i = -(jnp.einsum('pq,qp->',lg_a_i,lg_a_i) 
+                        + jnp.einsum('pq,qp->',lg_b_i,lg_b_i)) / 2.0
+            carry += e2_0_1_i + e2_0_2_i
+
+            return carry, 0.0
+        
+        e2_0, _ = lax.scan(scanned_e2_0, 0.0, (chol_a, chol_b))
+
+        # <exp(T1)HF|T2 h1|walker>/<exp(T1)HF|walker>
+        # double excitations
+        t2g_a = jnp.einsum("iajb,ia->jb", t2_aa, green_a[:nocc_a,nocc_a:]) / 4
+        t2g_b = jnp.einsum("iajb,ia->jb", t2_bb, green_b[:nocc_b,nocc_b:]) / 4
+        t2g_ab_a = jnp.einsum("iajb,jb->ia", t2_ab, green_b[:nocc_b,nocc_b:])
+        t2g_ab_b = jnp.einsum("iajb,ia->jb", t2_ab, green_a[:nocc_a,nocc_a:])
+        # t_iajb (G_ia G_jb - G_ib G_ja)
+        gt2g_a = jnp.einsum("jb,jb->", t2g_a, green_a[:nocc_a,nocc_a:], 
+                            optimize="optimal")
+        gt2g_b = jnp.einsum("jb,jb->", t2g_b, green_b[:nocc_b,nocc_b:], 
+                            optimize="optimal")
+        gt2g_ab = jnp.einsum("ia,ia->", t2g_ab_a, green_a[:nocc_a,nocc_a:], 
+                            optimize="optimal")
+        gt2g = 2 * (gt2g_a + gt2g_b) + gt2g_ab # <exp(T1)HF|T2|walker>/<exp(T1)HF|walker>
+
+        e1_2_1 = hg * gt2g
+        
+        t2_green_a = (greenp_a @ t2g_a.T) @ green_a[:nocc_a,:] # Gp_pb t_iajb G_ia G_jq
+        t2_green_ab_a = (greenp_a @ t2g_ab_a.T) @ green_a[:nocc_a,:]
+        t2_green_b = (greenp_b @ t2g_b.T) @ green_b[:nocc_b,:]
+        t2_green_ab_b = (greenp_b @ t2g_ab_b.T) @ green_b[:nocc_b,:]
+        e1_2_2_a = -jnp.einsum(
+            "pq,pq->", h1_a, 4 * t2_green_a + t2_green_ab_a, optimize="optimal"
+        )
+        e1_2_2_b = -jnp.einsum(
+            "pq,pq->", h1_b, 4 * t2_green_b + t2_green_ab_b, optimize="optimal"
+        )
+        e1_2_2 = e1_2_2_a + e1_2_2_b
+        e1_2 = e1_2_1 + e1_2_2  # <exp(T1)HF|T2 h1|walker>/<exp(T1)HF|walker>
+
+        # <exp(T1)HF|T2 h2|walker>/<exp(T1)HF|walker>
+        # double excitations
+        e2_2_1 = e2_0 * gt2g
+        lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
+        lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
+        lt2g_a = jnp.einsum("gpq,pq->g",
+                            chol_a, 8 * t2_green_a + 2 * t2_green_ab_a,
+                            optimize="optimal")
+        lt2g_b = jnp.einsum("gpq,pq->g",
+            chol_b, 8 * t2_green_b + 2 * t2_green_ab_b,
+            optimize="optimal")
+        e2_2_2_1 = -((lt2g_a + lt2g_b) @ (lg_a + lg_b)) / 2.0
+
+        def scanned_fun(carry, x):
+            chol_a_i, chol_b_i = x
+            gl_a_i = jnp.einsum("pr,rq->pq", green_a, chol_a_i,
+                                optimize="optimal")
+            gl_b_i = jnp.einsum("pr,rq->pq", green_b, chol_b_i,
+                                optimize="optimal")
+            lt2_green_a_i = jnp.einsum(
+                "pr,qr->pq", chol_a_i, 8 * t2_green_a + 2 * t2_green_ab_a,
+                optimize="optimal")
+            lt2_green_b_i = jnp.einsum(
+                "pr,qr->pq", chol_b_i, 8 * t2_green_b + 2 * t2_green_ab_b,
+                optimize="optimal")
+            carry[0] += 0.5 * (
+                jnp.einsum("pq,pq->", gl_a_i, lt2_green_a_i, optimize="optimal")
+                + jnp.einsum("pq,pq->", gl_b_i, lt2_green_b_i, optimize="optimal")
+            )
+            glgp_a_i = jnp.einsum(
+                "iq,qa->ia", gl_a_i[:nocc_a,:], greenp_a, optimize="optimal"
+            ) #.astype(jnp.complex64)
+            glgp_b_i = jnp.einsum(
+                "iq,qa->ia", gl_b_i[:nocc_b,:], greenp_b, optimize="optimal"
+            ) #.astype(jnp.complex64)
+            l2t2_a = 0.5 * jnp.einsum(
+                "ia,jb,iajb->",glgp_a_i,glgp_a_i,t2_aa, #.astype(jnp.float32),
+                optimize="optimal")
+            l2t2_b = 0.5 * jnp.einsum(
+                "ia,jb,iajb->",glgp_b_i,glgp_b_i,t2_bb, #.astype(jnp.float32),
+                optimize="optimal")
+            l2t2_ab = jnp.einsum(
+                "ia,jb,iajb->",glgp_a_i,glgp_b_i,t2_ab, #.astype(jnp.float32),
+                optimize="optimal")
+            carry[1] += l2t2_a + l2t2_b + l2t2_ab
+            return carry, 0.0
+
+        [e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0], (chol_a, chol_b))
+        e2_2_2 = e2_2_2_1 + e2_2_2_2
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3 # <exp(T1)HF|T2 h2|walker>/<exp(T1)HF|walker>
+
+        o0 = jnp.linalg.det(walker_up[:nocc_a,:nocc_a]
+            ) * jnp.linalg.det(walker_dn[:nocc_b,:nocc_b])
+        # <exp(T1)HF|walker>/<HF|walker>
+        t1 = jnp.linalg.det(wave_data["mo_ta"].T.conj() @ walker_up
+            ) * jnp.linalg.det(wave_data["mo_tb"].T.conj() @ walker_dn) / o0
+        t2 = gt2g * t1 # <exp(T1)HF|T2|walker>/<HF|walker>
+        e0 = (e1_0 + e2_0) * t1 # <exp(T1)HF|h1+h2|walker>/<HF|walker>
+        e1 = (e1_2 + e2_2) * t1 # <exp(T1)HF|T2 (h1+h2)|walker>/<HF|walker>
+
+        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
 
     @singledispatchmethod
     def calc_energy_pt(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
@@ -3555,14 +3695,14 @@ class uccsd_pt2(uhf):
     @calc_energy_pt.register
     def _(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
         t1, t2, e0, e1 = vmap(
-            self._calc_energy_pt, in_axes=(0, 0, None, None))(
+            self._calc_energy_pt2, in_axes=(0, 0, None, None))(
             walkers[0], walkers[1], ham_data, wave_data)
         return t1, t2, e0, e1
     
     @calc_energy_pt.register
     def _(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
         t1, t2, e0, e1 = vmap(
-            self._calc_energy_pt, in_axes=(0, 0, None, None))(
+            self._calc_energy_pt2, in_axes=(0, 0, None, None))(
             walkers, walkers, ham_data, wave_data)
         return t1, t2, e0, e1
 

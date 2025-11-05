@@ -24,13 +24,13 @@ mycc.kernel()
 
 options = {'n_eql': 3,
            'n_prop_steps': 50,
-            'n_ene_blocks': 1,
-            'n_sr_blocks': 1,
+            'n_ene_blocks': 5,
+            'n_sr_blocks': 5,
             'n_blocks': 10,
-            'n_walkers': 100,
+            'n_walkers': 200,
             'seed': 2,
             'walker_type': 'uhf',
-            'trial': 'ucisd', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, uccsd_pt, uccsd_pt_ad, uccsd_pt2_ad
+            'trial': 'uccsd_pt', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, uccsd_pt, uccsd_pt_ad, uccsd_pt2_ad
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
