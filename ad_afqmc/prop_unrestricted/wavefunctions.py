@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.scipy as jsp
 import numpy as np
 from jax import jit, jvp, lax, vjp, vmap
+import opt_einsum as oe
 
 from ad_afqmc import linalg_utils
 
@@ -700,11 +701,11 @@ class uhf(wave_function):
         wave_data: dict,
     ) -> jax.Array:
         green_walker = self._calc_green(walker_up, walker_dn, wave_data)
-        fb_up = jnp.einsum(
-            "gij,ij->g", ham_data["rot_chol"][0], green_walker[0], optimize="optimal"
+        fb_up = oe.contract(
+            "gij,ij->g", ham_data["rot_chol"][0], green_walker[0], backend="jax"
         )
-        fb_dn = jnp.einsum(
-            "gij,ij->g", ham_data["rot_chol"][1], green_walker[1], optimize="optimal"
+        fb_dn = oe.contract(
+            "gij,ij->g", ham_data["rot_chol"][1], green_walker[1], backend="jax"
         )
         return fb_up + fb_dn
 
@@ -721,10 +722,10 @@ class uhf(wave_function):
         green_walker = self._calc_green(walker_up, walker_dn, wave_data)
         ene1 = jnp.sum(green_walker[0] * rot_h1[0]) \
              + jnp.sum(green_walker[1] * rot_h1[1])
-        f_up = jnp.einsum("gij,jk->gik", rot_chol[0], green_walker[0].T,
-                          optimize="optimal")
-        f_dn = jnp.einsum("gij,jk->gik", rot_chol[1], green_walker[1].T,
-                          optimize="optimal")
+        f_up = oe.contract("gij,jk->gik", rot_chol[0], green_walker[0].T,
+                           backend="jax")
+        f_dn = oe.contract("gij,jk->gik", rot_chol[1], green_walker[1].T,
+                           backend="jax")
         c_up = vmap(jnp.trace)(f_up)
         c_dn = vmap(jnp.trace)(f_dn)
         exc_up = jnp.sum(vmap(lambda x: x * x.T)(f_up))
@@ -3145,8 +3146,8 @@ class uccsd_pt(uhf):
         rot_chol_b = chol_b[:, :nocc_b, :]
         h1_a = ham_data["h1"][0]
         h1_b = ham_data["h1"][1]
-        hg_a = jnp.einsum("pj,pj->", h1_a[:nocc_a, :], green_a)
-        hg_b = jnp.einsum("pj,pj->", h1_b[:nocc_b, :], green_b)
+        hg_a = oe.contract("pj,pj->", h1_a[:nocc_a, :], green_a, backend="jax")
+        hg_b = oe.contract("pj,pj->", h1_b[:nocc_b, :], green_b, backend="jax")
         hg = hg_a + hg_b
 
         # 0 body energy
@@ -3157,8 +3158,8 @@ class uccsd_pt(uhf):
         e1_0 = hg # <HF|h1|walker>/<HF|walker>
 
         # single excitations
-        t1g_a = jnp.einsum("ia,ia->", t1_a, green_occ_a, optimize="optimal")
-        t1g_b = jnp.einsum("ia,ia->", t1_b, green_occ_b, optimize="optimal")
+        t1g_a = oe.contract("ia,ia->", t1_a, green_occ_a, backend="jax")
+        t1g_b = oe.contract("ia,ia->", t1_b, green_occ_b, backend="jax")
         t1g = t1g_a + t1g_b
         e1_1_1 = t1g * hg
         gpt1_a = greenp_a @ t1_a.T
@@ -3166,41 +3167,41 @@ class uccsd_pt(uhf):
         t1_green_a = gpt1_a @ green_a
         t1_green_b = gpt1_b @ green_b
         e1_1_2 = -(
-            jnp.einsum("pq,pq->", h1_a, t1_green_a, optimize="optimal")
-            + jnp.einsum("pq,pq->", h1_b, t1_green_b, optimize="optimal")
+            oe.contract("pq,pq->", h1_a, t1_green_a, backend="jax")
+            + oe.contract("pq,pq->", h1_b, t1_green_b, backend="jax")
         )
         e1_1 = e1_1_1 + e1_1_2 # <HF|T1 h1|walker>/<HF|walker>
 
         # double excitations
-        t2g_a = jnp.einsum("ptqu,pt->qu", t2_aa, green_occ_a) / 4
-        t2g_b = jnp.einsum("ptqu,pt->qu", t2_bb, green_occ_b) / 4
-        t2g_ab_a = jnp.einsum("ptqu,qu->pt", t2_ab, green_occ_b)
-        t2g_ab_b = jnp.einsum("ptqu,pt->qu", t2_ab, green_occ_a)
-        gt2g_a = jnp.einsum("qu,qu->", t2g_a, green_occ_a, optimize="optimal")
-        gt2g_b = jnp.einsum("qu,qu->", t2g_b, green_occ_b, optimize="optimal")
-        gt2g_ab = jnp.einsum("pt,pt->", t2g_ab_a, green_occ_a, optimize="optimal")
+        t2g_a = oe.contract("ptqu,pt->qu", t2_aa, green_occ_a, backend="jax") / 4
+        t2g_b = oe.contract("ptqu,pt->qu", t2_bb, green_occ_b, backend="jax") / 4
+        t2g_ab_a = oe.contract("ptqu,qu->pt", t2_ab, green_occ_b, backend="jax")
+        t2g_ab_b = oe.contract("ptqu,pt->qu", t2_ab, green_occ_a, backend="jax")
+        gt2g_a = oe.contract("qu,qu->", t2g_a, green_occ_a, backend="jax")
+        gt2g_b = oe.contract("qu,qu->", t2g_b, green_occ_b, backend="jax")
+        gt2g_ab = oe.contract("pt,pt->", t2g_ab_a, green_occ_a, backend="jax")
         gt2g = 2 * (gt2g_a + gt2g_b) + gt2g_ab
         e1_2_1 = hg * gt2g
         t2_green_a = (greenp_a @ t2g_a.T) @ green_a
         t2_green_ab_a = (greenp_a @ t2g_ab_a.T) @ green_a
         t2_green_b = (greenp_b @ t2g_b.T) @ green_b
         t2_green_ab_b = (greenp_b @ t2g_ab_b.T) @ green_b
-        e1_2_2_a = -jnp.einsum(
-            "ij,ij->", h1_a, 4 * t2_green_a + t2_green_ab_a, optimize="optimal"
+        e1_2_2_a = -oe.contract(
+            "ij,ij->", h1_a, 4 * t2_green_a + t2_green_ab_a, backend="jax"
         )
-        e1_2_2_b = -jnp.einsum(
-            "ij,ij->", h1_b, 4 * t2_green_b + t2_green_ab_b, optimize="optimal"
+        e1_2_2_b = -oe.contract(
+            "ij,ij->", h1_b, 4 * t2_green_b + t2_green_ab_b, backend="jax"
         )
         e1_2_2 = e1_2_2_a + e1_2_2_b
         e1_2 = e1_2_1 + e1_2_2 # <HF|T2 h1|walker>/<HF|walker>
 
         # two body energy
         # ref
-        lg_a = jnp.einsum("gpj,pj->g", rot_chol_a, green_a, optimize="optimal")
-        lg_b = jnp.einsum("gpj,pj->g", rot_chol_b, green_b, optimize="optimal")
+        lg_a = oe.contract("gpj,pj->g", rot_chol_a, green_a, backend="jax")
+        lg_b = oe.contract("gpj,pj->g", rot_chol_b, green_b, backend="jax")
         e2_0_1 = ((lg_a + lg_b) @ (lg_a + lg_b)) / 2.0
-        lg1_a = jnp.einsum("gpj,qj->gpq", rot_chol_a, green_a, optimize="optimal")
-        lg1_b = jnp.einsum("gpj,qj->gpq", rot_chol_b, green_b, optimize="optimal")
+        lg1_a = oe.contract("gpj,qj->gpq", rot_chol_a, green_a, backend="jax")
+        lg1_b = oe.contract("gpj,qj->gpq", rot_chol_b, green_b, backend="jax")
         e2_0_2 = (
             -(
                 jnp.sum(vmap(lambda x: x * x.T)(lg1_a))
@@ -3212,88 +3213,88 @@ class uccsd_pt(uhf):
 
         # single excitations
         e2_1_1 = e2_0 * t1g
-        lt1g_a = jnp.einsum("gij,ij->g", chol_a, t1_green_a, optimize="optimal")
-        lt1g_b = jnp.einsum("gij,ij->g", chol_b, t1_green_b, optimize="optimal")
+        lt1g_a = oe.contract("gij,ij->g", chol_a, t1_green_a, backend="jax")
+        lt1g_b = oe.contract("gij,ij->g", chol_b, t1_green_b, backend="jax")
         e2_1_2 = -((lt1g_a + lt1g_b) @ (lg_a + lg_b))
         t1g1_a = t1_a @ green_occ_a.T
         t1g1_b = t1_b @ green_occ_b.T
-        e2_1_3_1 = jnp.einsum(
-            "gpq,gqr,rp->", lg1_a, lg1_a, t1g1_a, optimize="optimal"
-        ) + jnp.einsum("gpq,gqr,rp->", lg1_b, lg1_b, t1g1_b, optimize="optimal")
-        lt1g_a = jnp.einsum(
-            "gip,qi->gpq", ham_data["lt1_a"], green_a, optimize="optimal"
+        e2_1_3_1 = oe.contract(
+            "gpq,gqr,rp->", lg1_a, lg1_a, t1g1_a, backend="jax"
+        ) + oe.contract("gpq,gqr,rp->", lg1_b, lg1_b, t1g1_b, backend="jax")
+        lt1g_a = oe.contract(
+            "gip,qi->gpq", ham_data["lt1_a"], green_a, backend="jax"
         )
-        lt1g_b = jnp.einsum(
-            "gip,qi->gpq", ham_data["lt1_b"], green_b, optimize="optimal"
+        lt1g_b = oe.contract(
+            "gip,qi->gpq", ham_data["lt1_b"], green_b, backend="jax"
         )
-        e2_1_3_2 = -jnp.einsum(
-            "gpq,gqp->", lt1g_a, lg1_a, optimize="optimal"
-        ) - jnp.einsum("gpq,gqp->", lt1g_b, lg1_b, optimize="optimal")
+        e2_1_3_2 = -oe.contract(
+            "gpq,gqp->", lt1g_a, lg1_a, backend="jax"
+        ) - oe.contract("gpq,gqp->", lt1g_b, lg1_b, backend="jax")
         e2_1_3 = e2_1_3_1 + e2_1_3_2
         e2_1 = e2_1_1 + e2_1_2 + e2_1_3 # <HF|T1 h2|walker>/<HF|walker>
 
         # double excitations
         e2_2_1 = e2_0 * gt2g
-        lt2g_a = jnp.einsum(
+        lt2g_a = oe.contract(
             "gij,ij->g",
             chol_a,
             8 * t2_green_a + 2 * t2_green_ab_a,
-            optimize="optimal",
+            backend="jax",
         )
-        lt2g_b = jnp.einsum(
+        lt2g_b = oe.contract(
             "gij,ij->g",
             chol_b,
             8 * t2_green_b + 2 * t2_green_ab_b,
-            optimize="optimal",
+            backend="jax",
         )
         e2_2_2_1 = -((lt2g_a + lt2g_b) @ (lg_a + lg_b)) / 2.0
 
         def scanned_fun(carry, x):
             chol_a_i, rot_chol_a_i, chol_b_i, rot_chol_b_i = x
-            gl_a_i = jnp.einsum("pj,ji->pi", green_a, chol_a_i, optimize="optimal")
-            gl_b_i = jnp.einsum("pj,ji->pi", green_b, chol_b_i, optimize="optimal")
-            lt2_green_a_i = jnp.einsum(
+            gl_a_i = oe.contract("pj,ji->pi", green_a, chol_a_i, backend="jax")
+            gl_b_i = oe.contract("pj,ji->pi", green_b, chol_b_i, backend="jax")
+            lt2_green_a_i = oe.contract(
                 "pi,ji->pj",
                 rot_chol_a_i,
                 8 * t2_green_a + 2 * t2_green_ab_a,
-                optimize="optimal",
+                backend="jax",
             )
-            lt2_green_b_i = jnp.einsum(
+            lt2_green_b_i = oe.contract(
                 "pi,ji->pj",
                 rot_chol_b_i,
                 8 * t2_green_b + 2 * t2_green_ab_b,
-                optimize="optimal",
+                backend="jax",
             )
             carry[0] += 0.5 * (
-                jnp.einsum("pi,pi->", gl_a_i, lt2_green_a_i, optimize="optimal")
-                + jnp.einsum("pi,pi->", gl_b_i, lt2_green_b_i, optimize="optimal")
+                oe.contract("pi,pi->", gl_a_i, lt2_green_a_i, backend="jax")
+                + oe.contract("pi,pi->", gl_b_i, lt2_green_b_i, backend="jax")
             )
-            glgp_a_i = jnp.einsum(
-                "pi,it->pt", gl_a_i, greenp_a, optimize="optimal"
-            ).astype(jnp.complex64)
-            glgp_b_i = jnp.einsum(
-                "pi,it->pt", gl_b_i, greenp_b, optimize="optimal"
-            ).astype(jnp.complex64)
-            l2t2_a = 0.5 * jnp.einsum(
+            glgp_a_i = oe.contract(
+                "pi,it->pt", gl_a_i, greenp_a, backend="jax"
+            ) #.astype(jnp.complex64)
+            glgp_b_i = oe.contract(
+                "pi,it->pt", gl_b_i, greenp_b, backend="jax"
+            ) #.astype(jnp.complex64)
+            l2t2_a = 0.5 * oe.contract(
                 "pt,qu,ptqu->",
                 glgp_a_i,
                 glgp_a_i,
-                t2_aa.astype(jnp.float32),
-                optimize="optimal",
+                t2_aa, #.astype(jnp.float32),
+                backend="jax",
             )
-            l2t2_b = 0.5 * jnp.einsum(
+            l2t2_b = 0.5 * oe.contract(
                 "pt,qu,ptqu->",
                 glgp_b_i,
                 glgp_b_i,
-                t2_bb.astype(jnp.float32),
-                optimize="optimal",
+                t2_bb, #.astype(jnp.float32),
+                backend="jax",
             )
-            l2t2_ab = jnp.einsum(
+            l2t2_ab = oe.contract(
                 "pt,qu,ptqu->",
                 glgp_a_i,
                 glgp_b_i,
-                t2_ab.astype(jnp.float32),
-                optimize="optimal",
+                t2_ab, #.astype(jnp.float32),
+                backend="jax",
             )
             carry[1] += l2t2_a + l2t2_b + l2t2_ab
             return carry, 0.0
@@ -3571,8 +3572,8 @@ class uccsd_pt2(uhf):
         greenp_a = (green_a - jnp.eye(self.norb))[:,nocc_a:]
         greenp_b = (green_b - jnp.eye(self.norb))[:,nocc_b:]
 
-        hg_a = jnp.einsum("pq,pq->", h1_a, green_a)
-        hg_b = jnp.einsum("pq,pq->", h1_b, green_b)
+        hg_a = oe.contract("pq,pq->", h1_a, green_a, backend="jax")
+        hg_b = oe.contract("pq,pq->", h1_b, green_b, backend="jax")
         hg = hg_a + hg_b # <exp(T1)HF|h1|walker>/<exp(T1)HF|walker>
 
         # <exp(T1)HF|h1|walker>/<exp(T1)HF|walker>
@@ -3581,34 +3582,39 @@ class uccsd_pt2(uhf):
 
         # <exp(T1)HF|h2|walker>/<exp(T1)HF|walker>
         # two body energy
-        def scanned_e2_0(carry, x):
-            chol_a_i, chol_b_i = x
-            lg_a_i = jnp.einsum("pr,qr->pq", chol_a_i, green_a, optimize="optimal")
-            lg_b_i = jnp.einsum("pr,qr->pq", chol_b_i, green_b, optimize="optimal")
-            # lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
-            # lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
-            e2_0_1_i = (jnp.trace(lg_a_i) + jnp.trace(lg_b_i))**2 / 2.0
-            e2_0_2_i = -(jnp.einsum('pq,qp->',lg_a_i,lg_a_i) 
-                        + jnp.einsum('pq,qp->',lg_b_i,lg_b_i)) / 2.0
-            carry += e2_0_1_i + e2_0_2_i
+        # def scanned_e2_0(carry, x):
+        #     chol_a_i, chol_b_i = x
+        #     lg_a_i = oe.contract("pr,qr->pq", chol_a_i, green_a, backend="jax")
+        #     lg_b_i = oe.contract("pr,qr->pq", chol_b_i, green_b, backend="jax")
+        #     # lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
+        #     # lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
+        #     e2_0_1_i = (jnp.trace(lg_a_i) + jnp.trace(lg_b_i))**2 / 2.0
+        #     e2_0_2_i = -(oe.contract('pq,qp->',lg_a_i,lg_a_i, backend="jax") 
+        #                 + oe.contract('pq,qp->',lg_b_i,lg_b_i, backend="jax")
+        #                 ) / 2.0
+        #     carry += e2_0_1_i + e2_0_2_i
 
-            return carry, 0.0
+        #     return carry, 0.0
         
-        e2_0, _ = lax.scan(scanned_e2_0, 0.0, (chol_a, chol_b))
+        # e2_0, _ = lax.scan(scanned_e2_0, 0.0, (chol_a, chol_b))
 
         # <exp(T1)HF|T2 h1|walker>/<exp(T1)HF|walker>
         # double excitations
-        t2g_a = jnp.einsum("iajb,ia->jb", t2_aa, green_a[:nocc_a,nocc_a:]) / 4
-        t2g_b = jnp.einsum("iajb,ia->jb", t2_bb, green_b[:nocc_b,nocc_b:]) / 4
-        t2g_ab_a = jnp.einsum("iajb,jb->ia", t2_ab, green_b[:nocc_b,nocc_b:])
-        t2g_ab_b = jnp.einsum("iajb,ia->jb", t2_ab, green_a[:nocc_a,nocc_a:])
+        t2g_a = oe.contract("iajb,ia->jb", t2_aa, green_a[:nocc_a,nocc_a:],
+                            backend="jax") / 4
+        t2g_b = oe.contract("iajb,ia->jb", t2_bb, green_b[:nocc_b,nocc_b:], 
+                            backend="jax") / 4
+        t2g_ab_a = oe.contract("iajb,jb->ia", t2_ab, green_b[:nocc_b,nocc_b:],
+                               backend="jax")
+        t2g_ab_b = oe.contract("iajb,ia->jb", t2_ab, green_a[:nocc_a,nocc_a:],
+                               backend="jax")
         # t_iajb (G_ia G_jb - G_ib G_ja)
-        gt2g_a = jnp.einsum("jb,jb->", t2g_a, green_a[:nocc_a,nocc_a:], 
-                            optimize="optimal")
-        gt2g_b = jnp.einsum("jb,jb->", t2g_b, green_b[:nocc_b,nocc_b:], 
-                            optimize="optimal")
-        gt2g_ab = jnp.einsum("ia,ia->", t2g_ab_a, green_a[:nocc_a,nocc_a:], 
-                            optimize="optimal")
+        gt2g_a = oe.contract("jb,jb->", t2g_a, green_a[:nocc_a,nocc_a:], 
+                            backend="jax")
+        gt2g_b = oe.contract("jb,jb->", t2g_b, green_b[:nocc_b,nocc_b:], 
+                            backend="jax")
+        gt2g_ab = oe.contract("ia,ia->", t2g_ab_a, green_a[:nocc_a,nocc_a:], 
+                              backend="jax")
         gt2g = 2 * (gt2g_a + gt2g_b) + gt2g_ab # <exp(T1)HF|T2|walker>/<exp(T1)HF|walker>
 
         e1_2_1 = hg * gt2g
@@ -3617,63 +3623,73 @@ class uccsd_pt2(uhf):
         t2_green_ab_a = (greenp_a @ t2g_ab_a.T) @ green_a[:nocc_a,:]
         t2_green_b = (greenp_b @ t2g_b.T) @ green_b[:nocc_b,:]
         t2_green_ab_b = (greenp_b @ t2g_ab_b.T) @ green_b[:nocc_b,:]
-        e1_2_2_a = -jnp.einsum(
-            "pq,pq->", h1_a, 4 * t2_green_a + t2_green_ab_a, optimize="optimal"
-        )
-        e1_2_2_b = -jnp.einsum(
-            "pq,pq->", h1_b, 4 * t2_green_b + t2_green_ab_b, optimize="optimal"
-        )
+        e1_2_2_a = -oe.contract(
+            "pq,pq->", h1_a, 4 * t2_green_a + t2_green_ab_a, backend="jax")
+        e1_2_2_b = -oe.contract(
+            "pq,pq->", h1_b, 4 * t2_green_b + t2_green_ab_b, backend="jax")
         e1_2_2 = e1_2_2_a + e1_2_2_b
         e1_2 = e1_2_1 + e1_2_2  # <exp(T1)HF|T2 h1|walker>/<exp(T1)HF|walker>
 
         # <exp(T1)HF|T2 h2|walker>/<exp(T1)HF|walker>
         # double excitations
-        e2_2_1 = e2_0 * gt2g
-        lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
-        lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
-        lt2g_a = jnp.einsum("gpq,pq->g",
+        # e2_2_1 = e2_0 * gt2g
+        lg_a = oe.contract("gpq,pq->g", chol_a, green_a, backend="jax")
+        lg_b = oe.contract("gpq,pq->g", chol_b, green_b, backend="jax")
+        lt2g_a = oe.contract("gpq,pq->g",
                             chol_a, 8 * t2_green_a + 2 * t2_green_ab_a,
-                            optimize="optimal")
-        lt2g_b = jnp.einsum("gpq,pq->g",
+                            backend="jax")
+        lt2g_b = oe.contract("gpq,pq->g",
             chol_b, 8 * t2_green_b + 2 * t2_green_ab_b,
-            optimize="optimal")
+            backend="jax")
         e2_2_2_1 = -((lt2g_a + lt2g_b) @ (lg_a + lg_b)) / 2.0
 
         def scanned_fun(carry, x):
             chol_a_i, chol_b_i = x
-            gl_a_i = jnp.einsum("pr,rq->pq", green_a, chol_a_i,
-                                optimize="optimal")
-            gl_b_i = jnp.einsum("pr,rq->pq", green_b, chol_b_i,
-                                optimize="optimal")
-            lt2_green_a_i = jnp.einsum(
+            # e2_0
+            lg_a_i = oe.contract("pr,qr->pq", chol_a_i, green_a, backend="jax")
+            lg_b_i = oe.contract("pr,qr->pq", chol_b_i, green_b, backend="jax")
+            # lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
+            # lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
+            e2_0_1_i = (jnp.trace(lg_a_i) + jnp.trace(lg_b_i))**2 / 2.0
+            e2_0_2_i = -(oe.contract('pq,qp->',lg_a_i,lg_a_i, backend="jax") 
+                        + oe.contract('pq,qp->',lg_b_i,lg_b_i, backend="jax")
+                        ) / 2.0
+            carry[0] += e2_0_1_i + e2_0_2_i
+            # e2_2
+            gl_a_i = oe.contract("pr,rq->pq", green_a, chol_a_i,
+                                backend="jax")
+            gl_b_i = oe.contract("pr,rq->pq", green_b, chol_b_i,
+                                backend="jax")
+            lt2_green_a_i = oe.contract(
                 "pr,qr->pq", chol_a_i, 8 * t2_green_a + 2 * t2_green_ab_a,
-                optimize="optimal")
-            lt2_green_b_i = jnp.einsum(
+                backend="jax")
+            lt2_green_b_i = oe.contract(
                 "pr,qr->pq", chol_b_i, 8 * t2_green_b + 2 * t2_green_ab_b,
-                optimize="optimal")
-            carry[0] += 0.5 * (
-                jnp.einsum("pq,pq->", gl_a_i, lt2_green_a_i, optimize="optimal")
-                + jnp.einsum("pq,pq->", gl_b_i, lt2_green_b_i, optimize="optimal")
+                backend="jax")
+            carry[1] += 0.5 * (
+                oe.contract("pq,pq->", gl_a_i, lt2_green_a_i, backend="jax")
+                + oe.contract("pq,pq->", gl_b_i, lt2_green_b_i, backend="jax")
             )
-            glgp_a_i = jnp.einsum(
-                "iq,qa->ia", gl_a_i[:nocc_a,:], greenp_a, optimize="optimal"
+            glgp_a_i = oe.contract(
+                "iq,qa->ia", gl_a_i[:nocc_a,:], greenp_a, backend="jax"
             ) #.astype(jnp.complex64)
-            glgp_b_i = jnp.einsum(
-                "iq,qa->ia", gl_b_i[:nocc_b,:], greenp_b, optimize="optimal"
+            glgp_b_i = oe.contract(
+                "iq,qa->ia", gl_b_i[:nocc_b,:], greenp_b, backend="jax"
             ) #.astype(jnp.complex64)
-            l2t2_a = 0.5 * jnp.einsum(
+            l2t2_a = 0.5 * oe.contract(
                 "ia,jb,iajb->",glgp_a_i,glgp_a_i,t2_aa, #.astype(jnp.float32),
-                optimize="optimal")
-            l2t2_b = 0.5 * jnp.einsum(
+                backend="jax")
+            l2t2_b = 0.5 * oe.contract(
                 "ia,jb,iajb->",glgp_b_i,glgp_b_i,t2_bb, #.astype(jnp.float32),
-                optimize="optimal")
-            l2t2_ab = jnp.einsum(
+                backend="jax")
+            l2t2_ab = oe.contract(
                 "ia,jb,iajb->",glgp_a_i,glgp_b_i,t2_ab, #.astype(jnp.float32),
-                optimize="optimal")
-            carry[1] += l2t2_a + l2t2_b + l2t2_ab
+                backend="jax")
+            carry[2] += l2t2_a + l2t2_b + l2t2_ab
             return carry, 0.0
 
-        [e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0], (chol_a, chol_b))
+        [e2_0, e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0, 0.0], (chol_a, chol_b))
+        e2_2_1 = e2_0 * gt2g
         e2_2_2 = e2_2_2_1 + e2_2_2_2
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3 # <exp(T1)HF|T2 h2|walker>/<exp(T1)HF|walker>
 
@@ -3931,9 +3947,9 @@ class uccsd_pt2_ad(uhf):
         green_b = (walker_dn.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn))).T
         green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
         o0 = self._tls_olp(walker_up,walker_dn,wave_data)
-        o2 = (0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
-            + 0.5 * jnp.einsum("iajb, ia, jb", t2BB, green_b, green_b)
-            + jnp.einsum("iajb, ia, jb", t2AB, green_a, green_b))
+        o2 = (0.5 * oe.contract("iajb, ia, jb", t2AA, green_a, green_a, backend="jax")
+            + 0.5 * oe.contract("iajb, ia, jb", t2BB, green_b, green_b, backend="jax")
+            + oe.contract("iajb, ia, jb", t2AB, green_a, green_b, backend="jax"))
         return o2 * o0
 
     @partial(jit, static_argnums=0)
@@ -4148,9 +4164,9 @@ class uccsd_pt2_true_ad(uhf):
         green_b = (walker_dn.dot(jnp.linalg.inv(mo_B.T.conj() @ walker_dn))).T
         green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
         o0 = self._tls_olp(walker_up,walker_dn,wave_data)
-        o2 = (0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
-            + 0.5 * jnp.einsum("iajb, ia, jb", t2BB, green_b, green_b)
-            + jnp.einsum("iajb, ia, jb", t2AB, green_a, green_b))
+        o2 = (0.5 * oe.contract("iajb, ia, jb", t2AA, green_a, green_a, backend="jax")
+            + 0.5 * oe.contract("iajb, ia, jb", t2BB, green_b, green_b, backend="jax")
+            + oe.contract("iajb, ia, jb", t2AB, green_a, green_b, backend="jax"))
         return o2 * o0
 
     @partial(jit, static_argnums=0)

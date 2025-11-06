@@ -30,7 +30,7 @@ options = {'n_eql': 3,
             'n_walkers': 200,
             'seed': 2,
             'walker_type': 'uhf',
-            'trial': 'uccsd_pt', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, uccsd_pt, uccsd_pt_ad, uccsd_pt2_ad
+            'trial': 'uccsd_pt2', # ccsd_pt,ccsd_pt_ad,ccsd_pt2_ad, uccsd_pt, uccsd_pt_ad, uccsd_pt2_ad
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
