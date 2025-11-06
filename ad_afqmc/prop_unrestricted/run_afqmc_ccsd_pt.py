@@ -1,15 +1,11 @@
-from functools import partial
-from jax import random
-#from mpi4py import MPI
 import numpy as np
+from jax import random
 from jax import numpy as jnp
-from ad_afqmc import config, sampling, stat_utils
-from ad_afqmc.ccsd_pt import sample_ccsd_pt
-from ad_afqmc.prop_unrestricted import prop_unrestricted
+from functools import partial
+from ad_afqmc import config, stat_utils
+from ad_afqmc.prop_unrestricted import prop_unrestricted, sampling
 import time
 import argparse
-
-from ad_afqmc import config
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -63,7 +59,6 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
-    print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
     print("#   Iter \t <t> \t \t <e0> \t \t <e1> \t \t   energy \t Walltime")
@@ -71,58 +66,85 @@ if rank == 0:
           f"  {ept:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
-# sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
+sampler_eq = sampling.sampler_pt(
+    n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10, n_chol = sampler.n_chol)
 for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
-        sample_ccsd_pt.propagate_phaseless(
-            prop_data, ham_data, prop, trial, wave_data, sampler)
+        sampler_eq.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
 
     blk_wt = np.array([blk_wt], dtype="float64") 
     blk_t = np.array([blk_t], dtype="float64")
     blk_e0 = np.array([blk_e0], dtype="float64")
     blk_e1 = np.array([blk_e1], dtype="float64")
 
-    blk_wt_t = np.array([blk_t * blk_wt], dtype="float64")
-    blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float64")
-    blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float64")
-
-    tot_blk_wt = np.zeros(1, dtype="float64")
-    tot_blk_t = np.zeros(1, dtype="float64")
-    tot_blk_e0 = np.zeros(1, dtype="float64")
-    tot_blk_e1 = np.zeros(1, dtype="float64")
-
-    comm.Reduce(
-        [blk_wt, MPI.FLOAT],
-        [tot_blk_wt, MPI.FLOAT],
-        op=MPI.SUM,
-        root=0,
-    )
-    comm.Reduce(
-        [blk_wt_t, MPI.FLOAT],
-        [tot_blk_t, MPI.FLOAT],
-        op=MPI.SUM,
-        root=0,
-    )
-    comm.Reduce(
-        [blk_wt_e0, MPI.FLOAT],
-        [tot_blk_e0, MPI.FLOAT],
-        op=MPI.SUM,
-        root=0,
-    )
-    comm.Reduce(
-        [blk_wt_e1, MPI.FLOAT],
-        [tot_blk_e1, MPI.FLOAT],
-        op=MPI.SUM,
-        root=0,
-    )
+    gather_wt = None
+    gather_t = None
+    gather_e0 = None
+    gather_e1 = None
 
     comm.Barrier()
     if rank == 0:
-        blk_wt = tot_blk_wt
-        blk_t = tot_blk_t / tot_blk_wt
-        blk_e0 = tot_blk_e0 / tot_blk_wt
-        blk_e1 = tot_blk_e1 / tot_blk_wt
+        gather_wt = np.zeros(size, dtype="float64")
+        gather_t = np.zeros(size, dtype="float64")
+        gather_e0 = np.zeros(size, dtype="float64")
+        gather_e1 = np.zeros(size, dtype="float64")
     comm.Barrier()
+
+    comm.Gather(blk_wt, gather_wt, root=0)
+    comm.Gather(blk_t, gather_t, root=0)
+    comm.Gather(blk_e0, gather_e0, root=0)
+    comm.Gather(blk_e1, gather_e1, root=0)
+
+    comm.Barrier()
+    if rank == 0:
+        assert gather_wt is not None
+        blk_wt= np.sum(gather_wt)
+        blk_t = np.sum(gather_wt * gather_t) / blk_wt
+        blk_e0 = np.sum(gather_wt * gather_e0) / blk_wt
+        blk_e1 = np.sum(gather_wt * gather_e1) / blk_wt
+    comm.Barrier()
+
+    # blk_wt_t = np.array([blk_t * blk_wt], dtype="float64")
+    # blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float64")
+    # blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float64")
+
+    # tot_blk_wt = np.zeros(1, dtype="float64")
+    # tot_blk_t = np.zeros(1, dtype="float64")
+    # tot_blk_e0 = np.zeros(1, dtype="float64")
+    # tot_blk_e1 = np.zeros(1, dtype="float64")
+
+    # comm.Reduce(
+    #     [blk_wt, MPI.FLOAT],
+    #     [tot_blk_wt, MPI.FLOAT],
+    #     op=MPI.SUM,
+    #     root=0,
+    # )
+    # comm.Reduce(
+    #     [blk_wt_t, MPI.FLOAT],
+    #     [tot_blk_t, MPI.FLOAT],
+    #     op=MPI.SUM,
+    #     root=0,
+    # )
+    # comm.Reduce(
+    #     [blk_wt_e0, MPI.FLOAT],
+    #     [tot_blk_e0, MPI.FLOAT],
+    #     op=MPI.SUM,
+    #     root=0,
+    # )
+    # comm.Reduce(
+    #     [blk_wt_e1, MPI.FLOAT],
+    #     [tot_blk_e1, MPI.FLOAT],
+    #     op=MPI.SUM,
+    #     root=0,
+    # )
+
+    # comm.Barrier()
+    # if rank == 0:
+    #     blk_wt = tot_blk_wt
+    #     blk_t = tot_blk_t / tot_blk_wt
+    #     blk_e0 = tot_blk_e0 / tot_blk_wt
+    #     blk_e1 = tot_blk_e1 / tot_blk_wt
+    # comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_t, root=0)
@@ -133,18 +155,14 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
-         0.9 * prop_data["e_estimate"] + 0.1 * blk_ept[0]
+         0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
          )
-    # comm.Barrier()
 
     comm.Barrier()
     if rank == 0:
-        # print(
-        #     f"  {n:5d} \t {blk_ept[0]:.6f} \t {time.time() - init_time:.2f} "
-        # )
-        print(f"  {n:5d} \t {blk_t[0]:.6f} \t"
-              f"  {blk_e0[0]:.6f} \t {blk_e1[0]:.6f} \t "
-              f"  {blk_ept[0]:.6f} \t {time.time() - init_time:.2f}")
+        print(f"  {n:5d} \t {blk_t:.6f} \t"
+              f"  {blk_e0:.6f} \t {blk_e1:.6f} \t "
+              f"  {blk_ept:.6f} \t {time.time() - init_time:.2f}")
     comm.Barrier()
 
 comm.Barrier()
@@ -170,8 +188,7 @@ comm.Barrier()
     
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
-        sample_ccsd_pt.propagate_phaseless(
-            prop_data, ham_data, prop, trial, wave_data, sampler)
+        sampler.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
     
     blk_wt = np.array([blk_wt], dtype="float64")
     blk_t = np.array([blk_t], dtype="float64")
@@ -352,7 +369,7 @@ if rank == 0:
     d_med = np.median(d) + 1e-7
     mask = d/d_med < 10
     ept_clean = ept_samples[mask]
-    print('# remove outliers: ', len(ept_samples)-len(ept_clean))
+    print('# remove outliers in direct sampling: ', len(ept_samples)-len(ept_clean))
 
     ept_mean = np.mean(ept_clean)
     ept_std = np.std(ept_clean)

@@ -4,7 +4,7 @@ from jax import random
 import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, stat_utils
-from ad_afqmc.prop_unrestricted import prop_unrestricted
+from ad_afqmc.prop_unrestricted import prop_unrestricted, sampling
 import time
 import argparse
 
@@ -65,37 +65,61 @@ if rank == 0:
     print(f"  {0:5d} \t {e_init:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
-# sampler_eq = sampling.sampler(n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10)
+sampler_eq = sampling.sampler(
+    n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10, n_chol = sampler.n_chol)
+
 for n in range(1,options["n_eql"]+1):
-    prop_data, (blk_wt, blk_e) = sampler.propagate_phaseless(
-            ham, ham_data, prop, prop_data, trial, wave_data)
+    prop_data, (blk_wt, blk_e) = sampler_eq.propagate_phaseless(
+        ham, ham_data, prop, prop_data, trial, wave_data)
 
-    blk_wt = np.array([blk_wt], dtype="float32")
-    blk_e = np.array([blk_e], dtype="float32")
-    
-    blk_wt_e = np.array([blk_e * blk_wt], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float64")
+    blk_e = np.array([blk_e], dtype="float64")
 
-    tot_blk_wt = np.zeros(1, dtype="float32")
-    tot_blk_e = np.zeros(1, dtype="float32")
-
-    comm.Reduce(
-        [blk_wt, MPI.FLOAT],
-        [tot_blk_wt, MPI.FLOAT],
-        op=MPI.SUM,
-        root=0,
-    )
-    comm.Reduce(
-        [blk_wt_e, MPI.FLOAT],
-        [tot_blk_e, MPI.FLOAT],
-        op=MPI.SUM,
-        root=0,
-    )
+    gather_wt = None
+    gather_e = None
 
     comm.Barrier()
     if rank == 0:
-        blk_wt = tot_blk_wt
-        blk_e = tot_blk_e / tot_blk_wt
+        gather_wt = np.zeros(size, dtype="float64")
+        gather_e = np.zeros(size, dtype="float64")
     comm.Barrier()
+
+    comm.Gather(blk_wt, gather_wt, root=0)
+    comm.Gather(blk_e, gather_e, root=0)
+
+    comm.Barrier()
+    if rank == 0:
+        assert gather_wt is not None
+        blk_wt= np.sum(gather_wt)
+        blk_e = np.sum(gather_wt * gather_e) / blk_wt
+    comm.Barrier()
+
+    # blk_wt = np.array([blk_wt], dtype="float64")
+    # blk_e = np.array([blk_e], dtype="float64")
+    
+    # blk_wt_e = np.array([blk_e * blk_wt], dtype="float64")
+
+    # tot_blk_wt = np.zeros(1, dtype="float64")
+    # tot_blk_e = np.zeros(1, dtype="float64")
+
+    # comm.Reduce(
+    #     [blk_wt, MPI.FLOAT],
+    #     [tot_blk_wt, MPI.FLOAT],
+    #     op=MPI.SUM,
+    #     root=0,
+    # )
+    # comm.Reduce(
+    #     [blk_wt_e, MPI.FLOAT],
+    #     [tot_blk_e, MPI.FLOAT],
+    #     op=MPI.SUM,
+    #     root=0,
+    # )
+
+    # comm.Barrier()
+    # if rank == 0:
+    #     blk_wt = tot_blk_wt
+    #     blk_e = tot_blk_e / tot_blk_wt
+    # comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_e, root=0)
@@ -103,13 +127,13 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
-         0.9 * prop_data["e_estimate"] + 0.1 * blk_e[0]
+         0.9 * prop_data["e_estimate"] + 0.1 * blk_e
          )
 
     comm.Barrier()
     if rank == 0:
         print(
-            f"  {n:5d} \t {blk_e[0]:.6f} \t {time.time() - init_time:.2f} "
+            f"  {n:5d} \t {blk_e:.6f} \t {time.time() - init_time:.2f} "
         )
     comm.Barrier()
 
@@ -124,24 +148,24 @@ glb_blk_e = None
 
 comm.Barrier()
 if rank == 0:
-    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float32")
-    glb_blk_e = np.zeros(size * sampler.n_blocks,dtype="float32")
+    glb_blk_wt = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_e = np.zeros(size * sampler.n_blocks,dtype="float64")
 comm.Barrier()
     
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_e) = sampler.propagate_phaseless(
             ham, ham_data, prop, prop_data, trial, wave_data)
     
-    blk_wt = np.array([blk_wt], dtype="float32")
-    blk_e = np.array([blk_e], dtype="float32")
+    blk_wt = np.array([blk_wt], dtype="float64")
+    blk_e = np.array([blk_e], dtype="float64")
 
     gather_wt = None
     gather_e = None
 
     comm.Barrier()
     if rank == 0:
-        gather_wt = np.zeros(size, dtype="float32")
-        gather_e = np.zeros(size, dtype="float32")
+        gather_wt = np.zeros(size, dtype="float64")
+        gather_e = np.zeros(size, dtype="float64")
     comm.Barrier()
 
     comm.Gather(blk_wt, gather_wt, root=0)

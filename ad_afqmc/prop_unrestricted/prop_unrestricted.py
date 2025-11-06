@@ -1,138 +1,135 @@
-from jax import scipy as jsp
 from jax import numpy as jnp
-from jax import lax, jit, vmap, random
 from functools import partial
+# @partial(jit, static_argnums=(0, 2))
+# def _build_propagation_intermediates(self, ham_data, trial, wave_data):
+#     rdm1 = wave_data["rdm1"]
+#     mf_shift_a = 1.0j * vmap(
+#         lambda x: jnp.sum(x.reshape(trial.norb, trial.norb)
+#                           * rdm1[0]))(ham_data["chol"][0])
+#     mf_shift_b = 1.0j * vmap(
+#         lambda x: jnp.sum(x.reshape(trial.norb, trial.norb) 
+#                           * rdm1[1]))(ham_data["chol"][1])
+#     ham_data["mf_shifts"] = mf_shift_a + mf_shift_b
+#     ham_data["h0_prop"] = (
+#         - ham_data["h0"] - jnp.sum(ham_data["mf_shifts"]**2) / 2.0
+#                                    )
+#     # alpha
+#     v0_a = 0.5 * jnp.einsum(
+#         "gik,gjk->ij",
+#         ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
+#         ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
+#         optimize="optimal",
+#     )
+#     # beta
+#     v0_b = 0.5 * jnp.einsum(
+#         "gik,gjk->ij",
+#         ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
+#         ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
+#         optimize="optimal",
+#     )
+#     # alpha
+#     v1_a = jnp.real(
+#         1.0j
+#         * jnp.einsum(
+#             "g,gik->ik",ham_data["mf_shifts"],
+#             ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
+#         )
+#     )
+#     # beta
+#     v1_b = jnp.real(
+#         1.0j
+#         * jnp.einsum(
+#             "g,gik->ik",ham_data["mf_shifts"],
+#             ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
+#         )
+#     )
+#     h1_mod = ham_data["h1"] - jnp.array([v0_a + v1_a, v0_b + v1_b])
+#     ham_data["exp_h1"] = jnp.array(
+#         [
+#             jsp.linalg.expm(-self.dt * h1_mod[0] / 2.0),
+#             jsp.linalg.expm(-self.dt * h1_mod[1] / 2.0),
+#         ]
+#     )
+#     return ham_data
 
-@partial(jit, static_argnums=(0, 2))
-def _build_propagation_intermediates(self, ham_data, trial, wave_data):
-    rdm1 = wave_data["rdm1"]
-    mf_shift_a = 1.0j * vmap(
-        lambda x: jnp.sum(x.reshape(trial.norb, trial.norb)
-                          * rdm1[0]))(ham_data["chol"][0])
-    mf_shift_b = 1.0j * vmap(
-        lambda x: jnp.sum(x.reshape(trial.norb, trial.norb) 
-                          * rdm1[1]))(ham_data["chol"][1])
-    ham_data["mf_shifts"] = mf_shift_a + mf_shift_b
-    ham_data["h0_prop"] = (
-        - ham_data["h0"] - jnp.sum(ham_data["mf_shifts"]**2) / 2.0
-                                   )
-    # alpha
-    v0_a = 0.5 * jnp.einsum(
-        "gik,gjk->ij",
-        ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
-        ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
-        optimize="optimal",
-    )
-    # beta
-    v0_b = 0.5 * jnp.einsum(
-        "gik,gjk->ij",
-        ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
-        ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
-        optimize="optimal",
-    )
-    # alpha
-    v1_a = jnp.real(
-        1.0j
-        * jnp.einsum(
-            "g,gik->ik",ham_data["mf_shifts"],
-            ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
-        )
-    )
-    # beta
-    v1_b = jnp.real(
-        1.0j
-        * jnp.einsum(
-            "g,gik->ik",ham_data["mf_shifts"],
-            ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
-        )
-    )
-    h1_mod = ham_data["h1"] - jnp.array([v0_a + v1_a, v0_b + v1_b])
-    ham_data["exp_h1"] = jnp.array(
-        [
-            jsp.linalg.expm(-self.dt * h1_mod[0] / 2.0),
-            jsp.linalg.expm(-self.dt * h1_mod[1] / 2.0),
-        ]
-    )
-    return ham_data
+# @partial(jit, static_argnums=(0,))
+# def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
+#     ham_data["h1"] = (
+#         ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
+#     )
+#     ham_data["h1"] = (
+#         ham_data["h1"].at[1].set((ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0)
+#     )
+#     ham_data["rot_h1"] = [
+#         wave_data["mo_coeff"][0].T.conj() @ ham_data["h1"][0],
+#         wave_data["mo_coeff"][1].T.conj() @ ham_data["h1"][1],
+#     ]
+#     ham_data["rot_chol"] = [
+#         jnp.einsum(
+#             "pi,gij->gpj",
+#             wave_data["mo_coeff"][0].T.conj(),
+#             ham_data["chol"][0].reshape(-1, self.norb, self.norb),
+#         ),
+#         jnp.einsum(
+#             "pi,gij->gpj",
+#             wave_data["mo_coeff"][1].T.conj(),
+#             ham_data["chol"][1].reshape(-1, self.norb, self.norb),
+#         ),
+#     ]
+#     return ham_data
 
-@partial(jit, static_argnums=(0,))
-def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-    ham_data["h1"] = (
-        ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
-    )
-    ham_data["h1"] = (
-        ham_data["h1"].at[1].set((ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0)
-    )
-    ham_data["rot_h1"] = [
-        wave_data["mo_coeff"][0].T.conj() @ ham_data["h1"][0],
-        wave_data["mo_coeff"][1].T.conj() @ ham_data["h1"][1],
-    ]
-    ham_data["rot_chol"] = [
-        jnp.einsum(
-            "pi,gij->gpj",
-            wave_data["mo_coeff"][0].T.conj(),
-            ham_data["chol"][0].reshape(-1, self.norb, self.norb),
-        ),
-        jnp.einsum(
-            "pi,gij->gpj",
-            wave_data["mo_coeff"][1].T.conj(),
-            ham_data["chol"][1].reshape(-1, self.norb, self.norb),
-        ),
-    ]
-    return ham_data
+# @partial(jit, static_argnums=(0,))
+# def _apply_trotprop(
+#     self, ham_data, walkers, fields
+# ):
+#     n_walkers = walkers[0].shape[0]
+#     batch_size = n_walkers // self.n_batch
+#     # print('### running this trot ###')
 
-@partial(jit, static_argnums=(0,))
-def _apply_trotprop(
-    self, ham_data, walkers, fields
-):
-    n_walkers = walkers[0].shape[0]
-    batch_size = n_walkers // self.n_batch
-    # print('### running this trot ###')
+#     def scanned_fun(carry, batch):
+#         field_batch, walker_batch_0, walker_batch_1 = batch
+#         # alpha
+#         vhs_a = (
+#             1.0j
+#             * jnp.sqrt(self.dt)
+#             * field_batch.dot(ham_data["chol"][0]).reshape(
+#                 batch_size, walkers[0].shape[1], walkers[0].shape[1]
+#             )
+#         )
+#         # beta
+#         vhs_b = (
+#             1.0j
+#             * jnp.sqrt(self.dt)
+#             * field_batch.dot(ham_data["chol"][1]).reshape(
+#                 batch_size, walkers[1].shape[1], walkers[1].shape[1]
+#             )
+#         )
+#         walkers_new_0 = vmap(self._apply_trotprop_det, in_axes=(None, 0, 0))(
+#             ham_data["exp_h1"][0], vhs_a, walker_batch_0
+#         )
+#         walkers_new_1 = vmap(self._apply_trotprop_det, in_axes=(None, 0, 0))(
+#             ham_data["exp_h1"][1], vhs_b, walker_batch_1
+#         )
+#         return carry, [walkers_new_0, walkers_new_1]
 
-    def scanned_fun(carry, batch):
-        field_batch, walker_batch_0, walker_batch_1 = batch
-        # alpha
-        vhs_a = (
-            1.0j
-            * jnp.sqrt(self.dt)
-            * field_batch.dot(ham_data["chol"][0]).reshape(
-                batch_size, walkers[0].shape[1], walkers[0].shape[1]
-            )
-        )
-        # beta
-        vhs_b = (
-            1.0j
-            * jnp.sqrt(self.dt)
-            * field_batch.dot(ham_data["chol"][1]).reshape(
-                batch_size, walkers[1].shape[1], walkers[1].shape[1]
-            )
-        )
-        walkers_new_0 = vmap(self._apply_trotprop_det, in_axes=(None, 0, 0))(
-            ham_data["exp_h1"][0], vhs_a, walker_batch_0
-        )
-        walkers_new_1 = vmap(self._apply_trotprop_det, in_axes=(None, 0, 0))(
-            ham_data["exp_h1"][1], vhs_b, walker_batch_1
-        )
-        return carry, [walkers_new_0, walkers_new_1]
-
-    _, walkers_new = lax.scan(
-        scanned_fun,
-        None,
-        (
-            fields.reshape(self.n_batch, batch_size, -1),
-            walkers[0].reshape(
-                self.n_batch, batch_size, walkers[0].shape[1], walkers[0].shape[2]
-            ),
-            walkers[1].reshape(
-                self.n_batch, batch_size, walkers[1].shape[1], walkers[1].shape[2]
-            ),
-        ),
-    )
-    walkers = [
-        walkers_new[0].reshape(n_walkers, walkers[0].shape[1], walkers[0].shape[2]),
-        walkers_new[1].reshape(n_walkers, walkers[1].shape[1], walkers[1].shape[2]),
-    ]
-    return walkers
+#     _, walkers_new = lax.scan(
+#         scanned_fun,
+#         None,
+#         (
+#             fields.reshape(self.n_batch, batch_size, -1),
+#             walkers[0].reshape(
+#                 self.n_batch, batch_size, walkers[0].shape[1], walkers[0].shape[2]
+#             ),
+#             walkers[1].reshape(
+#                 self.n_batch, batch_size, walkers[1].shape[1], walkers[1].shape[2]
+#             ),
+#         ),
+#     )
+#     walkers = [
+#         walkers_new[0].reshape(n_walkers, walkers[0].shape[1], walkers[0].shape[2]),
+#         walkers_new[1].reshape(n_walkers, walkers[1].shape[1], walkers[1].shape[2]),
+#     ]
+#     return walkers
 
 from functools import partial
 from typing import Optional, Union
@@ -667,15 +664,34 @@ def _prep_afqmc(options=None,
                 options["n_walkers"],
                 n_batch=options["n_batch"],
             )
+    if  'pt' in options['trial']:
+        if '2' in options['trial']:
+            sampler = sampling.sampler_pt2(
+                options["n_prop_steps"],
+                options["n_ene_blocks"],
+                options["n_sr_blocks"],
+                options["n_blocks"],
+                nchol,)
+        else:
+            sampler = sampling.sampler_pt(
+                options["n_prop_steps"],
+                options["n_ene_blocks"],
+                options["n_sr_blocks"],
+                options["n_blocks"],
+                nchol,)
+    else:
+        sampler = sampling.sampler(
+                options["n_prop_steps"],
+                options["n_ene_blocks"],
+                options["n_sr_blocks"],
+                options["n_blocks"],
+                nchol,)
 
-    sampler = sampling.sampler(
-        options["n_prop_steps"],
-        options["n_ene_blocks"],
-        options["n_sr_blocks"],
-        options["n_blocks"],
-    )
-
-    sampler.n_chol = nchol
+    # sampler.n_prop_steps = options["n_prop_steps"]
+    # sampler.n_ene_blocks = options["n_ene_blocks"]
+    # sampler.n_sr_blocks = options["n_sr_blocks"]
+    # sampler.n_blocks = options["n_blocks"]
+    # sampler.n_chol = nchol
 
     if rank == 0:
         print(f"# norb: {norb}")
@@ -685,21 +701,6 @@ def _prep_afqmc(options=None,
             if options[op] is not None:
                 print(f"# {op}: {options[op]}")
         print("#")
-
-    # from ad_afqmc.ccsd_pt import prop_unrestricted
-    # import types
-
-    # trial._build_measurement_intermediates = types.MethodType(
-    #     _build_measurement_intermediates, trial)
-
-    # prop._build_propagation_intermediates = types.MethodType(
-    #     _build_propagation_intermediates, prop)
-
-    # prop._apply_trotprop = types.MethodType(
-    #     _apply_trotprop, prop)
-    
-    # sampler._block_scan = types.MethodType(
-    #     _block_scan, sampler)
 
     return ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
 
@@ -740,4 +741,3 @@ def run_afqmc(options,nproc=None,dbg=False,
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
         f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc_unrestricted.out"
     )
-
