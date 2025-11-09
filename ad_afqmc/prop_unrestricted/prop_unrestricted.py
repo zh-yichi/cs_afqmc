@@ -467,7 +467,8 @@ def _prep_afqmc(options=None,
             amplitudes = np.load(amp_file)
             ci1 = jnp.array(amplitudes["ci1"])
             ci2 = jnp.array(amplitudes["ci2"])
-            trial_wave_data = {"ci1": ci1, "ci2": ci2}
+            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
+                               "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
             wave_data.update(trial_wave_data)
             trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:

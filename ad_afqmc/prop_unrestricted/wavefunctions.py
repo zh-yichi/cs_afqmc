@@ -506,9 +506,8 @@ class rhf(wave_function):
         self, walker: Sequence, ham_data: dict, wave_data: dict
     ) -> jax.Array:
         green_walker = self._calc_green(walker, wave_data)
-        fb = 2.0 * jnp.einsum(
-            "gij,ij->g", ham_data["rot_chol"], green_walker, optimize="optimal"
-        )
+        fb = 2.0 * oe.contract("gij,ij->g", ham_data["rot_chol"], green_walker, 
+                               backend="jax")
         return fb
 
     @partial(jit, static_argnums=0)
@@ -522,9 +521,8 @@ class rhf(wave_function):
         green_walker_up = self._calc_green(walker_up, wave_data)
         green_walker_dn = self._calc_green(walker_dn, wave_data)
         green_walker = green_walker_up + green_walker_dn
-        fb = jnp.einsum(
-            "gij,ij->g", ham_data["rot_chol"], green_walker, optimize="optimal"
-        )
+        fb = oe.contract("gij,ij->g", ham_data["rot_chol"], green_walker, 
+                         backend="jax")
         return fb
 
     @partial(jit, static_argnums=0)
@@ -535,7 +533,7 @@ class rhf(wave_function):
         ene0 = h0
         green_walker = self._calc_green(walker, wave_data)
         ene1 = 2.0 * jnp.sum(green_walker * rot_h1)
-        f = jnp.einsum("gij,jk->gik", rot_chol, green_walker.T, optimize="optimal")
+        f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
         c = vmap(jnp.trace)(f)
         exc = jnp.sum(vmap(lambda x: x * x.T)(f))
         ene2 = 2.0 * jnp.sum(c * c) - exc
@@ -555,7 +553,7 @@ class rhf(wave_function):
         green_walker_dn = self._calc_green(walker_dn, wave_data)
         green_walker = green_walker_up + green_walker_dn
         ene1 = jnp.sum(green_walker * rot_h1)
-        f = jnp.einsum("gij,jk->gik", rot_chol, green_walker.T, optimize="optimal")
+        f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
         c = vmap(jnp.trace)(f)
         exc = jnp.sum(vmap(lambda x: x * x.T)(f))
         ene2 = jnp.sum(c * c) - exc
@@ -575,10 +573,10 @@ class rhf(wave_function):
 
         def scanned_fun(carry, x):
             dm = carry
-            f = jnp.einsum("gij,ik->gjk", h2, dm)
+            f = oe.contract("gij,ik->gjk", h2, dm, backend="jax")
             c = vmap(jnp.trace)(f)
-            vj = jnp.einsum("g,gij->ij", c, h2)
-            vk = jnp.einsum("glj,gjk->lk", f, h2)
+            vj = oe.contract("g,gij->ij", c, h2, backend="jax")
+            vk = oe.contract("glj,gjk->lk", f, h2, backend="jax")
             vhf = vj - 0.5 * vk
             fock = h1 + vhf
             mo_energy, mo_coeff = linalg_utils._eigh(fock)
@@ -612,11 +610,11 @@ class rhf(wave_function):
         ham_data["rot_h1"] = wave_data["mo_coeff"].T.conj() @ (
             (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
         )
-        ham_data["rot_chol"] = jnp.einsum(
+        ham_data["rot_chol"] = oe.contract(
             "pi,gij->gpj",
             wave_data["mo_coeff"].T.conj(),
-            ham_data["chol"].reshape(-1, self.norb, self.norb),
-        )
+            ham_data["chol"].reshape(-1, self.norb, self.norb), 
+            backend="jax")
         return ham_data
         
     @partial(jit, static_argnums=0)
@@ -625,11 +623,12 @@ class rhf(wave_function):
         m = jnp.dot(wave_data["prjlo"].T,wave_data["prjlo"])
         nocc = rot_h1.shape[0]
         green_walker = self._calc_green(walker, wave_data) # in ao
-        f = jnp.einsum('gij,jk->gik', rot_chol[:,:nocc,nocc:], green_walker.T[nocc:,:nocc], optimize='optimal')
+        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:], green_walker.T[nocc:,:nocc], 
+                        backend="jax")
         c = vmap(jnp.trace)(f)
 
-        eneo2Jt = jnp.einsum('Gxk,xk,G->',f,m,c)*2 
-        eneo2ext = jnp.einsum('Gxy,Gyk,xk->',f,f,m) 
+        eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
+        eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax") 
         return eneo2Jt - eneo2ext 
     
     def __hash__(self) -> int:
@@ -753,14 +752,14 @@ class uhf(wave_function):
 
         def scanned_fun(carry, x):
             dm = carry
-            f_up = jnp.einsum("gij,ik->gjk", h2, dm[0])
+            f_up = oe.contract("gij,ik->gjk", h2, dm[0], backend="jax")
             c_up = vmap(jnp.trace)(f_up)
-            vj_up = jnp.einsum("g,gij->ij", c_up, h2)
-            vk_up = jnp.einsum("glj,gjk->lk", f_up, h2)
-            f_dn = jnp.einsum("gij,ik->gjk", h2, dm[1])
+            vj_up = oe.contract("g,gij->ij", c_up, h2, backend="jax")
+            vk_up = oe.contract("glj,gjk->lk", f_up, h2, backend="jax")
+            f_dn = oe.contract("gij,ik->gjk", h2, dm[1], backend="jax")
             c_dn = vmap(jnp.trace)(f_dn)
-            vj_dn = jnp.einsum("g,gij->ij", c_dn, h2)
-            vk_dn = jnp.einsum("glj,gjk->lk", f_dn, h2)
+            vj_dn = oe.contract("g,gij->ij", c_dn, h2, backend="jax")
+            vk_dn = oe.contract("glj,gjk->lk", f_dn, h2, backend="jax")
             fock_up = h1[0] + vj_up + vj_dn - vk_up
             fock_dn = h1[1] + vj_up + vj_dn - vk_dn
             mo_energy_up, mo_coeff_up = linalg_utils._eigh(fock_up)
@@ -822,17 +821,16 @@ class uhf(wave_function):
             wave_data["mo_coeff"][1].T.conj() @ ham_data["h1"][1],
         ]
         ham_data["rot_chol"] = [
-            jnp.einsum(
+            oe.contract(
                 "pi,gij->gpj",
                 wave_data["mo_coeff"][0].T.conj(),
-                ham_data["chol"][0].reshape(-1, self.norb, self.norb),
-            ),
-            jnp.einsum(
+                ham_data["chol"][0].reshape(-1, self.norb, self.norb), 
+                backend="jax"),
+            oe.contract(
                 "pi,gij->gpj",
                 wave_data["mo_coeff"][1].T.conj(),
-                ham_data["chol"][1].reshape(-1, self.norb, self.norb),
-            ),
-        ]
+                ham_data["chol"][1].reshape(-1, self.norb, self.norb), 
+                backend="jax")]
         return ham_data
 
     def __hash__(self) -> int:
@@ -1011,8 +1009,8 @@ class ghf(wave_function):
         wave_data: dict,
     ) -> jax.Array:
         green_walker = self._calc_green(walker_up, walker_dn, wave_data)
-        fb = jnp.einsum(
-            "gij,ij->g", ham_data["rot_chol"], green_walker, optimize="optimal"
+        fb = oe.contract(
+            "gij,ij->g", ham_data["rot_chol"], green_walker, backend="jax"
         )
         return fb
 
@@ -1028,7 +1026,7 @@ class ghf(wave_function):
         ene0 = h0
         green_walker = self._calc_green(walker_up, walker_dn, wave_data)
         ene1 = jnp.sum(green_walker * rot_h1)
-        f = jnp.einsum("gij,jk->gik", rot_chol, green_walker.T, optimize="optimal")
+        f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
         coul = vmap(jnp.trace)(f)
         exc = jnp.sum(vmap(lambda x: x * x.T)(f))
         ene2 = (jnp.sum(coul * coul) - exc) / 2.0
@@ -1263,22 +1261,22 @@ class noci(wave_function):
         )
         overlap = jnp.sum(ci_coeffs * overlaps)
         fb_up = (
-            jnp.einsum(
+            oe.contract(
                 "ngij,nij,n->g",
                 ham_data["rot_chol"][0],
                 up_greens,
                 ci_coeffs * overlaps,
-                optimize="optimal",
+                backend="jax"
             )
             / overlap
         )
         fb_dn = (
-            jnp.einsum(
+            oe.contract(
                 "ngij,nij,n->g",
                 ham_data["rot_chol"][1],
                 dn_greens,
                 ci_coeffs * overlaps,
-                optimize="optimal",
+                backend="jax"
             )
             / overlap
         )
@@ -1305,12 +1303,10 @@ class noci(wave_function):
         ene1 = jnp.sum(green_walker[0] * rot_h1_up) + jnp.sum(
             green_walker[1] * rot_h1_dn
         )
-        f_up = jnp.einsum(
-            "gij,jk->gik", rot_chol_up, green_walker[0].T, optimize="optimal"
-        )
-        f_dn = jnp.einsum(
-            "gij,jk->gik", rot_chol_dn, green_walker[1].T, optimize="optimal"
-        )
+        f_up = oe.contract(
+            "gij,jk->gik", rot_chol_up, green_walker[0].T, backend="jax")
+        f_dn = oe.contract(
+            "gij,jk->gik", rot_chol_dn, green_walker[1].T, backend="jax")
         c_up = vmap(jnp.trace)(f_up)
         c_dn = vmap(jnp.trace)(f_dn)
         exc_up = jnp.sum(vmap(lambda x: x * x.T)(f_up))
@@ -1392,16 +1388,14 @@ class noci(wave_function):
             in_axes=(None, None, 0, 0),
         )(dets[0], dets[1], dets[0], dets[1])
         up_rdm1 = (
-            jnp.einsum(
-                "hg,hgij->ij", jnp.outer(ci_coeffs, ci_coeffs) * overlaps, up_rdm1s
-            )
-            / overlap
+            oe.contract(
+                "hg,hgij->ij", jnp.outer(ci_coeffs, ci_coeffs) * overlaps, up_rdm1s, 
+                backend="jax") / overlap
         )
         dn_rdm1 = (
-            jnp.einsum(
-                "hg,hgij->ij", jnp.outer(ci_coeffs, ci_coeffs) * overlaps, dn_rdm1s
-            )
-            / overlap
+            oe.contract(
+                "hg,hgij->ij", jnp.outer(ci_coeffs, ci_coeffs) * overlaps, dn_rdm1s, 
+                backend="jax") / overlap
         )
         return jnp.array([up_rdm1, dn_rdm1])
 
@@ -1414,17 +1408,16 @@ class noci(wave_function):
             trial_dn.T.conj() @ ham_data["h1"][1],
         ]
         rot_chol = [
-            jnp.einsum(
+            oe.contract(
                 "pi,gij->gpj",
                 trial_up.T,
                 ham_data["chol"].reshape(-1, self.norb, self.norb),
-            ),
-            jnp.einsum(
+                backend="jax"),
+            oe.contract(
                 "pi,gij->gpj",
                 trial_dn.T,
                 ham_data["chol"].reshape(-1, self.norb, self.norb),
-            ),
-        ]
+                backend="jax")]
         return rot_h1, rot_chol
 
     @partial(jit, static_argnums=0)
@@ -1466,8 +1459,8 @@ class wave_function_auto(wave_function):
     ) -> jax.Array:
         """Helper function for calculating force bias using AD,
         evaluates < psi_T | exp(x_gamma * chol) | walker > to linear order"""
-        x_chol = jnp.einsum(
-            "gij,g->ij", chol.reshape(-1, self.norb, self.norb), x_gamma
+        x_chol = oe.contract(
+            "gij,g->ij", chol.reshape(-1, self.norb, self.norb), x_gamma, backend="jax"
         )
         walker_1 = walker + x_chol.dot(walker)
         return self._calc_overlap_restricted(walker_1, wave_data)
@@ -1498,8 +1491,8 @@ class wave_function_auto(wave_function):
     ) -> jax.Array:
         """Helper function for calculating force bias using AD,
         evaluates < psi_T | exp(x_gamma * chol) | walker > to linear order"""
-        x_chol = jnp.einsum(
-            "gij,g->ij", chol.reshape(-1, self.norb, self.norb), x_gamma
+        x_chol = oe.contract(
+            "gij,g->ij", chol.reshape(-1, self.norb, self.norb), x_gamma, backend="jax"
         )
         walker_up_1 = walker_up + x_chol.dot(walker_up)
         walker_dn_1 = walker_dn + x_chol.dot(walker_dn)
@@ -1688,12 +1681,11 @@ class wave_function_auto(wave_function):
 
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-        v0 = 0.5 * jnp.einsum(
+        v0 = 0.5 * oe.contract(
             "gik,gjk->ij",
             ham_data["chol"].reshape(-1, self.norb, self.norb),
             ham_data["chol"].reshape(-1, self.norb, self.norb),
-            optimize="optimal",
-        )
+            backend="jax")
         ham_data["normal_ordering_term"] = -v0
         return ham_data
 
@@ -1873,10 +1865,10 @@ class CISD(wave_function_auto):
         nocc, ci1, ci2 = walker.shape[1], wave_data["ci1"], wave_data["ci2"]
         GF = self._calc_green_restricted(walker)
         o0 = jnp.linalg.det(walker[: walker.shape[1], :]) ** 2
-        o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
-        o2 = 2 * jnp.einsum(
-            "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]
-        ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
+        o1 = oe.contract("ia,ia", ci1, GF[:, nocc:], backend="jax")
+        o2 = 2 * oe.contract(
+            "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax"
+        ) - oe.contract("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax")
         return (1.0 + 2 * o1 + o2) * o0
 
     def __hash__(self) -> int:
@@ -1922,20 +1914,16 @@ class UCISD(wave_function_auto):
 
         o0 = jnp.linalg.det(walker_up[:noccA, :]) * jnp.linalg.det(walker_dn[:noccB, :])
 
-        o1 = jnp.einsum("ia,ia", ci1A, GFA[:, noccA:]) + jnp.einsum(
-            "ia,ia", ci1B, GFB[:, noccB:]
+        o1 = oe.contract("ia,ia", ci1A, GFA[:, noccA:], backend="jax") + oe.contract(
+            "ia,ia", ci1B, GFB[:, noccB:], backend="jax"
         )
 
         # AA
-        o2 = 0.5 * jnp.einsum("iajb, ia, jb", ci2AA, GFA[:, noccA:], GFA[:, noccA:])
-        # o2 -= 0.25 * jnp.einsum("iajb, ib, ja", ci2AA, GFA[:, noccA:], GFA[:, noccA:])
-
+        o2 = 0.5 * oe.contract("iajb, ia, jb", ci2AA, GFA[:, noccA:], GFA[:, noccA:], backend="jax")
         # BB
-        o2 += 0.5 * jnp.einsum("iajb, ia, jb", ci2BB, GFB[:, noccB:], GFB[:, noccB:])
-        # o2 -= 0.25 * jnp.einsum("iajb, ib, ja", ci2BB, GFB[:, noccB:], GFB[:, noccB:])
-
+        o2 += 0.5 * oe.contract("iajb, ia, jb", ci2BB, GFB[:, noccB:], GFB[:, noccB:], backend="jax")
         # AB
-        o2 += jnp.einsum("iajb, ia, jb", ci2AB, GFA[:, noccA:], GFB[:, noccB:])
+        o2 += oe.contract("iajb, ia, jb", ci2AB, GFA[:, noccA:], GFB[:, noccB:], backend="jax")
 
         return (1.0 + o1 + o2) * o0
 
@@ -1977,10 +1965,9 @@ class GCISD(wave_function_auto):
         walker = wave_data["mo_coeff"].T @ walker
         GF = self._calc_green(walker)
         o0 = jnp.linalg.det(walker[: walker.shape[1], :])
-        o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
-        o2 = jnp.einsum("iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]) - jnp.einsum(
-            "iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:]
-        )
+        o1 = oe.contract("ia,ia", ci1, GF[:, nocc:], backend="jax")
+        o2 = oe.contract("iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax") \
+            - oe.contract("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax")
         return (1.0 + o1 + o2 / 4.0) * o0
 
     def __hash__(self) -> int:
@@ -2018,13 +2005,13 @@ class CISD_THC(wave_function_auto):
 
         o0 = jnp.linalg.det(walker[: walker.shape[1], :]) ** 2
 
-        o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
+        o1 = oe.contract("ia,ia", ci1, GF[:, nocc:], backend="jax")
 
         # A = jnp.einsum('ia,Pi,Pa->P', GF[:,nocc:], Xocc, Xvirt)
         # o2 = 2*jnp.einsum('P,PQ,Q', A, VKL, A)
 
         gv = GF[:, nocc:] @ Xvirt.T
-        A = jnp.einsum("Pi,iP->P", Xocc, gv)
+        A = oe.contract("Pi,iP->P", Xocc, gv, backend="jax")
         o2 = 2 * (A @ VKL).dot(A)
 
         B = Xocc @ gv
@@ -2044,15 +2031,19 @@ class cisd(wave_function):
     nelec: Tuple[int, int]
     n_batch: int = 1
 
+    def _calc_rdm1(self, wave_data: dict) -> jax.Array:
+        rdm1 = jnp.array([wave_data["mo_coeff"] @ wave_data["mo_coeff"].T] * 2)
+        return rdm1
+
     @partial(jit, static_argnums=0)
     def _calc_overlap_restricted(self, walker: jax.Array, wave_data: dict) -> complex:
         nocc, ci1, ci2 = walker.shape[1], wave_data["ci1"], wave_data["ci2"]
         GF = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
         o0 = jnp.linalg.det(walker[: walker.shape[1], :]) ** 2
-        o1 = jnp.einsum("ia,ia", ci1, GF[:, nocc:])
-        o2 = 2 * jnp.einsum(
-            "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:]
-        ) - jnp.einsum("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:])
+        o1 = oe.contract("ia,ia", ci1, GF[:, nocc:], backend="jax")
+        o2 = 2 * oe.contract(
+            "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax"
+        ) - oe.contract("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax")
         return (1.0 + 2 * o1 + o2) * o0
 
     @partial(jit, static_argnums=0)
@@ -2068,29 +2059,29 @@ class cisd(wave_function):
 
         chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
         rot_chol = chol[:, : self.nelec[0], :]
-        lg = jnp.einsum("gpj,pj->g", rot_chol, green, optimize="optimal")
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
 
         # ref
         fb_0 = 2 * lg
 
         # single excitations
-        ci1g = jnp.einsum("pt,pt->", ci1, green_occ, optimize="optimal")
-        ci1gp = jnp.einsum("pt,it->pi", ci1, greenp, optimize="optimal")
-        gci1gp = jnp.einsum("pj,pi->ij", green, ci1gp, optimize="optimal")
+        ci1g = oe.contract("pt,pt->", ci1, green_occ, backend="jax")
+        ci1gp = oe.contract("pt,it->pi", ci1, greenp, backend="jax")
+        gci1gp = oe.contract("pj,pi->ij", green, ci1gp, backend="jax")
         fb_1_1 = 4 * ci1g * lg
-        fb_1_2 = -2 * jnp.einsum("gij,ij->g", chol, gci1gp, optimize="optimal")
+        fb_1_2 = -2 * oe.contract("gij,ij->g", chol, gci1gp, backend="jax")
         fb_1 = fb_1_1 + fb_1_2
 
         # double excitations
-        ci2g_c = jnp.einsum("ptqu,pt->qu", ci2, green_occ)
-        ci2g_e = jnp.einsum("ptqu,pu->qt", ci2, green_occ)
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
         cisd_green_c = (greenp @ ci2g_c.T) @ green
         cisd_green_e = (greenp @ ci2g_e.T) @ green
         cisd_green = -4 * cisd_green_c + 2 * cisd_green_e
         ci2g = 4 * ci2g_c - 2 * ci2g_e
-        gci2g = jnp.einsum("qu,qu->", ci2g, green_occ, optimize="optimal")
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
         fb_2_1 = lg * gci2g
-        fb_2_2 = jnp.einsum("gij,ij->g", chol, cisd_green, optimize="optimal")
+        fb_2_2 = oe.contract("gij,ij->g", chol, cisd_green, backend="jax")
         fb_2 = fb_2_1 + fb_2_2
 
         # overlap
@@ -2114,7 +2105,7 @@ class cisd(wave_function):
         # rot_chol = ham_data["rot_chol"]
         rot_chol = chol[:, : self.nelec[0], :]
         h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        hg = jnp.einsum("pj,pj->", h1[:nocc, :], green)
+        hg = oe.contract("pj,pj->", h1[:nocc, :], green, backend="jax")
 
         # 0 body energy
         e0 = ham_data["h0"]
@@ -2124,52 +2115,51 @@ class cisd(wave_function):
         e1_0 = 2 * hg
 
         # single excitations
-        ci1g = jnp.einsum("pt,pt->", ci1, green_occ, optimize="optimal")
+        ci1g = oe.contract("pt,pt->", ci1, green_occ, backend="jax")
         e1_1_1 = 4 * ci1g * hg
         gpci1 = greenp @ ci1.T
         ci1_green = gpci1 @ green
-        e1_1_2 = -2 * jnp.einsum("ij,ij->", h1, ci1_green, optimize="optimal")
+        e1_1_2 = -2 * oe.contract("ij,ij->", h1, ci1_green, backend="jax")
         e1_1 = e1_1_1 + e1_1_2
 
         # double excitations
-        ci2g_c = jnp.einsum("ptqu,pt->qu", ci2, green_occ)
-        ci2g_e = jnp.einsum("ptqu,pu->qt", ci2, green_occ)
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
         ci2_green_c = (greenp @ ci2g_c.T) @ green
         ci2_green_e = (greenp @ ci2g_e.T) @ green
         ci2_green = 2 * ci2_green_c - ci2_green_e
         ci2g = 2 * ci2g_c - ci2g_e
-        gci2g = jnp.einsum("qu,qu->", ci2g, green_occ, optimize="optimal")
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
         e1_2_1 = 2 * hg * gci2g
-        e1_2_2 = -2 * jnp.einsum("ij,ij->", h1, ci2_green, optimize="optimal")
+        e1_2_2 = -2 * oe.contract("ij,ij->", h1, ci2_green, backend="jax")
         e1_2 = e1_2_1 + e1_2_2
         e1 = e1_0 + e1_1 + e1_2
 
         # two body energy
         # ref
-        lg = jnp.einsum("gpj,pj->g", rot_chol, green, optimize="optimal")
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
         # lg1 = jnp.einsum("gpj,pk->gjk", rot_chol, green, optimize="optimal")
-        lg1 = jnp.einsum("gpj,qj->gpq", rot_chol, green, optimize="optimal")
+        lg1 = oe.contract("gpj,qj->gpq", rot_chol, green, backend="jax")
         e2_0_1 = 2 * lg @ lg
         e2_0_2 = -jnp.sum(vmap(lambda x: x * x.T)(lg1))
         e2_0 = e2_0_1 + e2_0_2
 
         # single excitations
         e2_1_1 = 2 * e2_0 * ci1g
-        lci1g = jnp.einsum("gij,ij->g", chol, ci1_green, optimize="optimal")
+        lci1g = oe.contract("gij,ij->g", chol, ci1_green, backend="jax")
         e2_1_2 = -2 * (lci1g @ lg)
-        # lci1g1 = jnp.einsum("gij,jk->gik", chol, ci1_green, optimize="optimal")
-        # glgpci1 = jnp.einsum(("gpi,iq->gpq"), gl, gpci1, optimize="optimal")
+
         ci1g1 = ci1 @ green_occ.T
         # e2_1_3 = jnp.einsum("gpq,gpq->", glgpci1, lg1, optimize="optimal")
-        e2_1_3_1 = jnp.einsum("gpq,gqr,rp->", lg1, lg1, ci1g1, optimize="optimal")
-        lci1g = jnp.einsum("gip,qi->gpq", ham_data["lci1"], green, optimize="optimal")
-        e2_1_3_2 = -jnp.einsum("gpq,gqp->", lci1g, lg1, optimize="optimal")
+        e2_1_3_1 = oe.contract("gpq,gqr,rp->", lg1, lg1, ci1g1, backend="jax")
+        lci1g = oe.contract("gip,qi->gpq", ham_data["lci1"], green, backend="jax")
+        e2_1_3_2 = -oe.contract("gpq,gqp->", lci1g, lg1, backend="jax")
         e2_1_3 = e2_1_3_1 + e2_1_3_2
         e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3)
 
         # double excitations
         e2_2_1 = e2_0 * gci2g
-        lci2g = jnp.einsum("gij,ij->g", chol, ci2_green, optimize="optimal")
+        lci2g = oe.contract("gij,ij->g", chol, ci2_green, backend="jax")
         e2_2_2_1 = -lci2g @ lg
 
         # lci2g1 = jnp.einsum("gij,jk->gik", chol, ci2_green, optimize="optimal")
@@ -2177,48 +2167,40 @@ class cisd(wave_function):
         # e2_2_2_2 = 0.5 * jnp.einsum("gpi,gpi->", gl, lci2_green, optimize="optimal")
         def scanned_fun(carry, x):
             chol_i, rot_chol_i = x
-            gl_i = jnp.einsum("pj,ji->pi", green, chol_i, optimize="optimal")
-            lci2_green_i = jnp.einsum(
-                "pi,ji->pj", rot_chol_i, ci2_green, optimize="optimal"
+            gl_i = oe.contract("pj,ji->pi", green, chol_i, backend="jax")
+            lci2_green_i = oe.contract(
+                "pi,ji->pj", rot_chol_i, ci2_green, backend="jax"
             )
-            carry[0] += 0.5 * jnp.einsum(
-                "pi,pi->", gl_i, lci2_green_i, optimize="optimal"
+            carry[0] += 0.5 * oe.contract(
+                "pi,pi->", gl_i, lci2_green_i, backend="jax"
             )
-            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal") #.astype(jnp.complex64)
-            l2ci2_1 = jnp.einsum(
+            glgp_i = oe.contract("pi,it->pt", gl_i, greenp, backend="jax")
+            l2ci2_1 = oe.contract(
                 "pt,qu,ptqu->",
                 glgp_i,
                 glgp_i,
-                ci2, #.astype(jnp.float32),
-                optimize="optimal",
+                ci2,
+                backend="jax"
             )
-            l2ci2_2 = jnp.einsum(
+            l2ci2_2 = oe.contract(
                 "pu,qt,ptqu->",
                 glgp_i,
                 glgp_i,
-                ci2, #.astype(jnp.float32),
-                optimize="optimal",
+                ci2,
+                backend="jax"
             )
             carry[1] += 2 * l2ci2_1 - l2ci2_2
             return carry, 0.0
 
         [e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0], (chol, rot_chol))
         e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
-        # glgp = jnp.einsum("pi,gij,jt->gpt", green, chol, greenp, optimize="optimal")
-        # l2 = jnp.einsum("gpt,gqu->ptqu", glgp, glgp, optimize="optimal")
-        # l2ci2_1 = jnp.einsum("ptqu,ptqu->", l2, ci2, optimize="optimal")
-        # l2ci2_2 = jnp.einsum("puqt,ptqu->", l2, ci2, optimize="optimal")
 
-        # glgp = jnp.einsum("gpi,it->gpt", gl, greenp, optimize="optimal")
-        # l2ci2_1 = jnp.einsum("gpt,gqu,ptqu->g", glgp, glgp, ci2, optimize="optimal")
-        # l2ci2_2 = jnp.einsum("gpu,gqt,ptqu->g", glgp, glgp, ci2, optimize="optimal")
-        # e2_2_3 = 2 * l2ci2_1.sum() - l2ci2_2.sum()
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3
 
         e2 = e2_0 + e2_1 + e2_2
 
         # overlap
-        overlap_1 = 2 * ci1g  # jnp.einsum("ia,ia", ci1, green_occ)
+        overlap_1 = 2 * ci1g
         overlap_2 = gci2g
         overlap = 1.0 + overlap_1 + overlap_2
         return (e1 + e2) / overlap + e0
@@ -2226,11 +2208,11 @@ class cisd(wave_function):
 
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-        ham_data["lci1"] = jnp.einsum(
+        ham_data["lci1"] = oe.contract(
             "git,pt->gip",
             ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
             wave_data["ci1"],
-            optimize="optimal",
+            backend="jax"
         )
         return ham_data
 
@@ -2262,7 +2244,7 @@ class cisd_faster(cisd):
         chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
         rot_chol = chol[:, : self.nelec[0], :]
         h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        hg = jnp.einsum("pj,pj->", h1[:nocc, :], green)
+        hg = oe.contract("pj,pj->", h1[:nocc, :], green, backend="jax")
 
         # 0 body energy
         e0 = ham_data["h0"]
@@ -2272,60 +2254,56 @@ class cisd_faster(cisd):
         e1_0 = 2 * hg
 
         # single excitations
-        ci1g = jnp.einsum("pt,pt->", ci1, green_occ, optimize="optimal")
+        ci1g = oe.contract("pt,pt->", ci1, green_occ, backend="jax")
         e1_1_1 = 4 * ci1g * hg
         gpci1 = greenp @ ci1.T
         ci1_green = gpci1 @ green
-        e1_1_2 = -2 * jnp.einsum("ij,ij->", h1, ci1_green, optimize="optimal")
+        e1_1_2 = -2 *oe.contract("ij,ij->", h1, ci1_green, backend="jax")
         e1_1 = e1_1_1 + e1_1_2
 
         # double excitations
-        ci2g_c = jnp.einsum("ptqu,pt->qu", ci2, green_occ)
-        ci2g_e = jnp.einsum("ptqu,pu->qt", ci2, green_occ)
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
         ci2_green_c = (greenp @ ci2g_c.T) @ green
         ci2_green_e = (greenp @ ci2g_e.T) @ green
         ci2_green = 2 * ci2_green_c - ci2_green_e
         ci2g = 2 * ci2g_c - ci2g_e
-        gci2g = jnp.einsum("qu,qu->", ci2g, green_occ, optimize="optimal")
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
         e1_2_1 = 2 * hg * gci2g
-        e1_2_2 = -2 * jnp.einsum("ij,ij->", h1, ci2_green, optimize="optimal")
+        e1_2_2 = -2 * oe.contract("ij,ij->", h1, ci2_green, backend="jax")
         e1_2 = e1_2_1 + e1_2_2
         e1 = e1_0 + e1_1 + e1_2
 
         # two body energy
         # ref
-        lg = jnp.einsum("gpj,pj->g", rot_chol, green, optimize="optimal")
-        lg1 = jnp.einsum("gpj,qj->gpq", rot_chol, green, optimize="optimal")
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
+        lg1 = oe.contract("gpj,qj->gpq", rot_chol, green, backend="jax")
         e2_0_1 = 2 * lg @ lg
         e2_0_2 = -jnp.sum(vmap(lambda x: x * x.T)(lg1))
         e2_0 = e2_0_1 + e2_0_2
 
         # single excitations
         e2_1_1 = 2 * e2_0 * ci1g
-        lci1g = jnp.einsum("gij,ij->g", chol, ci1_green, optimize="optimal")
+        lci1g = oe.contract("gij,ij->g", chol, ci1_green, backend="jax")
         e2_1_2 = -2 * (lci1g @ lg)
-        gl = jnp.einsum("pj,gji->gpi", green, chol, optimize="optimal")
+        gl = oe.contract("pj,gji->gpi", green, chol, backend="jax")
         ci1g1 = ci1 @ green_occ.T
-        e2_1_3_1 = jnp.einsum("gpq,gqr,rp->", lg1, lg1, ci1g1, optimize="optimal")
-        lci1g = jnp.einsum("gip,qi->gpq", ham_data["lci1"], green, optimize="optimal")
-        e2_1_3_2 = -jnp.einsum("gpq,gqp->", lci1g, lg1, optimize="optimal")
+        e2_1_3_1 = oe.contract("gpq,gqr,rp->", lg1, lg1, ci1g1, backend="jax")
+        lci1g = oe.contract("gip,qi->gpq", ham_data["lci1"], green, backend="jax")
+        e2_1_3_2 = -oe.contract("gpq,gqp->", lci1g, lg1, backend="jax")
         e2_1_3 = e2_1_3_1 + e2_1_3_2
         e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3)
 
         # double excitations
         e2_2_1 = e2_0 * gci2g
-        lci2g = jnp.einsum("gij,ij->g", chol, ci2_green, optimize="optimal")
+        lci2g = oe.contract("gij,ij->g", chol, ci2_green, backend="jax")
         e2_2_2_1 = -lci2g @ lg
-        lci2_green = jnp.einsum("gpi,ji->gpj", rot_chol, ci2_green, optimize="optimal")
-        e2_2_2_2 = 0.5 * jnp.einsum("gpi,gpi->", gl, lci2_green, optimize="optimal")
+        lci2_green = oe.contract("gpi,ji->gpj", rot_chol, ci2_green, backend="jax")
+        e2_2_2_2 = 0.5 * oe.contract("gpi,gpi->", gl, lci2_green, backend="jax")
         e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
-        glgp = jnp.einsum("gpi,it->gpt", gl, greenp, optimize="optimal") #.astype(jnp.complex64)
-        l2ci2_1 = jnp.einsum(
-            "gpt,gqu,ptqu->g", glgp, glgp, ci2,#.astype(jnp.float32), 
-            optimize="optimal")
-        l2ci2_2 = jnp.einsum(
-            "gpu,gqt,ptqu->g", glgp, glgp, ci2, #.astype(jnp.float32),
-            optimize="optimal")
+        glgp = oe.contract("gpi,it->gpt", gl, greenp, backend="jax")
+        l2ci2_1 = oe.contract("gpt,gqu,ptqu->g", glgp, glgp, ci2, backend="jax")
+        l2ci2_2 = oe.contract("gpu,gqt,ptqu->g", glgp, glgp, ci2, backend="jax")
         e2_2_3 = 2 * l2ci2_1.sum() - l2ci2_2.sum()
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3
         e2 = e2_0 + e2_1 + e2_2
@@ -2368,10 +2346,11 @@ class ucisd(wave_function):
         green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[: noccB, :]))).T
         green_a, green_b = green_a[:, noccA:], green_b[:, noccB:]
         o0 = jnp.linalg.det(walker_up[:noccA, :]) * jnp.linalg.det(walker_dn[:noccB, :])
-        o1 = jnp.einsum("ia,ia", ci1A, green_a) + jnp.einsum("ia,ia", ci1B, green_b)
-        o2 = (0.5 * jnp.einsum("iajb, ia, jb", ci2AA, green_a, green_a)
-            + 0.5 * jnp.einsum("iajb, ia, jb", ci2BB, green_b, green_b)
-            + jnp.einsum("iajb, ia, jb", ci2AB, green_a, green_b))
+        o1 = oe.contract("ia,ia", ci1A, green_a, backend="jax") \
+            + oe.contract("ia,ia", ci1B, green_b, backend="jax")
+        o2 = 0.5 * oe.contract("iajb, ia, jb", ci2AA, green_a, green_a, backend="jax")\
+            + 0.5 * oe.contract("iajb, ia, jb", ci2BB, green_b, green_b, backend="jax")\
+            + oe.contract("iajb, ia, jb", ci2AB, green_a, green_b, backend="jax")
         return (1.0 + o1 + o2) * o0
 
     @partial(jit, static_argnums=0)
@@ -2397,41 +2376,41 @@ class ucisd(wave_function):
         chol_b = ham_data["chol"][1].reshape(-1, self.norb, self.norb)
         rot_chol_a = chol_a[:, : self.nelec[0], :]
         rot_chol_b = chol_b[:, : self.nelec[1], :]
-        lg_a = jnp.einsum("gpj,pj->g", rot_chol_a, green_a, optimize="optimal")
-        lg_b = jnp.einsum("gpj,pj->g", rot_chol_b, green_b, optimize="optimal")
+        lg_a = oe.contract("gpj,pj->g", rot_chol_a, green_a, backend="jax")
+        lg_b = oe.contract("gpj,pj->g", rot_chol_b, green_b, backend="jax")
         lg = lg_a + lg_b
 
         # ref
         fb_0 = lg_a + lg_b
 
         # single excitations
-        ci1g_a = jnp.einsum("pt,pt->", ci1_a, green_occ_a, optimize="optimal")
-        ci1g_b = jnp.einsum("pt,pt->", ci1_b, green_occ_b, optimize="optimal")
+        ci1g_a = oe.contract("pt,pt->", ci1_a, green_occ_a, backend="jax")
+        ci1g_b = oe.contract("pt,pt->", ci1_b, green_occ_b, backend="jax")
         ci1g = ci1g_a + ci1g_b
         fb_1_1 = ci1g * lg
-        ci1gp_a = jnp.einsum("pt,it->pi", ci1_a, greenp_a, optimize="optimal")
-        ci1gp_b = jnp.einsum("pt,it->pi", ci1_b, greenp_b, optimize="optimal")
-        gci1gp_a = jnp.einsum("pj,pi->ij", green_a, ci1gp_a, optimize="optimal")
-        gci1gp_b = jnp.einsum("pj,pi->ij", green_b, ci1gp_b, optimize="optimal")
-        fb_1_2 = -jnp.einsum(
-            "gij,ij->g", chol_a, gci1gp_a, optimize="optimal"
-        ) - jnp.einsum("gij,ij->g", chol_b, gci1gp_b, optimize="optimal")
+        ci1gp_a = oe.contract("pt,it->pi", ci1_a, greenp_a, backend="jax")
+        ci1gp_b = oe.contract("pt,it->pi", ci1_b, greenp_b, backend="jax")
+        gci1gp_a = oe.contract("pj,pi->ij", green_a, ci1gp_a, backend="jax")
+        gci1gp_b = oe.contract("pj,pi->ij", green_b, ci1gp_b, backend="jax")
+        fb_1_2 = -oe.contract(
+            "gij,ij->g", chol_a, gci1gp_a, backend="jax")\
+                - oe.contract("gij,ij->g", chol_b, gci1gp_b, backend="jax")
         fb_1 = fb_1_1 + fb_1_2
 
         # double excitations
-        ci2g_a = jnp.einsum("ptqu,pt->qu", ci2_aa, green_occ_a)
-        ci2g_b = jnp.einsum("ptqu,pt->qu", ci2_bb, green_occ_b)
-        ci2g_ab_a = jnp.einsum("ptqu,qu->pt", ci2_ab, green_occ_b)
-        ci2g_ab_b = jnp.einsum("ptqu,pt->qu", ci2_ab, green_occ_a)
-        gci2g_a = 0.5 * jnp.einsum("qu,qu->", ci2g_a, green_occ_a, optimize="optimal")
-        gci2g_b = 0.5 * jnp.einsum("qu,qu->", ci2g_b, green_occ_b, optimize="optimal")
-        gci2g_ab = jnp.einsum("pt,pt->", ci2g_ab_a, green_occ_a, optimize="optimal")
+        ci2g_a = oe.contract("ptqu,pt->qu", ci2_aa, green_occ_a, backend="jax")
+        ci2g_b = oe.contract("ptqu,pt->qu", ci2_bb, green_occ_b, backend="jax")
+        ci2g_ab_a = oe.contract("ptqu,qu->pt", ci2_ab, green_occ_b, backend="jax")
+        ci2g_ab_b = oe.contract("ptqu,pt->qu", ci2_ab, green_occ_a, backend="jax")
+        gci2g_a = 0.5 * oe.contract("qu,qu->", ci2g_a, green_occ_a, backend="jax")
+        gci2g_b = 0.5 * oe.contract("qu,qu->", ci2g_b, green_occ_b, backend="jax")
+        gci2g_ab = oe.contract("pt,pt->", ci2g_ab_a, green_occ_a, backend="jax")
         gci2g = gci2g_a + gci2g_b + gci2g_ab
         fb_2_1 = lg * gci2g
         ci2_green_a = (greenp_a @ (ci2g_a + ci2g_ab_a).T) @ green_a
         ci2_green_b = (greenp_b @ (ci2g_b + ci2g_ab_b).T) @ green_b
-        fb_2_2_a = -jnp.einsum("gij,ij->g", chol_a, ci2_green_a, optimize="optimal")
-        fb_2_2_b = -jnp.einsum("gij,ij->g", chol_b, ci2_green_b, optimize="optimal")
+        fb_2_2_a = -oe.contract("gij,ij->g", chol_a, ci2_green_a, backend="jax")
+        fb_2_2_b = -oe.contract("gij,ij->g", chol_b, ci2_green_b, backend="jax")
         fb_2_2 = fb_2_2_a + fb_2_2_b
         fb_2 = fb_2_1 + fb_2_2
 
@@ -2466,8 +2445,8 @@ class ucisd(wave_function):
         rot_chol_b = chol_b[:, :nocc_b, :]
         h1_a = ham_data["h1"][0]
         h1_b = ham_data["h1"][1]
-        hg_a = jnp.einsum("pj,pj->", h1_a[:nocc_a, :], green_a)
-        hg_b = jnp.einsum("pj,pj->", h1_b[:nocc_b, :], green_b)
+        hg_a = oe.contract("pj,pj->", h1_a[:nocc_a, :], green_a, backend="jax")
+        hg_b = oe.contract("pj,pj->", h1_b[:nocc_b, :], green_b, backend="jax")
         hg = hg_a + hg_b
 
         # 0 body energy
@@ -2478,8 +2457,8 @@ class ucisd(wave_function):
         e1_0 = hg
 
         # single excitations
-        ci1g_a = jnp.einsum("pt,pt->", ci1_a, green_occ_a, optimize="optimal")
-        ci1g_b = jnp.einsum("pt,pt->", ci1_b, green_occ_b, optimize="optimal")
+        ci1g_a = oe.contract("pt,pt->", ci1_a, green_occ_a, backend="jax")
+        ci1g_b = oe.contract("pt,pt->", ci1_b, green_occ_b, backend="jax")
         ci1g = ci1g_a + ci1g_b
         e1_1_1 = ci1g * hg
         gpci1_a = greenp_a @ ci1_a.T
@@ -2487,31 +2466,29 @@ class ucisd(wave_function):
         ci1_green_a = gpci1_a @ green_a
         ci1_green_b = gpci1_b @ green_b
         e1_1_2 = -(
-            jnp.einsum("ij,ij->", h1_a, ci1_green_a, optimize="optimal")
-            + jnp.einsum("ij,ij->", h1_b, ci1_green_b, optimize="optimal")
+            oe.contract("ij,ij->", h1_a, ci1_green_a, backend="jax")
+            + oe.contract("ij,ij->", h1_b, ci1_green_b, backend="jax")
         )
         e1_1 = e1_1_1 + e1_1_2
 
         # double excitations
-        ci2g_a = jnp.einsum("ptqu,pt->qu", ci2_aa, green_occ_a) / 4
-        ci2g_b = jnp.einsum("ptqu,pt->qu", ci2_bb, green_occ_b) / 4
-        ci2g_ab_a = jnp.einsum("ptqu,qu->pt", ci2_ab, green_occ_b)
-        ci2g_ab_b = jnp.einsum("ptqu,pt->qu", ci2_ab, green_occ_a)
-        gci2g_a = jnp.einsum("qu,qu->", ci2g_a, green_occ_a, optimize="optimal")
-        gci2g_b = jnp.einsum("qu,qu->", ci2g_b, green_occ_b, optimize="optimal")
-        gci2g_ab = jnp.einsum("pt,pt->", ci2g_ab_a, green_occ_a, optimize="optimal")
+        ci2g_a = oe.contract("ptqu,pt->qu", ci2_aa, green_occ_a, backend="jax") / 4
+        ci2g_b = oe.contract("ptqu,pt->qu", ci2_bb, green_occ_b, backend="jax") / 4
+        ci2g_ab_a = oe.contract("ptqu,qu->pt", ci2_ab, green_occ_b, backend="jax")
+        ci2g_ab_b = oe.contract("ptqu,pt->qu", ci2_ab, green_occ_a, backend="jax")
+        gci2g_a = oe.contract("qu,qu->", ci2g_a, green_occ_a, backend="jax")
+        gci2g_b = oe.contract("qu,qu->", ci2g_b, green_occ_b, backend="jax")
+        gci2g_ab = oe.contract("pt,pt->", ci2g_ab_a, green_occ_a, backend="jax")
         gci2g = 2 * (gci2g_a + gci2g_b) + gci2g_ab
         e1_2_1 = hg * gci2g
         ci2_green_a = (greenp_a @ ci2g_a.T) @ green_a
         ci2_green_ab_a = (greenp_a @ ci2g_ab_a.T) @ green_a
         ci2_green_b = (greenp_b @ ci2g_b.T) @ green_b
         ci2_green_ab_b = (greenp_b @ ci2g_ab_b.T) @ green_b
-        e1_2_2_a = -jnp.einsum(
-            "ij,ij->", h1_a, 4 * ci2_green_a + ci2_green_ab_a, optimize="optimal"
-        )
-        e1_2_2_b = -jnp.einsum(
-            "ij,ij->", h1_b, 4 * ci2_green_b + ci2_green_ab_b, optimize="optimal"
-        )
+        e1_2_2_a = -oe.contract(
+            "ij,ij->", h1_a, 4 * ci2_green_a + ci2_green_ab_a, backend="jax")
+        e1_2_2_b = -oe.contract(
+            "ij,ij->", h1_b, 4 * ci2_green_b + ci2_green_ab_b, backend="jax")
         e1_2_2 = e1_2_2_a + e1_2_2_b
         e1_2 = e1_2_1 + e1_2_2
 
@@ -2519,11 +2496,11 @@ class ucisd(wave_function):
 
         # two body energy
         # ref
-        lg_a = jnp.einsum("gpj,pj->g", rot_chol_a, green_a, optimize="optimal")
-        lg_b = jnp.einsum("gpj,pj->g", rot_chol_b, green_b, optimize="optimal")
+        lg_a = oe.contract("gpj,pj->g", rot_chol_a, green_a, backend="jax")
+        lg_b = oe.contract("gpj,pj->g", rot_chol_b, green_b, backend="jax")
         e2_0_1 = ((lg_a + lg_b) @ (lg_a + lg_b)) / 2.0
-        lg1_a = jnp.einsum("gpj,qj->gpq", rot_chol_a, green_a, optimize="optimal")
-        lg1_b = jnp.einsum("gpj,qj->gpq", rot_chol_b, green_b, optimize="optimal")
+        lg1_a = oe.contract("gpj,qj->gpq", rot_chol_a, green_a, backend="jax")
+        lg1_b = oe.contract("gpj,qj->gpq", rot_chol_b, green_b, backend="jax")
         e2_0_2 = (
             -(
                 jnp.sum(vmap(lambda x: x * x.T)(lg1_a))
@@ -2535,89 +2512,67 @@ class ucisd(wave_function):
 
         # single excitations
         e2_1_1 = e2_0 * ci1g
-        lci1g_a = jnp.einsum("gij,ij->g", chol_a, ci1_green_a, optimize="optimal")
-        lci1g_b = jnp.einsum("gij,ij->g", chol_b, ci1_green_b, optimize="optimal")
+        lci1g_a = oe.contract("gij,ij->g", chol_a, ci1_green_a, backend="jax")
+        lci1g_b = oe.contract("gij,ij->g", chol_b, ci1_green_b, backend="jax")
         e2_1_2 = -((lci1g_a + lci1g_b) @ (lg_a + lg_b))
         ci1g1_a = ci1_a @ green_occ_a.T
         ci1g1_b = ci1_b @ green_occ_b.T
-        e2_1_3_1 = jnp.einsum(
-            "gpq,gqr,rp->", lg1_a, lg1_a, ci1g1_a, optimize="optimal"
-        ) + jnp.einsum("gpq,gqr,rp->", lg1_b, lg1_b, ci1g1_b, optimize="optimal")
-        lci1g_a = jnp.einsum(
-            "gip,qi->gpq", ham_data["lci1_a"], green_a, optimize="optimal"
+        e2_1_3_1 = oe.contract(
+            "gpq,gqr,rp->", lg1_a, lg1_a, ci1g1_a, backend="jax"
+        ) + oe.contract("gpq,gqr,rp->", lg1_b, lg1_b, ci1g1_b, backend="jax")
+        lci1g_a = oe.contract(
+            "gip,qi->gpq", ham_data["lci1_a"], green_a, backend="jax"
         )
-        lci1g_b = jnp.einsum(
-            "gip,qi->gpq", ham_data["lci1_b"], green_b, optimize="optimal"
+        lci1g_b = oe.contract(
+            "gip,qi->gpq", ham_data["lci1_b"], green_b, backend="jax"
         )
-        e2_1_3_2 = -jnp.einsum(
-            "gpq,gqp->", lci1g_a, lg1_a, optimize="optimal"
-        ) - jnp.einsum("gpq,gqp->", lci1g_b, lg1_b, optimize="optimal")
+        e2_1_3_2 = -oe.contract(
+            "gpq,gqp->", lci1g_a, lg1_a, backend="jax"
+        ) - oe.contract("gpq,gqp->", lci1g_b, lg1_b, backend="jax")
         e2_1_3 = e2_1_3_1 + e2_1_3_2
         e2_1 = e2_1_1 + e2_1_2 + e2_1_3
 
         # double excitations
         e2_2_1 = e2_0 * gci2g
-        lci2g_a = jnp.einsum(
-            "gij,ij->g",
-            chol_a,
-            8 * ci2_green_a + 2 * ci2_green_ab_a,
-            optimize="optimal",
-        )
-        lci2g_b = jnp.einsum(
-            "gij,ij->g",
-            chol_b,
-            8 * ci2_green_b + 2 * ci2_green_ab_b,
-            optimize="optimal",
-        )
+        lci2g_a = oe.contract("gij,ij->g",
+            chol_a, 8 * ci2_green_a + 2 * ci2_green_ab_a, backend="jax")
+        lci2g_b = oe.contract("gij,ij->g",
+            chol_b, 8 * ci2_green_b + 2 * ci2_green_ab_b, backend="jax")
         e2_2_2_1 = -((lci2g_a + lci2g_b) @ (lg_a + lg_b)) / 2.0
 
         def scanned_fun(carry, x):
             chol_a_i, rot_chol_a_i, chol_b_i, rot_chol_b_i = x
-            gl_a_i = jnp.einsum("pj,ji->pi", green_a, chol_a_i, optimize="optimal")
-            gl_b_i = jnp.einsum("pj,ji->pi", green_b, chol_b_i, optimize="optimal")
-            lci2_green_a_i = jnp.einsum(
+            gl_a_i = oe.contract("pj,ji->pi", green_a, chol_a_i, backend="jax")
+            gl_b_i = oe.contract("pj,ji->pi", green_b, chol_b_i, backend="jax")
+            lci2_green_a_i = oe.contract(
                 "pi,ji->pj",
                 rot_chol_a_i,
-                8 * ci2_green_a + 2 * ci2_green_ab_a,
-                optimize="optimal",
+                8 * ci2_green_a + 2 * ci2_green_ab_a, backend="jax"
             )
-            lci2_green_b_i = jnp.einsum(
+            lci2_green_b_i = oe.contract(
                 "pi,ji->pj",
                 rot_chol_b_i,
-                8 * ci2_green_b + 2 * ci2_green_ab_b,
-                optimize="optimal",
+                8 * ci2_green_b + 2 * ci2_green_ab_b, backend="jax"
             )
             carry[0] += 0.5 * (
-                jnp.einsum("pi,pi->", gl_a_i, lci2_green_a_i, optimize="optimal")
-                + jnp.einsum("pi,pi->", gl_b_i, lci2_green_b_i, optimize="optimal")
+                oe.contract("pi,pi->", gl_a_i, lci2_green_a_i, backend="jax")
+                + oe.contract("pi,pi->", gl_b_i, lci2_green_b_i, backend="jax")
             )
-            glgp_a_i = jnp.einsum(
-                "pi,it->pt", gl_a_i, greenp_a, optimize="optimal"
-            ) #.astype(jnp.complex64)
-            glgp_b_i = jnp.einsum(
-                "pi,it->pt", gl_b_i, greenp_b, optimize="optimal"
-            ) #.astype(jnp.complex64)
-            l2ci2_a = 0.5 * jnp.einsum(
+            glgp_a_i = oe.contract(
+                "pi,it->pt", gl_a_i, greenp_a, backend="jax"
+            )
+            glgp_b_i = oe.contract(
+                "pi,it->pt", gl_b_i, greenp_b, backend="jax"
+            )
+            l2ci2_a = 0.5 * oe.contract(
                 "pt,qu,ptqu->",
-                glgp_a_i,
-                glgp_a_i,
-                ci2_aa, #.astype(jnp.float32),
-                optimize="optimal",
-            )
-            l2ci2_b = 0.5 * jnp.einsum(
+                glgp_a_i, glgp_a_i, ci2_aa, backend="jax")
+            l2ci2_b = 0.5 * oe.contract(
                 "pt,qu,ptqu->",
-                glgp_b_i,
-                glgp_b_i,
-                ci2_bb, #.astype(jnp.float32),
-                optimize="optimal",
-            )
-            l2ci2_ab = jnp.einsum(
+                glgp_b_i, glgp_b_i, ci2_bb, backend="jax")
+            l2ci2_ab = oe.contract(
                 "pt,qu,ptqu->",
-                glgp_a_i,
-                glgp_b_i,
-                ci2_ab, #.astype(jnp.float32),
-                optimize="optimal",
-            )
+                glgp_a_i, glgp_b_i, ci2_ab, backend="jax")
             carry[1] += l2ci2_a + l2ci2_b + l2ci2_ab
             return carry, 0.0
 
@@ -2637,18 +2592,16 @@ class ucisd(wave_function):
 
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-        ham_data["lci1_a"] = jnp.einsum(
+        ham_data["lci1_a"] = oe.contract(
             "git,pt->gip",
             ham_data["chol"][0].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
             wave_data["ci1A"],
-            optimize="optimal",
-        )
-        ham_data["lci1_b"] = jnp.einsum(
+            backend="jax")
+        ham_data["lci1_b"] = oe.contract(
             "git,pt->gip",
             ham_data["chol"][1].reshape(-1, self.norb, self.norb)[:, :, self.nelec[1] :],
             wave_data["ci1B"],
-            optimize="optimal",
-        )
+            backend="jax")
         return ham_data
 
     def __hash__(self):
@@ -2676,7 +2629,7 @@ class ccsd_pt(rhf):
         chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
         rot_chol = chol[:, : self.nelec[0], :]
         h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        hg = jnp.einsum("pj,pj->", h1[:nocc, :], green)
+        hg = oe.contract("pj,pj->", h1[:nocc, :], green, backend="jax")
 
         # 0 body energy
         h0 = ham_data["h0"]
@@ -2686,74 +2639,72 @@ class ccsd_pt(rhf):
         e1_0 = 2 * hg
 
         # single excitations
-        t1g = jnp.einsum("pt,pt->", t1, green_occ, optimize="optimal")
+        t1g = oe.contract("pt,pt->", t1, green_occ, backend="jax")
         e1_1_1 = 4 * t1g * hg
         gpt1 = greenp @ t1.T
         t1_green = gpt1 @ green
-        e1_1_2 = -2 * jnp.einsum("ij,ij->", h1, t1_green, optimize="optimal")
+        e1_1_2 = -2 * oe.contract("ij,ij->", h1, t1_green, backend="jax")
         e1_1 = e1_1_1 + e1_1_2
 
         # double excitations
-        t2g_c = jnp.einsum("ptqu,pt->qu", t2, green_occ)
-        t2g_e = jnp.einsum("ptqu,pu->qt", t2, green_occ)
+        t2g_c = oe.contract("ptqu,pt->qu", t2, green_occ, backend="jax")
+        t2g_e = oe.contract("ptqu,pu->qt", t2, green_occ, backend="jax")
         t2_green_c = (greenp @ t2g_c.T) @ green
         t2_green_e = (greenp @ t2g_e.T) @ green
         t2_green = 2 * t2_green_c - t2_green_e
         t2g = 2 * t2g_c - t2g_e
-        gt2g = jnp.einsum("qu,qu->", t2g, green_occ, optimize="optimal")
+        gt2g = oe.contract("qu,qu->", t2g, green_occ, backend="jax")
         e1_2_1 = 2 * hg * gt2g
-        e1_2_2 = -2 * jnp.einsum("ij,ij->", h1, t2_green, optimize="optimal")
+        e1_2_2 = -2 * oe.contract("ij,ij->", h1, t2_green, backend="jax")
         e1_2 = e1_2_1 + e1_2_2
 
         # two body energy
         # ref
-        lg = jnp.einsum("gpj,pj->g", rot_chol, green, optimize="optimal")
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
         # lg1 = jnp.einsum("gpj,pk->gjk", rot_chol, green, optimize="optimal")
-        lg1 = jnp.einsum("gpj,qj->gpq", rot_chol, green, optimize="optimal")
+        lg1 = oe.contract("gpj,qj->gpq", rot_chol, green, backend="jax")
         e2_0_1 = 2 * lg @ lg
         e2_0_2 = -jnp.sum(vmap(lambda x: x * x.T)(lg1))
         e2_0 = e2_0_1 + e2_0_2
 
         # single excitations
         e2_1_1 = 2 * e2_0 * t1g
-        lt1g = jnp.einsum("gij,ij->g", chol, t1_green, optimize="optimal")
+        lt1g = oe.contract("gij,ij->g", chol, t1_green, backend="jax")
         e2_1_2 = -2 * (lt1g @ lg)
         t1g1 = t1 @ green_occ.T
         # e2_1_3 = jnp.einsum("gpq,gpq->", glgpci1, lg1, optimize="optimal")
-        e2_1_3_1 = jnp.einsum("gpq,gqr,rp->", lg1, lg1, t1g1, optimize="optimal")
-        lt1g = jnp.einsum("gip,qi->gpq", ham_data["lt1"], green, optimize="optimal")
-        e2_1_3_2 = -jnp.einsum("gpq,gqp->", lt1g, lg1, optimize="optimal")
+        e2_1_3_1 = oe.contract("gpq,gqr,rp->", lg1, lg1, t1g1, backend="jax")
+        lt1g = oe.contract("gip,qi->gpq", ham_data["lt1"], green, backend="jax")
+        e2_1_3_2 = -oe.contract("gpq,gqp->", lt1g, lg1, backend="jax")
         e2_1_3 = e2_1_3_1 + e2_1_3_2
         e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3)
 
         # double excitations
         e2_2_1 = e2_0 * gt2g
-        lt2g = jnp.einsum("gij,ij->g", chol, t2_green, optimize="optimal")
+        lt2g = oe.contract("gij,ij->g", chol, t2_green, backend="jax")
         e2_2_2_1 = -lt2g @ lg
 
         def scanned_fun(carry, x):
             chol_i, rot_chol_i = x
-            gl_i = jnp.einsum("pj,ji->pi", green, chol_i, optimize="optimal")
-            lt2_green_i = jnp.einsum(
-                "pi,ji->pj", rot_chol_i, t2_green, optimize="optimal"
+            gl_i = oe.contract("pj,ji->pi", green, chol_i, backend="jax")
+            lt2_green_i = oe.contract(
+                "pi,ji->pj", rot_chol_i, t2_green, backend="jax"
             )
-            carry[0] += 0.5 * jnp.einsum(
-                "pi,pi->", gl_i, lt2_green_i, optimize="optimal"
+            carry[0] += 0.5 * oe.contract(
+                "pi,pi->", gl_i, lt2_green_i, backend="jax"
             )
-            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal") #.astype(jnp.complex64)
-            l2t2_1 = jnp.einsum(
+            glgp_i = oe.contract("pi,it->pt", gl_i, greenp, backend="jax")
+            l2t2_1 = oe.contract(
                 "pt,qu,ptqu->",
                 glgp_i,
                 glgp_i,
-                t2, #.astype(jnp.float32),
-                optimize="optimal",
+                t2, backend="jax"
             )
-            l2t2_2 = jnp.einsum(
+            l2t2_2 = oe.contract(
                 "pu,qt,ptqu->",
                 glgp_i,
                 glgp_i,
-                t2, #.astype(jnp.float32),
-                optimize="optimal",
+                t2, backend="jax"
             )
             carry[1] += 2 * l2t2_1 - l2t2_2
             return carry, 0.0
@@ -2795,17 +2746,17 @@ class ccsd_pt(rhf):
         ham_data["rot_h1"] = wave_data["mo_coeff"].T.conj() @ (
             (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
         )
-        ham_data["rot_chol"] = jnp.einsum(
+        ham_data["rot_chol"] = oe.contract(
             "pi,gij->gpj",
             wave_data["mo_coeff"].T.conj(),
-            ham_data["chol"].reshape(-1, norb, norb),
+            ham_data["chol"].reshape(-1, norb, norb), backend="jax"
         )
 
-        ham_data["lt1"] = jnp.einsum(
+        ham_data["lt1"] = oe.contract(
             "git,pt->gip",
             ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
             wave_data["t1"],
-            optimize="optimal",
+            optimize="optimal", backend="jax"
         )
         return ham_data
 
@@ -2938,10 +2889,9 @@ class ccsd_pt_ad(rhf):
         # GF = (walker.dot(jnp.linalg.inv(walker[: nocc, :]))).T
         GF = self._calc_green(walker,wave_data)
         o0 = self._calc_overlap_restricted(walker, wave_data)
-        o1 = jnp.einsum("ia,ia", t1, GF[:, nocc:])
-        o2 = 2 * jnp.einsum(
-            "iajb, ia, jb", t2, GF[:, nocc:], GF[:, nocc:]
-        ) - jnp.einsum("iajb, ib, ja", t2, GF[:, nocc:], GF[:, nocc:])
+        o1 = oe.contract("ia,ia", t1, GF[:, nocc:], backend="jax")
+        o2 = 2 * oe.contract("iajb, ia, jb", t2, GF[:, nocc:], GF[:, nocc:], backend="jax"
+        ) - oe.contract("iajb, ib, ja", t2, GF[:, nocc:], GF[:, nocc:], backend="jax")
         return (2*o1 + o2) * o0
 
     @partial(jit, static_argnums=0)
@@ -3024,18 +2974,18 @@ class ccsd_pt_ad(rhf):
         ham_data["rot_h1"] = wave_data["mo_coeff"].T.conj() @ (
             (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
         )
-        ham_data["rot_chol"] = jnp.einsum(
+        ham_data["rot_chol"] = oe.contract(
             "pi,gij->gpj",
             wave_data["mo_coeff"].T.conj(),
-            ham_data["chol"].reshape(-1, norb, norb),
+            ham_data["chol"].reshape(-1, norb, norb), backend="jax"
         )
 
         chol = ham_data["chol"].reshape(-1, norb, norb)
         h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        v0 = 0.5 * jnp.einsum("gik,gjk->ij",
+        v0 = 0.5 * oe.contract("gik,gjk->ij",
                                 chol.reshape(-1, norb, norb),
                                 chol.reshape(-1, norb, norb),
-                                optimize="optimal")
+                                backend="jax")
         h1_mod = h1 - v0 
         ham_data['h1_mod'] = h1_mod
         return ham_data
@@ -3118,9 +3068,9 @@ class ccsd_pt2_ad(rhf):
         nocc = walker.shape[1]
         GF = self._tls_green(walker, wave_data)
         o_t = self._tls_walker_olp(walker, wave_data)
-        t2 = 2 * jnp.einsum(
-            "iajb, ia, jb", rot_t2, GF[:, nocc:], GF[:, nocc:]
-        ) - jnp.einsum("iajb, ib, ja", rot_t2, GF[:, nocc:], GF[:, nocc:])
+        t2 = 2 * oe.contract(
+            "iajb, ia, jb", rot_t2, GF[:, nocc:], GF[:, nocc:], backend="jax"
+        ) - oe.contract("iajb, ib, ja", rot_t2, GF[:, nocc:], GF[:, nocc:], backend="jax")
         return t2 * o_t
 
     @partial(jit, static_argnums=0)
@@ -3375,29 +3325,29 @@ class uccsd_pt(uhf):
             )
             glgp_a_i = oe.contract(
                 "pi,it->pt", gl_a_i, greenp_a, backend="jax"
-            ) #.astype(jnp.complex64)
+            )
             glgp_b_i = oe.contract(
                 "pi,it->pt", gl_b_i, greenp_b, backend="jax"
-            ) #.astype(jnp.complex64)
+            )
             l2t2_a = 0.5 * oe.contract(
                 "pt,qu,ptqu->",
                 glgp_a_i,
                 glgp_a_i,
-                t2_aa, #.astype(jnp.float32),
+                t2_aa,
                 backend="jax",
             )
             l2t2_b = 0.5 * oe.contract(
                 "pt,qu,ptqu->",
                 glgp_b_i,
                 glgp_b_i,
-                t2_bb, #.astype(jnp.float32),
+                t2_bb,
                 backend="jax",
             )
             l2t2_ab = oe.contract(
                 "pt,qu,ptqu->",
                 glgp_a_i,
                 glgp_b_i,
-                t2_ab, #.astype(jnp.float32),
+                t2_ab,
                 backend="jax",
             )
             carry[1] += l2t2_a + l2t2_b + l2t2_ab
@@ -3446,28 +3396,28 @@ class uccsd_pt(uhf):
             wave_data["mo_coeff"][1].T.conj() @ ham_data["h1"][1],
         ]
         ham_data["rot_chol"] = [
-            jnp.einsum(
+            oe.contract(
                 "pi,gij->gpj",
                 wave_data["mo_coeff"][0].T.conj(),
-                ham_data["chol"][0].reshape(-1, self.norb, self.norb),
+                ham_data["chol"][0].reshape(-1, self.norb, self.norb), backend="jax"
             ),
-            jnp.einsum(
+            oe.contract(
                 "pi,gij->gpj",
                 wave_data["mo_coeff"][1].T.conj(),
-                ham_data["chol"][1].reshape(-1, self.norb, self.norb),
+                ham_data["chol"][1].reshape(-1, self.norb, self.norb), backend="jax"
             ),
         ]
-        ham_data["lt1_a"] = jnp.einsum(
+        ham_data["lt1_a"] = oe.contract(
             "git,pt->gip",
             ham_data["chol"][0].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
             wave_data["t1a"],
-            optimize="optimal",
+            backend="jax"
         )
-        ham_data["lt1_b"] = jnp.einsum(
+        ham_data["lt1_b"] = oe.contract(
             "git,pt->gip",
             ham_data["chol"][1].reshape(-1, self.norb, self.norb)[:, :, self.nelec[1] :],
             wave_data["t1b"],
-            optimize="optimal",
+            backend="jax"
         )
         return ham_data
 
@@ -3684,24 +3634,6 @@ class uccsd_pt2(uhf):
         # one body energy
         e1_0 = hg
 
-        # <exp(T1)HF|h2|walker>/<exp(T1)HF|walker>
-        # two body energy
-        # def scanned_e2_0(carry, x):
-        #     chol_a_i, chol_b_i = x
-        #     lg_a_i = oe.contract("pr,qr->pq", chol_a_i, green_a, backend="jax")
-        #     lg_b_i = oe.contract("pr,qr->pq", chol_b_i, green_b, backend="jax")
-        #     # lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
-        #     # lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
-        #     e2_0_1_i = (jnp.trace(lg_a_i) + jnp.trace(lg_b_i))**2 / 2.0
-        #     e2_0_2_i = -(oe.contract('pq,qp->',lg_a_i,lg_a_i, backend="jax") 
-        #                 + oe.contract('pq,qp->',lg_b_i,lg_b_i, backend="jax")
-        #                 ) / 2.0
-        #     carry += e2_0_1_i + e2_0_2_i
-
-        #     return carry, 0.0
-        
-        # e2_0, _ = lax.scan(scanned_e2_0, 0.0, (chol_a, chol_b))
-
         # <exp(T1)HF|T2 h1|walker>/<exp(T1)HF|walker>
         # double excitations
         t2g_a = oe.contract("iajb,ia->jb", t2_aa, green_a[:nocc_a,nocc_a:],
@@ -3752,8 +3684,6 @@ class uccsd_pt2(uhf):
             # e2_0
             lg_a_i = oe.contract("pr,qr->pq", chol_a_i, green_a, backend="jax")
             lg_b_i = oe.contract("pr,qr->pq", chol_b_i, green_b, backend="jax")
-            # lg_a = jnp.einsum("gpq,pq->g", chol_a, green_a, optimize="optimal")
-            # lg_b = jnp.einsum("gpq,pq->g", chol_b, green_b, optimize="optimal")
             e2_0_1_i = (jnp.trace(lg_a_i) + jnp.trace(lg_b_i))**2 / 2.0
             e2_0_2_i = -(oe.contract('pq,qp->',lg_a_i,lg_a_i, backend="jax") 
                         + oe.contract('pq,qp->',lg_b_i,lg_b_i, backend="jax")
@@ -3776,18 +3706,18 @@ class uccsd_pt2(uhf):
             )
             glgp_a_i = oe.contract(
                 "iq,qa->ia", gl_a_i[:nocc_a,:], greenp_a, backend="jax"
-            ) #.astype(jnp.complex64)
+            )
             glgp_b_i = oe.contract(
                 "iq,qa->ia", gl_b_i[:nocc_b,:], greenp_b, backend="jax"
-            ) #.astype(jnp.complex64)
+            )
             l2t2_a = 0.5 * oe.contract(
-                "ia,jb,iajb->",glgp_a_i,glgp_a_i,t2_aa, #.astype(jnp.float32),
+                "ia,jb,iajb->",glgp_a_i,glgp_a_i,t2_aa,
                 backend="jax")
             l2t2_b = 0.5 * oe.contract(
-                "ia,jb,iajb->",glgp_b_i,glgp_b_i,t2_bb, #.astype(jnp.float32),
+                "ia,jb,iajb->",glgp_b_i,glgp_b_i,t2_bb,
                 backend="jax")
             l2t2_ab = oe.contract(
-                "ia,jb,iajb->",glgp_a_i,glgp_b_i,t2_ab, #.astype(jnp.float32),
+                "ia,jb,iajb->",glgp_a_i,glgp_b_i,t2_ab,
                 backend="jax")
             carry[2] += l2t2_a + l2t2_b + l2t2_ab
             return carry, 0.0
@@ -3853,11 +3783,12 @@ class uccsd_pt_ad(uhf):
         green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[:noccB,:noccB]))).T
         green_a, green_b = green_a[:noccA, noccA:], green_b[:noccB, noccB:]
         o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
-        o1 = jnp.einsum("ia,ia", t1A, green_a) + jnp.einsum("ia,ia", t1B, green_b)
+        o1 = oe.contract("ia,ia", t1A, green_a, backend="jax") \
+              + oe.contract("ia,ia", t1B, green_b, backend="jax")
         o2 = (
-            0.5 * jnp.einsum("iajb, ia, jb", t2AA, green_a, green_a)
-            + 0.5 * jnp.einsum("iajb, ia, jb", t2BB, green_b, green_b)
-            + jnp.einsum("iajb, ia, jb", t2AB, green_a, green_b)
+            0.5 * oe.contract("iajb, ia, jb", t2AA, green_a, green_a, backend="jax")
+            + 0.5 * oe.contract("iajb, ia, jb", t2BB, green_b, green_b, backend="jax")
+            + oe.contract("iajb, ia, jb", t2AB, green_a, green_b, backend="jax")
         )
         return (o1 + o2) * o0
     

@@ -3,15 +3,16 @@ import numpy as np
 
 a = 2 # bond length in a cluster
 d = 10 # distance between each cluster
-na = 2  # size of a cluster (monomer)
+na = 4  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
+s = 0
 elmt = 'H'
 atoms = ""
 for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
     atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis="sto6g",spin=0*nc, unit='bohr', verbose=4)
+mol = gto.M(atom=atoms, basis="sto6g",spin=s*nc, unit='bohr', verbose=4)
 mol.build()
 
 mf = scf.RHF(mol)
@@ -48,4 +49,4 @@ options = {'n_eql': 3,
 # from ad_afqmc import pyscf_interface, run_afqmc
 from ad_afqmc.prop_unrestricted import prop_unrestricted
 prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-5)
-prop_unrestricted.run_afqmc(options,nproc=1)
+prop_unrestricted.run_afqmc(options,nproc=2)
