@@ -2192,21 +2192,19 @@ class cisd(wave_function):
             carry[0] += 0.5 * jnp.einsum(
                 "pi,pi->", gl_i, lci2_green_i, optimize="optimal"
             )
-            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal").astype(
-                jnp.complex64
-            )
+            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal") #.astype(jnp.complex64)
             l2ci2_1 = jnp.einsum(
                 "pt,qu,ptqu->",
                 glgp_i,
                 glgp_i,
-                ci2.astype(jnp.float32),
+                ci2, #.astype(jnp.float32),
                 optimize="optimal",
             )
             l2ci2_2 = jnp.einsum(
                 "pu,qt,ptqu->",
                 glgp_i,
                 glgp_i,
-                ci2.astype(jnp.float32),
+                ci2, #.astype(jnp.float32),
                 optimize="optimal",
             )
             carry[1] += 2 * l2ci2_1 - l2ci2_2
@@ -2329,15 +2327,13 @@ class cisd_faster(cisd):
         lci2_green = jnp.einsum("gpi,ji->gpj", rot_chol, ci2_green, optimize="optimal")
         e2_2_2_2 = 0.5 * jnp.einsum("gpi,gpi->", gl, lci2_green, optimize="optimal")
         e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
-        glgp = jnp.einsum("gpi,it->gpt", gl, greenp, optimize="optimal").astype(
-            jnp.complex64
-        )
+        glgp = jnp.einsum("gpi,it->gpt", gl, greenp, optimize="optimal") #.astype(jnp.complex64)
         l2ci2_1 = jnp.einsum(
-            "gpt,gqu,ptqu->g", glgp, glgp, ci2.astype(jnp.float32), optimize="optimal"
-        )
+            "gpt,gqu,ptqu->g", glgp, glgp, ci2, #.astype(jnp.float32),
+            optimize="optimal")
         l2ci2_2 = jnp.einsum(
-            "gpu,gqt,ptqu->g", glgp, glgp, ci2.astype(jnp.float32), optimize="optimal"
-        )
+            "gpu,gqt,ptqu->g", glgp, glgp, ci2, #.astype(jnp.float32), 
+            optimize="optimal")
         e2_2_3 = 2 * l2ci2_1.sum() - l2ci2_2.sum()
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3
         e2 = e2_0 + e2_1 + e2_2
@@ -2607,29 +2603,29 @@ class ucisd(wave_function):
             )
             glgp_a_i = jnp.einsum(
                 "pi,it->pt", gl_a_i, greenp_a, optimize="optimal"
-            ).astype(jnp.complex64)
+            ) #.astype(jnp.complex64)
             glgp_b_i = jnp.einsum(
                 "pi,it->pt", gl_b_i, greenp_b, optimize="optimal"
-            ).astype(jnp.complex64)
+            ) #.astype(jnp.complex64)
             l2ci2_a = 0.5 * jnp.einsum(
                 "pt,qu,ptqu->",
                 glgp_a_i,
                 glgp_a_i,
-                ci2_aa.astype(jnp.float32),
+                ci2_aa, #.astype(jnp.float32),
                 optimize="optimal",
             )
             l2ci2_b = 0.5 * jnp.einsum(
                 "pt,qu,ptqu->",
                 glgp_b_i,
                 glgp_b_i,
-                ci2_bb.astype(jnp.float32),
+                ci2_bb, #.astype(jnp.float32),
                 optimize="optimal",
             )
             l2ci2_ab = jnp.einsum(
                 "pt,qu,ptqu->",
                 glgp_a_i,
                 glgp_b_i,
-                ci2_ab.astype(jnp.float32),
+                ci2_ab, #.astype(jnp.float32),
                 optimize="optimal",
             )
             carry[1] += l2ci2_a + l2ci2_b + l2ci2_ab
@@ -2764,21 +2760,19 @@ class ccsd_pt(rhf):
             carry[0] += 0.5 * jnp.einsum(
                 "pi,pi->", gl_i, lt2_green_i, optimize="optimal"
             )
-            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal").astype(
-                jnp.complex64
-            )
+            glgp_i = jnp.einsum("pi,it->pt", gl_i, greenp, optimize="optimal") #.astype(jnp.complex64)
             l2t2_1 = jnp.einsum(
                 "pt,qu,ptqu->",
                 glgp_i,
                 glgp_i,
-                t2.astype(jnp.float32),
+                t2, #.astype(jnp.float32),
                 optimize="optimal",
             )
             l2t2_2 = jnp.einsum(
                 "pu,qt,ptqu->",
                 glgp_i,
                 glgp_i,
-                t2.astype(jnp.float32),
+                t2, #.astype(jnp.float32),
                 optimize="optimal",
             )
             carry[1] += 2 * l2t2_1 - l2t2_2

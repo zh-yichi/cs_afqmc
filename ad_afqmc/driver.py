@@ -94,13 +94,13 @@ def afqmc(
         block_energy_n, prop_data = sampler_eq.propagate_phaseless(
             ham, ham_data, propagator, prop_data, trial, wave_data
         )
-        block_energy_n = np.array([block_energy_n], dtype="float32")
-        block_weight_n = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
+        block_energy_n = np.array([block_energy_n], dtype="float64")
+        block_weight_n = np.array([jnp.sum(prop_data["weights"])], dtype="float64")
         block_weighted_energy_n = np.array(
-            [block_energy_n * block_weight_n], dtype="float32"
+            [block_energy_n * block_weight_n], dtype="float64"
         )
-        total_block_energy_n = np.zeros(1, dtype="float32")
-        total_block_weight_n = np.zeros(1, dtype="float32")
+        total_block_energy_n = np.zeros(1, dtype="float64")
+        total_block_weight_n = np.zeros(1, dtype="float64")
         comm.Reduce(
             [block_weighted_energy_n, MPI.FLOAT],
             [total_block_energy_n, MPI.FLOAT],
@@ -247,14 +247,14 @@ def afqmc(
             )
             block_observable_n = 0.0
 
-        block_energy_n = np.array([block_energy_n], dtype="float32")
+        block_energy_n = np.array([block_energy_n], dtype="float64")
         block_observable_n = np.array(
-            [block_observable_n + observable_constant], dtype="float32"
+            [block_observable_n + observable_constant], dtype="float64"
         )
-        block_weight_n = np.array([jnp.sum(prop_data["weights"])], dtype="float32")
-        block_rdm1_n = np.array(block_rdm1_n, dtype="float32")
+        block_weight_n = np.array([jnp.sum(prop_data["weights"])], dtype="float64")
+        block_rdm1_n = np.array(block_rdm1_n, dtype="float64")
         if options["ad_mode"] == "2rdm":
-            block_rdm2_n = np.array(block_rdm2_n, dtype="float32")
+            block_rdm2_n = np.array(block_rdm2_n, dtype="float64")
 
         gather_weights = None
         gather_energies = None
@@ -262,15 +262,15 @@ def afqmc(
         gather_rdm1s = None
         gather_rdm2s = None
         if rank == 0:
-            gather_weights = np.zeros(size, dtype="float32")
-            gather_energies = np.zeros(size, dtype="float32")
-            gather_observables = np.zeros(size, dtype="float32")
+            gather_weights = np.zeros(size, dtype="float64")
+            gather_energies = np.zeros(size, dtype="float64")
+            gather_observables = np.zeros(size, dtype="float64")
             if options["ad_mode"] == "reverse":
                 gather_rdm1s = np.zeros(
-                    (size, *(ham_data["h1"].shape)), dtype="float32"
+                    (size, *(ham_data["h1"].shape)), dtype="float64"
                 )
             elif options["ad_mode"] == "2rdm":
-                gather_rdm2s = np.zeros((size, *(rdm_2_op.shape)), dtype="float32")
+                gather_rdm2s = np.zeros((size, *(rdm_2_op.shape)), dtype="float64")
 
         comm.Gather(block_weight_n, gather_weights, root=0)
         comm.Gather(block_energy_n, gather_energies, root=0)
@@ -416,14 +416,15 @@ def afqmc(
             global_block_weights, global_block_energies, neql=0, printQ=True
         )
         if e_err_afqmc is not None:
-            sig_dec = int(abs(np.floor(np.log10(e_err_afqmc))))
-            sig_err = np.around(
-                np.round(e_err_afqmc * 10**sig_dec) * 10 ** (-sig_dec), sig_dec
-            )
-            sig_e = np.around(e_afqmc, sig_dec)
-            print(f"AFQMC energy: {sig_e:.{sig_dec}f} +/- {sig_err:.{sig_dec}f}\n")
+            # sig_dec = int(abs(np.floor(np.log10(e_err_afqmc))))
+            # sig_err = np.around(
+            #     np.round(e_err_afqmc * 10**sig_dec) * 10 ** (-sig_dec), sig_dec
+            # )
+            # sig_e = np.around(e_afqmc, sig_dec)
+            # print(f"AFQMC energy: {sig_e:.{sig_dec}f} +/- {sig_err:.{sig_dec}f}\n")
+            print(f"AFQMC energy: {e_afqmc:.6f} +/- {e_err_afqmc:.6f}\n")
         elif e_afqmc is not None:
-            print(f"AFQMC energy: {e_afqmc}\n", flush=True)
+            print(f"AFQMC energy: {e_afqmc:.6f}\n", flush=True)
             e_err_afqmc = 0.0
 
         if options["ad_mode"] is not None:

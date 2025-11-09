@@ -224,7 +224,7 @@ def prep_afqmc(
                     t2ab=t2ab,
                     t2bb=t2bb,
                 )
-            else:
+            elif isinstance(cc, CCSD):
                 t2 = cc.t2
                 t2 = t2.transpose(0, 2, 1, 3)
                 t1 = np.array(cc.t1)
@@ -258,14 +258,15 @@ def prep_afqmc(
         nelec = mc.nelecas
         mc.mo_coeff = basis_coeff
         h1e, enuc = mc.get_h1eff()
-        chol = chol.reshape((-1, nbasis, nbasis))
-        chol = chol[:, mc.ncore : mc.ncore + mc.ncas, 
-                    mc.ncore : mc.ncore + mc.ncas]
         _, chol, _, _ = \
             pyscf_interface.generate_integrals(
             mol, mf.get_hcore(), basis_coeff, chol_cut, DFbas=DFbas)
+        nao = mf.mol.nao
+        chol = chol.reshape((-1, nao, nao))
+        chol = chol[:, mc.ncore : mc.ncore + mc.ncas, 
+                    mc.ncore : mc.ncore + mc.ncas]
+        nbasis = mc.ncas
         print("# Finished calculating Cholesky integrals\n#")
-        nbasis = h1e.shape[-1]
         print("# Size of the correlation space:")
         print(f"# Number of electrons: {nelec}")
         print(f"# Number of basis functions: {nbasis}")
@@ -343,12 +344,28 @@ def _prep_afqmc(options=None,
                 amp_file="amplitudes.npz",
                 chol_file="FCIDUMP_chol"):
     
-    with h5py.File(chol_file, "r") as fh5:
-        [nelec, nmo, ms, nchol] = fh5["header"]
-        h0 = jnp.array(fh5.get("energy_core"))
-        h1 = jnp.array(fh5.get("hcore")).reshape(2, nmo, nmo)
-        chol = jnp.array(fh5.get("chol")).reshape(2, -1, nmo, nmo)
-        h1_mod = jnp.array(fh5.get("hcore_mod")).reshape(2, nmo, nmo)
+    if options is None:
+        try:
+            with open(option_file, "rb") as f:
+                options = pickle.load(f)
+        except:
+            options = {}
+    
+    trial = options['trial']
+    if 'u' not in trial.lower():
+        with h5py.File(chol_file, "r") as fh5:
+            [nelec, nmo, ms, nchol] = fh5["header"]
+            h0 = jnp.array(fh5.get("energy_core"))
+            h1 = jnp.array(fh5.get("hcore")).reshape(nmo, nmo)
+            chol = jnp.array(fh5.get("chol")).reshape(-1, nmo, nmo)
+            h1_mod = jnp.array(fh5.get("hcore_mod")).reshape(nmo, nmo)
+    elif 'u' in trial.lower():
+        with h5py.File(chol_file, "r") as fh5:
+            [nelec, nmo, ms, nchol] = fh5["header"]
+            h0 = jnp.array(fh5.get("energy_core"))
+            h1 = jnp.array(fh5.get("hcore")).reshape(2, nmo, nmo)
+            chol = jnp.array(fh5.get("chol")).reshape(2, -1, nmo, nmo)
+            h1_mod = jnp.array(fh5.get("hcore_mod")).reshape(2, nmo, nmo)
 
     assert type(ms) is np.int64
     assert type(nelec) is np.int64
@@ -358,14 +375,6 @@ def _prep_afqmc(options=None,
     nelec_sp = ((nelec + abs(ms)) // 2, (nelec - abs(ms)) // 2)
 
     norb = nmo
-
-    if options is None:
-        try:
-            with open(option_file, "rb") as f:
-                options = pickle.load(f)
-        except:
-            options = {}
-
     options["dt"] = options.get("dt", 0.01)
     options["n_exp_terms"] = options.get("n_exp_terms",6)
     options["n_walkers"] = options.get("n_walkers", 50)
@@ -416,11 +425,19 @@ def _prep_afqmc(options=None,
     ham = hamiltonian.hamiltonian(nmo)
     ham_data = {}
     ham_data["h0"] = h0
-    ham_data["h1"] = jnp.array(h1)
-    ham_data["h1_mod"] = jnp.array(h1_mod)
-    nchol = chol[0].shape[0]
-    ham_data["chol"] = jnp.array([chol[0].reshape(chol[0].shape[0], -1),
-                                  chol[1].reshape(chol[1].shape[0], -1)])
+
+    if 'u' not in trial.lower():
+        ham_data["h1"] = jnp.array([h1, h1])
+        ham_data["h1_mod"] = jnp.array(h1_mod)
+        nchol = chol.shape[0]
+        ham_data["chol"] = jnp.array(chol.reshape(chol.shape[0], -1))
+    elif 'u' in trial.lower():
+        ham_data["h1"] = jnp.array(h1)
+        ham_data["h1_mod"] = jnp.array(h1_mod)
+        nchol = chol[0].shape[0]
+        ham_data["chol"] = jnp.array([chol[0].reshape(chol[0].shape[0], -1),
+                                    chol[1].reshape(chol[1].shape[0], -1)])
+
     ham_data["ene0"] = options["ene0"]
 
     wave_data = {}
@@ -476,49 +493,50 @@ def _prep_afqmc(options=None,
         except:
             raise ValueError("Trial specified as ucisd, but amplitudes.npz not found.")
     elif options["trial"] == "ccsd_pt":
+        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
-        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
     elif options["trial"] == "ccsd_pt2":
+        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
+        nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
-        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
+        mo_t = trial.thouless_trans(t1)[:,:nocc]
+        wave_data['mo_t'] = mo_t
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
     elif options["trial"] == "ccsd_pt_ad":
-        ham_data['h1_mod'] = h1_mod
-        amplitudes = np.load(amp_file)
-        t1 = jnp.array(amplitudes["t1"])
-        t2 = jnp.array(amplitudes["t2"])
-        trial_wave_data = {"t1": t1, "t2": t2}
-        wave_data.update(trial_wave_data)
-        wave_data["mo_coeff"] = np.eye(norb)[:,:nelec_sp[0]]
         trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
-    elif options["trial"] == "ccsd_pt2_ad":
         ham_data['h1_mod'] = h1_mod
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
-        trial = wavefunctions.ccsd_pt2_ad(
-            norb, nelec_sp, n_batch=options["n_batch"])
+        wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
+    elif options["trial"] == "ccsd_pt2_ad":
+        trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
+        ham_data['h1_mod'] = h1_mod
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t1": t1, "t2": t2}
+        wave_data.update(trial_wave_data)
         nocc = nelec_sp[0]
         mo_t = trial.thouless_trans(t1)[:,:nocc]
         wave_data['mo_t'] = mo_t
         wave_data['mo_coeff'] = mo_coeff[0][:,:nocc]
-        rot_t2 = jnp.einsum('il,jk,lakb->iajb',mo_t[:nocc,:nocc].T,
-                   mo_t[:nocc,:nocc].T,t2)
+        rot_t2 = jnp.einsum('il,jk,lakb->iajb',
+                            mo_t[:nocc,:nocc].T,mo_t[:nocc,:nocc].T,t2)
         wave_data['rot_t2'] = rot_t2
     elif options["trial"] == "uccsd_pt_ad":
-        trial = wavefunctions.uccsd_pt_ad(
-            norb, nelec_sp, n_batch=options["n_batch"])
+        trial = wavefunctions.uccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = [
             mo_coeff[0][:, : nelec_sp[0]],
             mo_coeff[1][:, : nelec_sp[1]],
@@ -542,8 +560,7 @@ def _prep_afqmc(options=None,
         wave_data["rot_t2AB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_a_A[:noccA,:noccA].T,mo_b_B[:noccB,:noccB].T,t2ab)
     elif options["trial"] == "uccsd_pt":
-        trial = wavefunctions.uccsd_pt(
-            norb, nelec_sp, n_batch = options["n_batch"])
+        trial = wavefunctions.uccsd_pt(norb, nelec_sp, n_batch = options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
         wave_data["mo_coeff"] = [
             mo_coeff[0][:, : noccA],
@@ -562,8 +579,7 @@ def _prep_afqmc(options=None,
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
     elif options["trial"] == "uccsd_pt2":
-        trial = wavefunctions.uccsd_pt2(
-            norb, nelec_sp, n_batch = options["n_batch"])
+        trial = wavefunctions.uccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
         wave_data["mo_coeff"] = [
             mo_coeff[0][:, : noccA],
@@ -584,8 +600,7 @@ def _prep_afqmc(options=None,
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
     elif options["trial"] == "uccsd_pt2_ad":
-        trial = wavefunctions.uccsd_pt2_ad(
-            norb, nelec_sp, n_batch=options["n_batch"])
+        trial = wavefunctions.uccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
         wave_data["mo_coeff"] = [
             mo_coeff[0][:, : noccA],
@@ -609,8 +624,7 @@ def _prep_afqmc(options=None,
         wave_data["rot_t2AB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_ta[:noccA,:noccA].T,mo_tb[:noccB,:noccB].T,t2ab)
     elif options["trial"] == "uccsd_pt2_true_ad":
-        trial = wavefunctions.uccsd_pt2_true_ad(
-            norb, nelec_sp, n_batch=options["n_batch"])
+        trial = wavefunctions.uccsd_pt2_true_ad(norb, nelec_sp, n_batch=options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
         wave_data["mo_coeff"] = [
             mo_coeff[0][:, : noccA],
