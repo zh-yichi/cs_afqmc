@@ -131,10 +131,12 @@ class propagator(ABC):
         )
 
         overlaps_new = trial.calc_overlap(prop_data["walkers"], wave_data)
+        # I(x,xbar,walkers,trial) = <trial|walkers_new>/<trial|walkers_old> 
+        #                                 * exp(x_g xbar_g - 1/2 xbar_g xbar_g)
         imp_fun = (
             jnp.exp(
                 -jnp.sqrt(self.dt) * shift_term
-                + fb_term
+                + fb_term # pop_control_ene_shift = estimated ground state energy
                 + self.dt * (prop_data["pop_control_ene_shift"] + ham_data["h0_prop"])
             )
             * overlaps_new

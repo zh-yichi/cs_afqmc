@@ -54,7 +54,7 @@ t, e0, e1 = trial.calc_energy_pt(
     prop_data['walkers'], ham_data, wave_data)
 ept_sp = e0 + e1- t*(e0-h0)
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
-prop_data["e_estimate"] = e0 # set to be <HF|H|walkers>/<HF|walkers>
+prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
@@ -112,9 +112,7 @@ for n in range(1,options["n_eql"]+1):
     blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0-h0)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = (
-         0.9 * prop_data["e_estimate"] + 0.1 * blk_e0
-         )
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
 
     comm.Barrier()
     if rank == 0:
@@ -194,7 +192,7 @@ for n in range(sampler.n_blocks):
     blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0 - h0)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_e0
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
 
     comm.Barrier()
     if rank == 0:
