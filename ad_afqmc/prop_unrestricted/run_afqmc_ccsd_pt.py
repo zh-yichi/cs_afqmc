@@ -54,7 +54,7 @@ t, e0, e1 = trial.calc_energy_pt(
     prop_data['walkers'], ham_data, wave_data)
 ept_sp = e0 + e1- t*(e0-h0)
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
-prop_data["e_estimate"] = ept
+prop_data["e_estimate"] = e0 # set to be <HF|H|walkers>/<HF|walkers>
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
@@ -104,48 +104,6 @@ for n in range(1,options["n_eql"]+1):
         blk_e1 = np.sum(gather_wt * gather_e1) / blk_wt
     comm.Barrier()
 
-    # blk_wt_t = np.array([blk_t * blk_wt], dtype="float64")
-    # blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float64")
-    # blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float64")
-
-    # tot_blk_wt = np.zeros(1, dtype="float64")
-    # tot_blk_t = np.zeros(1, dtype="float64")
-    # tot_blk_e0 = np.zeros(1, dtype="float64")
-    # tot_blk_e1 = np.zeros(1, dtype="float64")
-
-    # comm.Reduce(
-    #     [blk_wt, MPI.FLOAT],
-    #     [tot_blk_wt, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_t, MPI.FLOAT],
-    #     [tot_blk_t, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_e0, MPI.FLOAT],
-    #     [tot_blk_e0, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_e1, MPI.FLOAT],
-    #     [tot_blk_e1, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-
-    # comm.Barrier()
-    # if rank == 0:
-    #     blk_wt = tot_blk_wt
-    #     blk_t = tot_blk_t / tot_blk_wt
-    #     blk_e0 = tot_blk_e0 / tot_blk_wt
-    #     blk_e1 = tot_blk_e1 / tot_blk_wt
-    # comm.Barrier()
-
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_t, root=0)
     comm.Bcast(blk_e0, root=0)
@@ -155,7 +113,7 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
-         0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
+         0.9 * prop_data["e_estimate"] + 0.1 * blk_e0
          )
 
     comm.Barrier()
@@ -236,7 +194,7 @@ for n in range(sampler.n_blocks):
     blk_ept = blk_e0 + blk_e1 - blk_t * (blk_e0 - h0)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_e0
 
     comm.Barrier()
     if rank == 0:
@@ -246,30 +204,6 @@ for n in range(sampler.n_blocks):
     if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:
-            # t, t_err = stat_utils.blocking_analysis(
-            #     glb_blk_wt[: (n + 1) * size],
-            #     glb_blk_t[: (n + 1) * size],
-            #     neql=0,
-            # )
-            # e0, e0_err = stat_utils.blocking_analysis(
-            #     glb_blk_wt[: (n + 1) * size],
-            #     glb_blk_e0[: (n + 1) * size],
-            #     neql=0,
-            # )
-            # e1, e1_err = stat_utils.blocking_analysis(
-            #     glb_blk_wt[: (n + 1) * size],
-            #     glb_blk_e1[: (n + 1) * size],
-            #     neql=0,
-            # )
-
-            # if en_err is not None:
-            #     en_err = f"{en_err:.6f}"
-            # else:
-            #     en_err = f"  {en_err}  "
-            # if eorb_err is not None:
-            #     eorb_err = f"{eorb_err:.6f}"
-            # else:
-            #     eorb_err = f"  {eorb_err}  "
 
             glb_wt = np.sum(glb_blk_wt[:(n+1)*size])
             rho_t = (glb_blk_wt[:(n+1)*size] 
@@ -287,10 +221,6 @@ for n in range(sampler.n_blocks):
             e0_err = np.std(rho_e0)
             e1_err = np.std(rho_e1)
 
-            # t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
-            # e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-            # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
-
             ept = e0 + e1 - t * (e0 - h0)
             dE = np.array([-e0+h0,1-t,1])
             cov_te0e1 = np.cov([glb_blk_t[:(n+1)*size],
@@ -299,9 +229,6 @@ for n in range(sampler.n_blocks):
             ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
 
             print(f"  {n:4d} \t \t"
-                #   f"  {t:.6f} \t {t_err:.6f} \t"
-                #   f"  {e0:.6f} \t {e0_err:.6f} \t"
-                #   f"  {e1:.6f} \t {e1_err:.6f} \t"
                   f"  {ept:.6f} \t {ept_err:.6f} \t"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
@@ -332,10 +259,6 @@ if rank == 0:
     glb_blk_e0 = samples_clean[:, 2]
     glb_blk_e1 = samples_clean[:, 3]
 
-    # t = np.sum(glb_blk_wt * glb_blk_t)/np.sum(glb_blk_wt)
-    # e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-    # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
-
     glb_wt = np.sum(glb_blk_wt)
     rho_t = (glb_blk_wt * glb_blk_t)/glb_wt
     rho_e0 = (glb_blk_wt * glb_blk_e0)/glb_wt
@@ -359,6 +282,7 @@ if rank == 0:
     ept_err = f"{ept_err:.6f}"
 
     print(f"# Final Results:")
+    print(f"# <e0> = <ehf> in PT theory")
     print(f'# h0 = {h0:.8f}')
     print(f"# <t> = {t:.6f} +/- {t_err:.6f}")
     print(f"# <e0> = {e0:.6f} +/- {e0_err:.6f}")

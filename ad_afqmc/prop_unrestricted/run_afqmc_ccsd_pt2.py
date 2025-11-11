@@ -52,37 +52,43 @@ prop_data["n_killed_walkers"] = 0
 t1, t2, e0, e1 = trial.calc_energy_pt(prop_data["walkers"], ham_data, wave_data)
 ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
-prop_data["e_estimate"] = ept
+ehf_sp = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))
+ehf = jnp.array(jnp.sum(ehf_sp) / prop.n_walkers)
+prop_data["e_estimate"] = ehf
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
 if rank == 0:
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
-    print("#   Iter  <exp(t1)>  <t2>  <e0>  <e1>  energy  Walltime")
-    print(f"  {0:5d}  {t1[0]:.6f}  {t2[0]:.6f}"
-          f"  {e0[0]:.6f}   {e1[0]:.6f}   {ept:.6f}"
-          f"  {time.time() - init_time:.2f}")
+    print("#   Iter  \t "
+          "   <exp(t1)> \t <t2> \t \t <e0> \t \t <e1> \t \t "
+          "   <ehf> \t energy \t Walltime")
+    print(f"  {0:5d} \t "
+          f"  {t1[0]:.6f} \t {t2[0]:.6f} \t{e0[0]:.6f} \t {e1[0]:.6f} \t "
+          f"  {ehf:.6f} \t {ept:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
 sampler_eq = sampling.sampler_pt2(
     n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10, n_chol = sampler.n_chol)
 for n in range(1,options["n_eql"]+1):
-    prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1) =\
+    prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1, blk_ehf) = \
         sampler_eq.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data)
 
-    blk_wt = np.array([blk_wt], dtype="float64") 
+    blk_wt = np.array([blk_wt], dtype="float64")
     blk_t1 = np.array([blk_t1], dtype="float64")
     blk_t2 = np.array([blk_t2], dtype="float64")
     blk_e0 = np.array([blk_e0], dtype="float64")
     blk_e1 = np.array([blk_e1], dtype="float64")
+    blk_ehf = np.array([blk_ehf], dtype="float64")
 
     gather_wt = None
     gather_t1 = None
     gather_t2 = None
     gather_e0 = None
     gather_e1 = None
+    gather_ehf = None
 
     comm.Barrier()
     if rank == 0:
@@ -91,6 +97,7 @@ for n in range(1,options["n_eql"]+1):
         gather_t2 = np.zeros(size, dtype="float64")
         gather_e0 = np.zeros(size, dtype="float64")
         gather_e1 = np.zeros(size, dtype="float64")
+        gather_ehf = np.zeros(size, dtype="float64")
     comm.Barrier()
 
     comm.Gather(blk_wt, gather_wt, root=0)
@@ -98,6 +105,7 @@ for n in range(1,options["n_eql"]+1):
     comm.Gather(blk_t2, gather_t2, root=0)
     comm.Gather(blk_e0, gather_e0, root=0)
     comm.Gather(blk_e1, gather_e1, root=0)
+    comm.Gather(blk_ehf, gather_ehf, root=0)
 
     comm.Barrier()
     if rank == 0:
@@ -107,86 +115,34 @@ for n in range(1,options["n_eql"]+1):
         blk_t2 = np.sum(gather_wt * gather_t2) / blk_wt
         blk_e0 = np.sum(gather_wt * gather_e0) / blk_wt
         blk_e1 = np.sum(gather_wt * gather_e1) / blk_wt
+        blk_ehf = np.sum(gather_wt * gather_ehf) / blk_wt
     comm.Barrier()
-
-#############
-    # blk_wt_t1 = np.array([blk_t1 * blk_wt], dtype="float64")
-    # blk_wt_t2 = np.array([blk_t2 * blk_wt], dtype="float64")
-    # blk_wt_e0 = np.array([blk_e0 * blk_wt], dtype="float64")
-    # blk_wt_e1 = np.array([blk_e1 * blk_wt], dtype="float64")
-
-    # tot_blk_wt = np.zeros(1, dtype="float64")
-    # tot_blk_t1 = np.zeros(1, dtype="float64")
-    # tot_blk_t2 = np.zeros(1, dtype="float64")
-    # tot_blk_e0 = np.zeros(1, dtype="float64")
-    # tot_blk_e1 = np.zeros(1, dtype="float64")
-
-    # comm.Reduce(
-    #     [blk_wt, MPI.FLOAT],
-    #     [tot_blk_wt, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_t1, MPI.FLOAT],
-    #     [tot_blk_t1, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_t2, MPI.FLOAT],
-    #     [tot_blk_t2, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_e0, MPI.FLOAT],
-    #     [tot_blk_e0, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_e1, MPI.FLOAT],
-    #     [tot_blk_e1, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-
-    # comm.Barrier()
-    # if rank == 0:
-    #     blk_wt = tot_blk_wt
-    #     blk_t1 = tot_blk_t1 / tot_blk_wt
-    #     blk_t2 = tot_blk_t2 / tot_blk_wt
-    #     blk_e0 = tot_blk_e0 / tot_blk_wt
-    #     blk_e1 = tot_blk_e1 / tot_blk_wt
-    # comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_t1, root=0)
     comm.Bcast(blk_t2, root=0)
     comm.Bcast(blk_e0, root=0)
     comm.Bcast(blk_e1, root=0)
+    comm.Bcast(blk_ehf, root=0)
     
     blk_ept = (h0 + 1/blk_t1 * blk_e0 
                + 1/blk_t1 * blk_e1 - 1/blk_t1**2 * blk_t2 * blk_e0)
     
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = (
-         0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
-         )
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ehf
 
     comm.Barrier()
     if rank == 0:
-        print(f"  {n:5d}  {blk_t1:.6f}  {blk_t2:.6f}"
-             f"  {blk_e0:.6f}   {blk_e1:.6f}   {blk_ept:.6f}"
-             f"  {time.time() - init_time:.2f}")
+        print(f"  {n:5d} \t "
+              f"  {blk_t1:.6f} \t {blk_t2:.6f} \t {blk_e0:.6f} \t {blk_e1:.6f} \t "
+              f"  {blk_ehf:.6f} \t {blk_ept:.6f} \t {time.time() - init_time:.2f}")
     comm.Barrier()
 
 comm.Barrier()
 if rank == 0:
     print("#\n# Sampling sweeps:")
-    print("#  Iter \t energy \t error \t \t Walltime")
+    print("#  Iter \t energy_hf \t energy_pt \t error \t \t Walltime")
 comm.Barrier()
 
 glb_blk_wt = None
@@ -194,6 +150,7 @@ glb_blk_t1 = None
 glb_blk_t2 = None
 glb_blk_e0 = None
 glb_blk_e1 = None
+glb_blk_ehf = None
 
 comm.Barrier()
 if rank == 0:
@@ -202,11 +159,12 @@ if rank == 0:
     glb_blk_t2 = np.zeros(size * sampler.n_blocks,dtype="float64")
     glb_blk_e0 = np.zeros(size * sampler.n_blocks,dtype="float64")
     glb_blk_e1 = np.zeros(size * sampler.n_blocks,dtype="float64")
+    glb_blk_ehf = np.zeros(size * sampler.n_blocks,dtype="float64")
     ept_samples = np.zeros(sampler.n_blocks,dtype="float64")
 comm.Barrier()
     
 for n in range(sampler.n_blocks):
-    prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1) =\
+    prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1, blk_ehf) =\
         sampler.propagate_phaseless(
             prop_data, ham_data, prop, trial, wave_data)
     
@@ -215,12 +173,14 @@ for n in range(sampler.n_blocks):
     blk_t2 = np.array([blk_t2], dtype="float64")
     blk_e0 = np.array([blk_e0], dtype="float64")
     blk_e1 = np.array([blk_e1], dtype="float64")
+    blk_ehf = np.array([blk_ehf], dtype="float64")
 
     gather_wt = None
     gather_t1 = None
     gather_t2 = None
     gather_e0 = None
     gather_e1 = None
+    gather_ehf = None
 
     comm.Barrier()
     if rank == 0:
@@ -229,6 +189,7 @@ for n in range(sampler.n_blocks):
         gather_t2 = np.zeros(size, dtype="float64")
         gather_e0 = np.zeros(size, dtype="float64")
         gather_e1 = np.zeros(size, dtype="float64")
+        gather_ehf = np.zeros(size, dtype="float64")
     comm.Barrier()
 
     comm.Gather(blk_wt, gather_wt, root=0)
@@ -236,6 +197,7 @@ for n in range(sampler.n_blocks):
     comm.Gather(blk_t2, gather_t2, root=0)
     comm.Gather(blk_e0, gather_e0, root=0)
     comm.Gather(blk_e1, gather_e1, root=0)
+    comm.Gather(blk_ehf, gather_ehf, root=0)
 
     comm.Barrier()
     if rank == 0:
@@ -244,6 +206,7 @@ for n in range(sampler.n_blocks):
         glb_blk_t2[n * size : (n + 1) * size] = gather_t2
         glb_blk_e0[n * size : (n + 1) * size] = gather_e0
         glb_blk_e1[n * size : (n + 1) * size] = gather_e1
+        glb_blk_ehf[n * size : (n + 1) * size] = gather_ehf
 
         assert gather_wt is not None
 
@@ -252,6 +215,7 @@ for n in range(sampler.n_blocks):
         blk_t2 = np.sum(gather_wt * gather_t2) / blk_wt
         blk_e0 = np.sum(gather_wt * gather_e0) / blk_wt
         blk_e1 = np.sum(gather_wt * gather_e1) / blk_wt
+        blk_ehf = np.sum(gather_wt * gather_ehf) / blk_wt
     comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
@@ -259,12 +223,13 @@ for n in range(sampler.n_blocks):
     comm.Bcast(blk_t2, root=0)
     comm.Bcast(blk_e0, root=0)
     comm.Bcast(blk_e1, root=0)
+    comm.Bcast(blk_ehf, root=0)
 
     blk_ept = (h0 + 1/blk_t1 * blk_e0 
                + 1/blk_t1 * blk_e1 - 1/blk_t1**2 * blk_t2 * blk_e0)
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ept
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_ehf
 
     comm.Barrier()
     if rank == 0:
@@ -278,6 +243,7 @@ for n in range(sampler.n_blocks):
             t2 = np.sum(glb_blk_wt * glb_blk_t2)/np.sum(glb_blk_wt)
             e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
             e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
+            ehf = np.sum(glb_blk_wt * glb_blk_ehf)/np.sum(glb_blk_wt)
 
             ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
             
@@ -292,7 +258,7 @@ for n in range(sampler.n_blocks):
                                 glb_blk_e1[:(n+1)*size]])
             ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
             
-            print(f"  {n:4d} \t \t {ept:.6f} \t {ept_err:.6f} \t"
+            print(f"  {n:4d} \t \t {ehf:.6f} \t {ept:.6f} \t {ept_err:.6f} \t"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
 
@@ -309,6 +275,7 @@ if rank == 0:
                     glb_blk_t2,
                     glb_blk_e0,
                     glb_blk_e1,
+                    glb_blk_ehf,
                 )
             ).T,
             1,
@@ -323,27 +290,26 @@ if rank == 0:
     glb_blk_t2 = samples_clean[:, 2]
     glb_blk_e0 = samples_clean[:, 3]
     glb_blk_e1 = samples_clean[:, 4]
+    glb_blk_ehf = samples_clean[:, 5]
 
     glb_wt = np.sum(glb_blk_wt)
     rho_t1 = (glb_blk_wt * glb_blk_t1)/glb_wt
     rho_t2 = (glb_blk_wt * glb_blk_t2)/glb_wt
     rho_e0 = (glb_blk_wt * glb_blk_e0)/glb_wt
     rho_e1 = (glb_blk_wt * glb_blk_e1)/glb_wt
+    rho_ehf = (glb_blk_wt * glb_blk_ehf)/glb_wt
     
     t1 = np.sum(rho_t1)
     t2 = np.sum(rho_t2)
     e0 = np.sum(rho_e0)
     e1 = np.sum(rho_e1)
+    ehf = np.sum(rho_ehf)
 
     t1_err = np.std(rho_t1)
     t2_err = np.std(rho_t2)
     e0_err = np.std(rho_e0)
     e1_err = np.std(rho_e1)
-
-    # t1 = np.sum(glb_blk_wt * glb_blk_t1)/np.sum(glb_blk_wt)
-    # t2 = np.sum(glb_blk_wt * glb_blk_t2)/np.sum(glb_blk_wt)
-    # e0 = np.sum(glb_blk_wt * glb_blk_e0)/np.sum(glb_blk_wt)
-    # e1 = np.sum(glb_blk_wt * glb_blk_e1)/np.sum(glb_blk_wt)
+    ehf_err = np.std(rho_ehf)
 
     ept = h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0
     
@@ -368,6 +334,7 @@ if rank == 0:
     print(f"# <t2> = {t2:.6f} +/- {t2_err:.6f}")
     print(f"# <e0> = {e0:.6f} +/- {e0_err:.6f}")
     print(f"# <e1> = {e1:.6f} +/- {e1_err:.6f}")
+    print(f"# <ehf> = {ehf:.6f} +/- {ehf_err:.6f}")
     print(f"# AFQMC/UCCSD_PT2 energy (covariance): {ept} +/- {ept_err}")
 
     d = np.abs(ept_samples-np.median(ept_samples))
