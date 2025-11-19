@@ -219,7 +219,7 @@ def lno_cc_solver(mf,mo_coeff,lo_coeff,eris=None,frozen=None):
 
     # MP2 fragment energy
     t1, t2 = mcc.init_amps(eris=imp_eris)[1:]
-    ecorr_p2 = get_fragment_energy(oovv, t2, prjlo)
+    # ecorr_p2 = get_fragment_energy(oovv, t2, prjlo)
 
     # CCSD fragment energy
     mcc.kernel(eris=imp_eris, t1=t1, t2=t2)

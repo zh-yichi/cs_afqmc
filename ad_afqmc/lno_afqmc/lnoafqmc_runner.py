@@ -386,6 +386,8 @@ def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
         #     = lno_maker.make_lno(
         #         lno_cc,orbfragloc,THRESH_INTERNAL,thresh_pno
         #         )
+        # FIX: there's some inconsistence between these two
+        # Below does not support non-DF mf object
         frzfrag, orbfrag, can_orbfrag \
             = lno.make_fpno1(lno_cc, eris, orbfragloc, no_type,
                             THRESH_INTERNAL, thresh_pno,
