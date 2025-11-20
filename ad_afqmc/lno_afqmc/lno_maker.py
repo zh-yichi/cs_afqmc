@@ -228,9 +228,9 @@ def lno_cc_solver(mf,mo_coeff,lo_coeff,eris=None,frozen=None):
     ecorr_cc = get_fragment_energy(oovv, t2, prjlo)
     t2 -= lib.einsum('ia,jb->ijab',t1,t1) 
 
-    oovv = imp_eris = mcc = None
+    oovv = imp_eris = None
 
-    return ecorr_cc,t1,t2
+    return mcc, ecorr_cc
 
 def lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag):
     

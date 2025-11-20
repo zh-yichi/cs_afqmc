@@ -304,10 +304,10 @@ class propagator_restricted(propagator):
         ham_data["h0_prop"] = (
             -ham_data["h0"] - jnp.sum(ham_data["mf_shifts"] ** 2) / 2.0
         )
-        ham_data["h0_prop_fp"] = [
-            (ham_data["h0_prop"] + ham_data["ene0"]) / trial.nelec[0],
-            (ham_data["h0_prop"] + ham_data["ene0"]) / trial.nelec[0],
-        ]
+        # ham_data["h0_prop_fp"] = [
+        #     (ham_data["h0_prop"] + ham_data["ene0"]) / trial.nelec[0],
+        #     (ham_data["h0_prop"] + ham_data["ene0"]) / trial.nelec[0],
+        # ]
         v0 = 0.5 * jnp.einsum(
             "gik,gjk->ij",
             ham_data["chol"].reshape(-1, trial.norb, trial.norb),

@@ -322,7 +322,7 @@ def prep_lnoafqmc_run(options=None,prjlo=True,
     return ham_data, ham, prop, trial, wave_data, sampler, observable, options, MPI
 
 def run_lno_afqmc(mfcc,thresh,frozen=None,options=None,
-                  lo_type='boys',chol_cut=1e-6,nproc=None,
+                  lo_type='boys',chol_cut=1e-5,nproc=None,
                   run_frg_list=None,use_df_vecs=False,mp2=True,
                   debug=False,t2_0=False):
     '''
