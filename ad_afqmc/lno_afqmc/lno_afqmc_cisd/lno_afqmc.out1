@@ -1,0 +1,96 @@
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: sharmagroup-rn
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 1
+#
+# norb: 10
+# nelec: (5, 5)
+#
+# n_eql: 5
+# n_prop_steps: 50
+# n_ene_blocks: 1
+# n_sr_blocks: 10
+# n_blocks: 10
+# n_walkers: 50
+# seed: 98
+# walker_type: rhf
+# trial: cisd_ad
+# dt: 0.005
+# free_projection: False
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+#
+# 
+
+# Propagating with 50 walkers
+# Equilibration sweeps:
+#   Iter 	 Energy 	 eorb 	 	 e0_orb 	 e12_orb 	 o12_orb 	 time
+      0 	 -5.206541 	 -0.036812 	  0.000000 	 -0.036812 	   0.000000 	 1.16
+      1 	 -5.368893 	 -0.043018 	   -0.029977 	 -0.013041 	   0.034917 	 3.37 
+      2 	 -5.416633 	 -0.048066 	   -0.034842 	 -0.013224 	   0.048854 	 5.32 
+      3 	 -5.404157 	 -0.048194 	   -0.042498 	 -0.005696 	   0.061123 	 6.46 
+      4 	 -5.395485 	 -0.048626 	   -0.045449 	 -0.003177 	   0.067043 	 7.60 
+      5 	 -5.373455 	 -0.043930 	   -0.029813 	 -0.014116 	   0.036715 	 8.74 
+#
+# Sampling sweeps:
+#  Iter  Energy 	 error 	 	 e_orb 	 	 error 	 	   e0_orb 	 error 	 	 e12_orb 	 error 	 	   o12_orb 	 error 	 	 time
+     1 	 -5.393830 	   None   	 -0.046366 	   None   	  -0.032759 	   None   	 -0.013607 	   None   	  0.037725 	   None   	 10.07
+     2 	 -5.393599 	   None   	 -0.046161 	   None   	  -0.034410 	   None   	 -0.011751 	   None   	  0.039479 	   None   	 10.30
+     3 	 -5.396046 	   None   	 -0.046609 	   None   	  -0.037280 	   None   	 -0.009329 	   None   	  0.043004 	   None   	 10.53
+     4 	 -5.396714 	 0.007120 	 -0.046932 	 0.000751 	  -0.039194 	   None   	 -0.007738 	   None   	  0.047028 	   None   	 10.77
+     5 	 -5.395232 	 0.005924 	 -0.046368 	 0.000862 	  -0.037426 	 0.003441 	 -0.008942 	   None   	  0.045000 	 0.005080 	 11.00
+     6 	 -5.391381 	 0.006460 	 -0.045888 	 0.000886 	  -0.036232 	 0.003204 	 -0.009656 	   None   	  0.043287 	 0.004622 	 11.23
+     7 	 -5.390682 	 0.005588 	 -0.045780 	 0.000769 	  -0.035947 	 0.002736 	 -0.009832 	   None   	  0.043123 	 0.003966 	 11.46
+     8 	 -5.387565 	 0.005905 	 -0.045534 	 0.000722 	  -0.035330 	   None   	 -0.010204 	   None   	  0.042333 	 0.003684 	 11.69
+     9 	 -5.385708 	   None   	 -0.045286 	   None   	  -0.034807 	   None   	 -0.010479 	   None   	  0.041431 	 0.003350 	 11.92
+# Number of outliers in post: 0 
+#
+# Mean: -5.38570832e+00
+# Block size    # of blocks         Mean                Error
+      1               10       -5.38570833e+00       5.603115e-03
+      2                5       -5.38570786e+00       6.887337e-03
+      3                3       -5.38756514e+00       9.472578e-03
+#
+# Mean: -4.52859214e-02
+# Block size    # of blocks         Mean                Error
+      1               10       -4.52859178e-02       6.928456e-04
+      2                5       -4.52859215e-02       7.714512e-04
+      3                3       -4.55340855e-02       1.033147e-03
+#
+# Mean: -3.48072732e-02
+# Block size    # of blocks         Mean                Error
+      1               10       -3.48072760e-02       2.258377e-03
+      2                5       -3.48072723e-02       2.417147e-03
+      3                3       -3.53301615e-02       3.341824e-03
+#
+# Mean: -1.04786482e-02
+# Block size    # of blocks         Mean                Error
+      1               10       -1.04786484e-02       1.678267e-03
+      2                5       -1.04786484e-02       1.862547e-03
+      3                3       -1.02039175e-02       2.520077e-03
+#
+# Mean: 4.14310438e-02
+# Block size    # of blocks         Mean                Error
+      1               10       4.14310396e-02       3.313776e-03
+      2                5       4.14310396e-02       3.350244e-03
+      3                3       4.23333980e-02       5.095278e-03
+# Stocahstic error estimate: 3.350244e-03
+#
+# Final Results
+# AFQMC/HF energy: -5.385708 +/-   None  
+# AFQMC/HF E_Orbital: -0.034807 +/-   None  
+# AFQMC/CISD E_Orbital: -0.045286 +/-   None  
+# AFQMC/CISD E12_Orbital: -0.010479 +/-   None  
+# AFQMC/CISD O12_Orbital: 0.041431 +/- 0.003350
+# total run time: 11.92

@@ -111,6 +111,7 @@ def run_afqmc_lno_mf(mf,
              'prjlo':prjlo,
              'maxError':maxError,
              'LNO':True,
+             'use_gpu': False
              }
     import pickle
     with open('options.bin', 'wb') as f:

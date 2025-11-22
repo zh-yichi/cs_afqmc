@@ -370,7 +370,7 @@ class sampler:
         prop_data['overlaps'] = trial.calc_overlap(prop_data['walkers'], wave_data)
         energy_samples = jnp.real(trial.calc_energy(prop_data['walkers'],ham_data, wave_data))
         energy_samples = jnp.where(jnp.abs(energy_samples - prop_data['pop_control_ene_shift']) > jnp.sqrt(2./propagator.dt), prop_data['pop_control_ene_shift'], energy_samples)
-        orbE_samples = jnp.real(trial.calc_orbenergy2(prop_data['walkers'],ham_data,wave_data))
+        orbE_samples = jnp.real(trial.calc_orbenergy(prop_data['walkers'],ham_data,wave_data,0))
         orbE_samples = jnp.where(jnp.abs(energy_samples - prop_data['pop_control_ene_shift']) > jnp.sqrt(2./propagator.dt), prop_data['pop_control_ene_shift'], orbE_samples)
         block_weight = jnp.sum(prop_data['weights'])
         block_energy = jnp.sum(energy_samples * prop_data['weights']) / block_weight

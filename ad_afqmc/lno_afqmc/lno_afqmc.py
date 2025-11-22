@@ -57,7 +57,7 @@ def prep_lnoafqmc(mf_cc,mo_coeff,options,norb_act,nelec_act,
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
         chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
-        eri_ao_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df)
+        eri_ao_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df, optimize='optimal')
         print("# Composing active space MO ERIs from AO ERIs")
         eri_mo_df = ao2mo.kernel(eri_ao_df,mo_coeff[:,act_idx],compact=False)
         eri_mo_df = eri_mo_df.reshape(nbasis**2,nbasis**2)
@@ -423,3 +423,152 @@ def run_afqmc(options,nproc=None,
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
         f"{mpi_prefix} python {script} {gpu_flag} |tee lno_afqmc.out"
     )
+
+from pyscf.ci.cisd import CISD
+from pyscf.cc.ccsd import CCSD
+from pyscf import lib
+import jax
+from ad_afqmc.lno.cc import LNOCCSD
+from ad_afqmc.lno_afqmc import lno_maker, lno_afqmc
+from ad_afqmc.lno.base import lno
+
+def run_lnoafqmc(mfcc,options,frozen=None,lno_thresh=1e-5,chol_cut=1e-5,run_frg_list=None):
+
+    if isinstance(mfcc, (CCSD, CISD)):
+        mf = mfcc._scf
+    else:
+        mf = mfcc
+
+    if isinstance(lno_thresh, list):
+        thresh_occ, thresh_vir = lno_thresh
+    else:
+        thresh_occ = lno_thresh*10
+        thresh_vir = lno_thresh
+
+    lno_cc = LNOCCSD(mf, frozen=frozen)
+    lno_cc.thresh_occ = thresh_occ
+    lno_cc.thresh_vir = thresh_vir
+    lno_cc.lo_type = 'boys'
+    lno_cc.no_type = 'ie'
+    no_type = 'ie'
+    lno_cc.frag_lolist = '1o'
+    lno_cc.force_outcore_ao2mo = True
+
+    s1e = mf.get_ovlp()
+    loc_occ = lno_cc.get_lo(lo_type='boys') # localized active occ orbitals
+    # lococc,locvir = lno_maker.get_lo(lno_cc,lo_type) ### fix this for DF
+    eris = lno_cc.ao2mo()
+
+    frag_lolist = [[i] for i in range(loc_occ.shape[1])]
+    print('localized occupied orbitals', frag_lolist)
+    nfrag = len(frag_lolist)
+
+    frozen_mask = lno_cc.get_frozen_mask()
+    thresh_pno = [thresh_occ,thresh_vir]
+    print(f'lno thresh {thresh_pno}')
+
+    if run_frg_list is None:
+        run_frg_list = range(nfrag)
+
+    frag_nonvlist = None
+    if frag_nonvlist is None: frag_nonvlist = lno_cc.frag_nonvlist
+    if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
+
+    eorb_cc = np.empty(len(run_frg_list),dtype='float64')
+        
+    from jax import random
+    seeds = random.randint(random.PRNGKey(options["seed"]),
+                        shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
+
+    for ifrag in run_frg_list:
+        print(f'\n########### running fragment {ifrag+1} ##########')
+
+        fraglo = frag_lolist[ifrag]
+        orbfragloc = loc_occ[:,fraglo]
+        THRESH_INTERNAL = 1e-10
+        # frag_target_nocc, frag_target_nvir = frag_nonvlist[ifrag]
+        frzfrag, orbfrag, can_orbfrag \
+            = lno.make_fpno1(lno_cc, eris, orbfragloc, no_type,
+                                THRESH_INTERNAL, thresh_pno,
+                                frozen_mask=frozen_mask,
+                                frag_target_nocc=None,
+                                frag_target_nvir=None,
+                                canonicalize=True)
+
+        mol = mf.mol
+        nocc = mol.nelectron // 2 
+        nao = mol.nao
+        actfrag = np.array([i for i in range(nao) if i not in frzfrag])
+        # frzocc = np.array([i for i in range(nocc) if i in frzfrag])
+        actocc = np.array([i for i in range(nocc) if i in actfrag])
+        actvir = np.array([i for i in range(nocc,nao) if i in actfrag])
+        nactocc = len(actocc)
+        nactocc = len(actocc)
+        nactvir = len(actvir)
+        prjlo = orbfragloc.T @ s1e @ orbfrag[:,actocc]
+        nelec_act = nactocc*2
+        norb_act = nactocc+nactvir
+
+        print(f'# active orbitals: {actfrag}')
+        print(f'# active occupied orbitals: {actocc}')
+        print(f'# active virtual orbitals: {actvir}')
+        print(f'# frozen orbitals: {frzfrag}')
+        print(f'# number of active electrons: {nelec_act}')
+        print(f'# number of active orbitals: {norb_act}')
+        print(f'# number of frozen orbitals: {len(frzfrag)}')
+
+        # mp2 is not invariant to lno transformation
+        # needs to be done in canoical HF orbitals
+        # which the globel mp2 is calculated in
+        print('# running fragment MP2')
+        ecorr_p2 = \
+            lno_maker.lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag)
+        ecorr_p2 = f'{ecorr_p2:.8f}'
+        print(f'# LNO-MP2 Orbital Energy: {ecorr_p2}')
+        
+        print('# running fragment CCSD')
+        mcc, ecorr_cc = \
+            lno_maker.lno_cc_solver(mf,orbfrag,orbfragloc,frozen=frzfrag)
+        eorb_cc[ifrag] = ecorr_cc
+        ecorr_cc = f'{ecorr_cc:.8f}'
+        print(f'# LNO-CCSD Energy: {mcc.e_tot}')
+        print(f'# LNO-CCSD Orbital Energy: {ecorr_cc}')
+
+        ci1 = np.array(mcc.t1)
+        ci2 = mcc.t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
+
+        # options["seed"] = seeds[ifrag]
+        lno_afqmc.prep_lnoafqmc(
+            mf,orbfrag,options,
+            norb_act=norb_act,nelec_act=nelec_act,
+            prjlo=prjlo,norb_frozen=frzfrag,
+            ci1=ci1,ci2=ci2,chol_cut=chol_cut,
+            )
+        lno_afqmc.run_afqmc(options)
+        os.system(f'mv lno_afqmc.out lno_afqmc.out{ifrag+1}')
+
+    eo = np.empty(len(run_frg_list),dtype='float64')
+    eo0 = np.empty(len(run_frg_list),dtype='float64')
+    eo12 = np.empty(len(run_frg_list),dtype='float64')
+    oo12 = np.empty(len(run_frg_list),dtype='float64')
+    for i in run_frg_list:
+        with open(f"lno_afqmc.out{i+1}", "r") as rf:
+            for line in rf:
+                if "AFQMC/HF E_Orbital" in line:
+                    eo0[i] = line.split()[-3]
+                if "AFQMC/CISD E_Orbital" in line:
+                    eo[i] = line.split()[-3]
+                if "AFQMC/CISD E12_Orbital" in line:
+                    eo12[i] = line.split()[-3]
+                if "AFQMC/CISD O12_Orbital" in line:
+                    oo12[i] = line.split()[-3]
+
+    e_ccsd = sum(eorb_cc)
+    e_afqmc_hf = sum(eo0)
+    e_afqmc_cisd = sum(eo)/(1+sum(oo12))
+
+    print(f'# LNO-CCSD Energy: {e_ccsd:.8f}')
+    print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f}')
+    print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f}')
+
+    return None

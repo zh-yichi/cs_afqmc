@@ -1,7 +1,7 @@
 from pyscf import gto, scf, cc
 
 a = 2 # bond length in a cluster
-d = 10 # distance between each cluster
+d = 2 # distance between each cluster
 unit = 'b' # unit of length
 na = 2  # size of a cluster (monomer)
 nc = 5 # set as integer multiple of monomers
@@ -27,7 +27,7 @@ options = {'n_eql': 5,
             'n_ene_blocks': 1,
             'n_sr_blocks': 10,
             'n_blocks': 10,
-            'n_walkers': 50,
+            'n_walkers': 1,
             'seed': 98,
             'walker_type': 'rhf',
             'trial': 'cisd_ad',
@@ -37,5 +37,24 @@ options = {'n_eql': 5,
             'use_gpu': False,
             }
 
-from ad_afqmc.lno_afqmc import lno_afqmc
-lno_afqmc.run_lnoafqmc(mf,options,lno_thresh=1e-6,run_frg_list=None)
+from ad_afqmc.lno.afqmc import LNOAFQMC
+filename = 'fragmentenergies.txt'
+frozen = 0
+for thresh in [1e-4]:
+    f = open(filename,'w')
+    f.close()
+    mfcc = LNOAFQMC(mf, thresh=thresh, frozen=frozen).set(verbose=5)
+    mfcc.thresh_occ = 10*thresh
+    mfcc.thresh_vir = thresh
+    mfcc.nblocks = 10
+    mfcc.seed = 98
+    mfcc.lo_type = 'boys'
+    mfcc.no_type = 'cim'
+    mfcc.frag_lolist = '1o'
+    mfcc.nwalk_per_proc = 1
+    mfcc.nproc = 1
+    mfcc.force_outcore_ao2mo = True
+    mfcc.kernel()#canonicalize=False,chol_vecs=chol_vecs)
+    ecc = mfcc.e_corr
+
+    print("LNO-AFQMC/HF Energy: ", ecc)
