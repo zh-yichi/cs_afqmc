@@ -473,6 +473,17 @@ def _prep_afqmc(options=None,
             trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
+    elif options["trial"] == "cisd_hf":
+        try:
+            amplitudes = np.load(amp_file)
+            ci1 = jnp.array(amplitudes["ci1"])
+            ci2 = jnp.array(amplitudes["ci2"])
+            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
+                               "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
+            wave_data.update(trial_wave_data)
+            trial = wavefunctions.cisd_hf(norb, nelec_sp, n_batch=options["n_batch"])
+        except:
+            raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
     elif options["trial"] == "ucisd":
         try:
             amplitudes = np.load(amp_file)
@@ -694,6 +705,13 @@ def _prep_afqmc(options=None,
                 options["n_sr_blocks"],
                 options["n_blocks"],
                 nchol,)
+    elif  'cisd_hf' in options['trial']:
+        sampler = sampling.sampler_cisd_hf(
+                options["n_prop_steps"],
+                options["n_ene_blocks"],
+                options["n_sr_blocks"],
+                options["n_blocks"],
+                nchol,)
     else:
         sampler = sampling.sampler(
                 options["n_prop_steps"],
@@ -701,12 +719,6 @@ def _prep_afqmc(options=None,
                 options["n_sr_blocks"],
                 options["n_blocks"],
                 nchol,)
-
-    # sampler.n_prop_steps = options["n_prop_steps"]
-    # sampler.n_ene_blocks = options["n_ene_blocks"]
-    # sampler.n_sr_blocks = options["n_sr_blocks"]
-    # sampler.n_blocks = options["n_blocks"]
-    # sampler.n_chol = nchol
 
     if rank == 0:
         print(f"# norb: {norb}")
@@ -745,6 +757,8 @@ def run_afqmc(options,nproc=None,dbg=False,
                 script='run_afqmc_ccsd_pt2.py'
         else:
             script='run_afqmc_ccsd_pt.py'
+    elif  'cisd_hf' in options['trial']:
+        script='run_afqmc_cisd_hf.py'
     else:
         script='run_unrestricted_test.py'
     path = os.path.abspath(__file__)
@@ -754,5 +768,5 @@ def run_afqmc(options,nproc=None,dbg=False,
     
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
-        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc_unrestricted.out"
+        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc.out"
     )

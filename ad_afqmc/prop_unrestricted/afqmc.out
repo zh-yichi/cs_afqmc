@@ -1,0 +1,65 @@
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Hostname: yichi-thinkpad
+# System Type: Linux
+# Machine Type: x86_64
+# Processor: x86_64
+# Number of MPI ranks: 8
+#
+# norb: 8
+# nelec: (4, 4)
+#
+# n_eql: 3
+# n_prop_steps: 50
+# n_ene_blocks: 5
+# n_sr_blocks: 5
+# n_blocks: 10
+# n_walkers: 10
+# seed: 2
+# walker_type: rhf
+# trial: cisd_hf
+# dt: 0.005
+# free_projection: False
+# use_gpu: False
+# n_exp_terms: 6
+# orbital_rotation: True
+# do_sr: True
+# symmetry: False
+# save_walkers: False
+# ene0: 0.0
+# n_batch: 1
+# LNO: False
+# orbE: 0
+# maxError: 0.001
+#
+# Propagating with 80 walkers
+# Equilibration sweeps:
+#   Iter 	 <olp> 	 	     <e0> 	 <eci> 	 	     Walltime
+      0 	 1.000000 	  -4.030817 	 -4.225228 	   11.59
+      1 	 1.217235 	  -4.191139 	 -4.222456 	  23.98
+      2 	 1.218009 	  -4.192004 	 -4.223414 	  33.99
+      3 	 1.242974 	  -4.206190 	 -4.223543 	  35.13
+#
+# Sampling sweeps:
+#  Iter 	 <e0> 	 	   <eci> 	 error 	 	 Walltime
+     1 	 	 -4.199788 	  -4.224464 	 0.001472 	  45.65
+     2 	 	 -4.199408 	  -4.224324 	 0.001161 	  46.23
+     3 	 	 -4.199866 	  -4.223801 	 0.000954 	  46.81
+     4 	 	 -4.197159 	  -4.223462 	 0.000798 	  47.38
+     5 	 	 -4.198462 	  -4.222970 	 0.000706 	  47.96
+     6 	 	 -4.199031 	  -4.222648 	 0.000628 	  48.54
+     7 	 	 -4.198971 	  -4.222551 	 0.000576 	  49.12
+     8 	 	 -4.200971 	  -4.222484 	 0.000538 	  49.70
+     9 	 	 -4.200626 	  -4.222503 	 0.000491 	  50.36
+# Number of outliers in post: 0 
+# Final Results:
+# h0 = 6.03133833
+# <olp> = 1.231582 +/- 0.000696
+# <e0> = -4.200626 +/- 0.000507
+# <e1> = -12.628450 +/- 0.007163
+# AFQMC/CISD_HF energy (covariance): -4.222503 +/- 0.000491
+# remove outliers in direct sampling:  0
+# AFQMC/CISD_HF energy (direct obs): -4.222508 +/- 0.000454
+# total run time: 50.36
