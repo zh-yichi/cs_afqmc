@@ -836,7 +836,6 @@ class uhf(wave_function):
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
 
-    
 @dataclass
 class cisd_ad(rhf):
 
@@ -968,6 +967,130 @@ class cisd_ad(rhf):
             self._calc_orb_energy,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
         return eorb, eorb0, eorb12, oorb12
+    
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+
+
+@dataclass
+class ccsd_pt_ad(rhf):
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    @partial(jit, static_argnums=0)
+    def _t_orb(self, walker: jax.Array, wave_data: dict) -> complex:
+        '''
+        <HF|t1+t2|walker>_i 
+        = (C_ia <HF|i+ a|walker>/<HF|walker> + C_iajb <HF|i+ j+ a b|walker>/<HF|walker>) * <HF|walker>
+        = (C_ia G_ia + C_iajb (G_ia G_jb-G_ib G_ja)) * <HF|walker>
+        prj onto orbital i
+        '''
+        m = wave_data["prjlo"]
+        nocc, t1, t2 = walker.shape[1], wave_data["t1"], wave_data["t2"]
+        gf = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
+        o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
+        o1 = oe.contract("ia,ka,ik->", t1, gf[:, nocc:],m, backend="jax")
+        o2 = 2 * oe.contract("iajb,ka,jb,ik->", t2, gf[:, nocc:], gf[:, nocc:],m, backend="jax") \
+            - oe.contract("iajb,kb,ja,ik->", t2, gf[:, nocc:], gf[:, nocc:],m, backend="jax")
+        olp = (2*o1+o2) * o0
+        return olp
+
+    @partial(jit, static_argnums=0)
+    def _t_orb_exp1(self, x: float, h1_mod: jax.Array, walker: jax.Array,
+                    wave_data: dict) -> complex:
+        '''
+        <HF|(t1+t2)_i exp(x*h1_mod)|walker>
+        '''
+        walker_1x = walker + x*h1_mod.dot(walker)
+        olp = self._t_orb(walker_1x, wave_data)
+        return olp
+
+    @partial(jit, static_argnums=0)
+    def _t_orb_exp2(self, x: float, chol_i: jax.Array, 
+                     walker: jax.Array, wave_data: dict) -> complex:
+        '''
+        <HF|(t1+t2)_i exp(x*h2_mod)|walker>
+        '''
+        walker_2x = (
+                walker
+                + x * chol_i.dot(walker)
+                + x**2 / 2.0 * chol_i.dot(chol_i.dot(walker))
+            )
+        olp = self._t_orb(walker_2x, wave_data)
+        return olp
+
+    @partial(jit, static_argnums=0)
+    def _hf_eorb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        '''hf orbital correlation energy'''
+        # <HF|H_i|walker>/<HF|walker>
+        rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
+        m = wave_data["prjlo"]
+        nocc = rot_h1.shape[0]
+        green_walker = self._calc_green(walker, wave_data)
+        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+                        green_walker.T[nocc:,:nocc], backend="jax")
+        c = vmap(jnp.trace)(f)
+        eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
+        eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
+        hf_orb_en = eneo2Jt - eneo2ext
+        return jnp.real(hf_orb_en)
+
+    @partial(jit, static_argnums=0)
+    def _d2_exp2_i(self, chol_i: jax.Array,walker: jax.Array, wave_data: dict):
+        x = 0.0
+        f = lambda a: self._t_orb_exp2(a,chol_i,walker,wave_data)
+        _, d2f = jax.jvp(lambda x: jax.jvp(f, [x], [1.0])[1], [x], [1.0])
+        return d2f
+
+    @partial(jit, static_argnums=0)
+    def _te_orb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        '''
+        <HF|(t1+t2)_i (H-E0)|walker>/<HF|walker>
+        '''
+
+        norb = self.norb
+        chol = ham_data["chol"].reshape(-1, norb, norb)
+        h1_mod = ham_data['h1_mod']
+        h0_E0 = ham_data["h0"]-ham_data["E0"]
+
+        nocc = walker.shape[1]
+        o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
+
+        x = 0.0
+        # one body
+        f1 = lambda a: self._t_orb_exp1(a,h1_mod,walker,wave_data)
+        olp_orb12, d_overlap = jvp(f1, [x], [1.0])
+
+        # two body
+        def scanned_fun(carry, c):
+            walker, wave_data = carry
+            return carry, self._d2_exp2_i(c,walker,wave_data)
+
+        _, d2_olp2_i = lax.scan(scanned_fun, (walker, wave_data), chol)
+        d_2_overlap = jnp.sum(d2_olp2_i)/2
+
+        # <hf|(t1+t2)_i (h1+h2)|walker>/<hf|walker>
+        e_orb12 = (h0_E0*olp_orb12 + d_overlap + d_2_overlap) / o0
+        t_orb12 = olp_orb12 /o0 # <(t1+t2)_i>
+
+        return jnp.real(e_orb12), jnp.real(t_orb12)
+
+    @partial(jit, static_argnums=0)
+    def _calc_orb_energy(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        
+        eorb0 = self._hf_eorb(walker, ham_data, wave_data)
+        eorb12, torb12 = self._te_orb(walker, ham_data, wave_data)
+
+        return eorb0+eorb12, eorb0, eorb12, torb12
+    
+    @partial(jit, static_argnums=(0)) 
+    def calc_orb_energy(self,walkers,ham_data,wave_data):
+        eorb, eorb0, eorb12, torb12 = vmap(
+            self._calc_orb_energy,in_axes=(0, None, None))(
+            walkers, ham_data, wave_data)
+        return eorb, eorb0, eorb12, torb12
     
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))

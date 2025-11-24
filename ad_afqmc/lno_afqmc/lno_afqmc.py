@@ -31,9 +31,10 @@ def prep_lnoafqmc(mf_cc,mo_coeff,options,norb_act,nelec_act,
         mf = mf_cc
     
     ci2 = ci2.transpose(0, 2, 1, 3)
-
-    if "ci" in options["trial"]:
+    if 'ci' in options['trial']:
         np.savez(amp_file, ci1=ci1, ci2=ci2)
+    elif 'cc' in options['trial']:
+        np.savez(amp_file, t1=ci1, t2=ci2)
 
     mol = mf.mol
 
@@ -264,8 +265,8 @@ def _prep_afqmc(option_file="options.bin",
             trial = wavefunctions.ucisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as ucisd, but amplitudes.npz not found.")
-    elif options["trial"] == "ccsd_pt":
-        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+    elif options["trial"] == "ccsd_pt_ad":
+        trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
@@ -408,9 +409,9 @@ def run_afqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     if  'pt' in options['trial']:
         if '2' in options['trial']:
-            script='run_lnoafqmc_pt2.py'
+            script='lno_afqmc_ccsd_pt2/run_lnoafqmc.py'
         else:
-            script='run_lnoafqmc_pt.py'
+            script='lno_afqmc_ccsd_pt/run_lnoafqmc.py'
     else:
         script='lno_afqmc_cisd/run_lnoafqmc.py'
 
@@ -432,7 +433,9 @@ from ad_afqmc.lno.cc import LNOCCSD
 from ad_afqmc.lno_afqmc import lno_maker, lno_afqmc
 from ad_afqmc.lno.base import lno
 
-def run_lnoafqmc(mfcc,options,frozen=None,lno_thresh=1e-5,chol_cut=1e-5,run_frg_list=None):
+def run_lnoafqmc(mfcc,options,frozen=None,
+                 lno_thresh=1e-5,chol_cut=1e-5,
+                 run_frg_list=None):
 
     if isinstance(mfcc, (CCSD, CISD)):
         mf = mfcc._scf
@@ -534,10 +537,14 @@ def run_lnoafqmc(mfcc,options,frozen=None,lno_thresh=1e-5,chol_cut=1e-5,run_frg_
         print(f'# LNO-CCSD Energy: {mcc.e_tot}')
         print(f'# LNO-CCSD Orbital Energy: {ecorr_cc}')
 
-        ci1 = np.array(mcc.t1)
-        ci2 = mcc.t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
+        if 'ci' in options['trial']:
+            ci1 = np.array(mcc.t1)
+            ci2 = mcc.t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
+        elif 'cc' in options['trial']:
+            ci1 = np.array(mcc.t1)
+            ci2 = mcc.t2
 
-        # options["seed"] = seeds[ifrag]
+        options["seed"] = seeds[ifrag]
         lno_afqmc.prep_lnoafqmc(
             mf,orbfrag,options,
             norb_act=norb_act,nelec_act=nelec_act,
@@ -551,24 +558,43 @@ def run_lnoafqmc(mfcc,options,frozen=None,lno_thresh=1e-5,chol_cut=1e-5,run_frg_
     eo0 = np.empty(len(run_frg_list),dtype='float64')
     eo12 = np.empty(len(run_frg_list),dtype='float64')
     oo12 = np.empty(len(run_frg_list),dtype='float64')
-    for i in run_frg_list:
-        with open(f"lno_afqmc.out{i+1}", "r") as rf:
-            for line in rf:
-                if "AFQMC/HF E_Orbital" in line:
-                    eo0[i] = line.split()[-3]
-                if "AFQMC/CISD E_Orbital" in line:
-                    eo[i] = line.split()[-3]
-                if "AFQMC/CISD E12_Orbital" in line:
-                    eo12[i] = line.split()[-3]
-                if "AFQMC/CISD O12_Orbital" in line:
-                    oo12[i] = line.split()[-3]
 
-    e_ccsd = sum(eorb_cc)
-    e_afqmc_hf = sum(eo0)
-    e_afqmc_cisd = sum(eo)/(1+sum(oo12))
+    if 'ci' in options['trial']:
+        for i in run_frg_list:
+            with open(f"lno_afqmc.out{i+1}", "r") as rf:
+                for line in rf:
+                    if "AFQMC/HF E_Orbital" in line:
+                        eo0[i] = line.split()[-3]
+                    if "AFQMC/CISD E_Orbital" in line:
+                        eo[i] = line.split()[-3]
+                    if "AFQMC/CISD E12_Orbital" in line:
+                        eo12[i] = line.split()[-3]
+                    if "AFQMC/CISD O12_Orbital" in line:
+                        oo12[i] = line.split()[-3]
+        e_ccsd = sum(eorb_cc)
+        e_afqmc_hf = sum(eo0)
+        e_afqmc_cisd = sum(eo)/(1+sum(oo12))
+        print(f'# LNO-CCSD Energy: {e_ccsd:.8f}')
+        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f}')
+        print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f}')
 
-    print(f'# LNO-CCSD Energy: {e_ccsd:.8f}')
-    print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f}')
-    print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f}')
+    if 'cc' in options['trial']:
+        for i in run_frg_list:
+            with open(f"lno_afqmc.out{i+1}", "r") as rf:
+                for line in rf:
+                    if "AFQMC/HF E_Orbital" in line:
+                        eo0[i] = line.split()[-3]
+                    if "AFQMC/CCSD_PT E_Orbital" in line:
+                        eo[i] = line.split()[-3]
+                    if "AFQMC/CCSD_PT E12_Orbital" in line:
+                        eo12[i] = line.split()[-3]
+                    if "AFQMC/CCSD_PT O12_Orbital" in line:
+                        oo12[i] = line.split()[-3]
+        e_ccsd = sum(eorb_cc)
+        e_afqmc_hf = sum(eo0)
+        e_afqmc_pt = sum(eo)*(1-sum(oo12))
+        print(f'# LNO-CCSD Energy: {e_ccsd:.8f}')
+        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f}')
+        print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f}')
 
     return None

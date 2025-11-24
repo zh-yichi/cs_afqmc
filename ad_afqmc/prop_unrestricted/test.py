@@ -1,8 +1,8 @@
 from pyscf import gto, scf, cc
 
-a = 1.20577 # bond length in a cluster
+a = 2 # bond length in a cluster
 d = 10 # distance between each cluster
-unit = 'A' # unit of length
+unit = 'b' # unit of length
 na = 8  # size of a cluster (monomer)
 nc = 1 # set as integer multiple of monomers
 spin = 0 # spin per monomer
@@ -43,10 +43,6 @@ options = {'n_eql': 3,
             'ad_mode':None,
             'use_gpu': False,
             }
-
-# from ad_afqmc import config
-# config.afqmc_config["use_gpu"] = True
-# config.setup_jax()
 
 from ad_afqmc.prop_unrestricted import prop_unrestricted
 prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-5)
