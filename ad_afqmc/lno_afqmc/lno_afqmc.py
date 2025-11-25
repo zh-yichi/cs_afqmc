@@ -399,6 +399,8 @@ def run_afqmc(options,nproc=None,
     use_gpu = options["use_gpu"]
     if use_gpu:
         print(f'# running AFQMC on GPU')
+        config.afqmc_config = {"use_gpu": True}
+        config.setup_jax()
         gpu_flag = "--use_gpu"
         mpi_prefix = ""
     else:
@@ -483,7 +485,7 @@ def run_lnoafqmc(mfcc,options,frozen=None,
     seeds = random.randint(random.PRNGKey(options["seed"]),
                         shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
 
-    for ifrag in run_frg_list:
+    for n,ifrag in enumerate(run_frg_list):
         print(f'\n########### running fragment {ifrag+1} ##########')
 
         fraglo = frag_lolist[ifrag]
@@ -532,10 +534,14 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         print('# running fragment CCSD')
         mcc, ecorr_cc = \
             lno_maker.lno_cc_solver(mf,orbfrag,orbfragloc,frozen=frzfrag)
-        eorb_cc[ifrag] = ecorr_cc
+        eorb_cc[n] = ecorr_cc
         ecorr_cc = f'{ecorr_cc:.8f}'
         print(f'# LNO-CCSD Energy: {mcc.e_tot}')
         print(f'# LNO-CCSD Orbital Energy: {ecorr_cc}')
+
+        from mpi4py import MPI
+        if not MPI.Is_finalized():
+            MPI.Finalize()
 
         if 'ci' in options['trial']:
             ci1 = np.array(mcc.t1)
@@ -544,7 +550,7 @@ def run_lnoafqmc(mfcc,options,frozen=None,
             ci1 = np.array(mcc.t1)
             ci2 = mcc.t2
 
-        options["seed"] = seeds[ifrag]
+        options["seed"] = seeds[n]
         lno_afqmc.prep_lnoafqmc(
             mf,orbfrag,options,
             norb_act=norb_act,nelec_act=nelec_act,
@@ -554,12 +560,16 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         lno_afqmc.run_afqmc(options)
         os.system(f'mv lno_afqmc.out lno_afqmc.out{ifrag+1}')
 
-    eo = np.empty(len(run_frg_list),dtype='float64')
-    eo0 = np.empty(len(run_frg_list),dtype='float64')
-    eo12 = np.empty(len(run_frg_list),dtype='float64')
-    oo12 = np.empty(len(run_frg_list),dtype='float64')
+    # eo = np.empty(len(run_frg_list),dtype='float64')
+    # eo0 = np.empty(len(run_frg_list),dtype='float64')
+    # eo12 = np.empty(len(run_frg_list),dtype='float64')
+    # oo12 = np.empty(len(run_frg_list),dtype='float64')
 
     if 'ci' in options['trial']:
+        eo = np.empty(len(run_frg_list),dtype='float64')
+        eo0 = np.empty(len(run_frg_list),dtype='float64')
+        eo12 = np.empty(len(run_frg_list),dtype='float64')
+        oo12 = np.empty(len(run_frg_list),dtype='float64')
         for i in run_frg_list:
             with open(f"lno_afqmc.out{i+1}", "r") as rf:
                 for line in rf:
@@ -579,22 +589,34 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f}')
 
     if 'cc' in options['trial']:
-        for i in run_frg_list:
+        eorb0 = np.empty(len(run_frg_list),dtype='float64')
+        eorb0_err = np.empty(len(run_frg_list),dtype='float64')
+        eorb = np.empty(len(run_frg_list),dtype='float64')
+        eorb_err = np.empty(len(run_frg_list),dtype='float64')
+        eo12 = np.empty(len(run_frg_list),dtype='float64')
+        oo12 = np.empty(len(run_frg_list),dtype='float64')
+        for n,i in enumerate(run_frg_list):
             with open(f"lno_afqmc.out{i+1}", "r") as rf:
                 for line in rf:
                     if "AFQMC/HF E_Orbital" in line:
-                        eo0[i] = line.split()[-3]
+                        eorb0[n] = float(line.split()[-3])
+                        eorb0_err[n] = float(line.split()[-1])
                     if "AFQMC/CCSD_PT E_Orbital" in line:
-                        eo[i] = line.split()[-3]
-                    if "AFQMC/CCSD_PT E12_Orbital" in line:
-                        eo12[i] = line.split()[-3]
-                    if "AFQMC/CCSD_PT O12_Orbital" in line:
-                        oo12[i] = line.split()[-3]
+                        eorb[n] = float(line.split()[-3])
+                        eorb_err[n] = float(line.split()[-1])
+                    # if "AFQMC/CCSD_PT E12_Orbital" in line:
+                    #     eo12[i] = line.split()[-3]
+                    # if "AFQMC/CCSD_PT O12_Orbital" in line:
+                    #     oo12[i] = line.split()[-3]
         e_ccsd = sum(eorb_cc)
-        e_afqmc_hf = sum(eo0)
-        e_afqmc_pt = sum(eo)*(1-sum(oo12))
-        print(f'# LNO-CCSD Energy: {e_ccsd:.8f}')
-        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f}')
-        print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f}')
+        e_afqmc_hf = sum(eorb0) 
+        e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
+        e_afqmc_pt = sum(eorb)
+        e_afqmc_pt_err = np.sqrt(sum(eorb_err**2))
+        with open(f'sum_thresh.out', 'a') as out_file:
+            print(f'# LNO Thresh: {thresh_pno}',file=out_file)
+            print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
+            print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
+            print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
 
     return None

@@ -1020,6 +1020,21 @@ class ccsd_pt_ad(rhf):
             )
         olp = self._t_orb(walker_2x, wave_data)
         return olp
+    
+    @partial(jit, static_argnums=0)
+    def _ehf(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        '''hf correlation energy'''
+        # <HF|H-E0|walker>/<HF|walker>
+        rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
+        nocc = rot_h1.shape[0]
+        green_walker = self._calc_green(walker, wave_data)
+        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+                        green_walker.T[nocc:,:nocc], backend="jax")
+        c = vmap(jnp.trace)(f)
+        eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
+        eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
+        e_corr = eneo2Jt - eneo2ext
+        return jnp.real(e_corr)
 
     @partial(jit, static_argnums=0)
     def _hf_eorb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
@@ -1034,8 +1049,8 @@ class ccsd_pt_ad(rhf):
         c = vmap(jnp.trace)(f)
         eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
         eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
-        hf_orb_en = eneo2Jt - eneo2ext
-        return jnp.real(hf_orb_en)
+        e_orb = eneo2Jt - eneo2ext
+        return jnp.real(e_orb)
 
     @partial(jit, static_argnums=0)
     def _d2_exp2_i(self, chol_i: jax.Array,walker: jax.Array, wave_data: dict):
@@ -1082,15 +1097,18 @@ class ccsd_pt_ad(rhf):
         
         eorb0 = self._hf_eorb(walker, ham_data, wave_data)
         eorb12, torb12 = self._te_orb(walker, ham_data, wave_data)
+        ecorr = self._ehf(walker, ham_data, wave_data)
+        
+        eorb012 = eorb0 + eorb12
 
-        return eorb0+eorb12, eorb0, eorb12, torb12
-    
+        return eorb0, eorb012, torb12, ecorr
+
     @partial(jit, static_argnums=(0)) 
     def calc_orb_energy(self,walkers,ham_data,wave_data):
-        eorb, eorb0, eorb12, torb12 = vmap(
+        eorb0, eorb012, torb12, ecorr = vmap(
             self._calc_orb_energy,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
-        return eorb, eorb0, eorb12, torb12
+        return eorb0, eorb012, torb12, ecorr
     
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))

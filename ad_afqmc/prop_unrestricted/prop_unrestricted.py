@@ -740,6 +740,8 @@ def run_afqmc(options,nproc=None,dbg=False,
 
     use_gpu = options["use_gpu"]
     if use_gpu:
+        config.afqmc_config["use_gpu"] = True
+        config.setup_jax()
         print(f'# running AFQMC on GPU')
         gpu_flag = "--use_gpu"
         mpi_prefix = ""
