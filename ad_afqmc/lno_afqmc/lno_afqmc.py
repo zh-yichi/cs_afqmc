@@ -479,11 +479,15 @@ def run_lnoafqmc(mfcc,options,frozen=None,
     if frag_nonvlist is None: frag_nonvlist = lno_cc.frag_nonvlist
     if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
 
+    nelec_list = np.empty(len(run_frg_list),dtype='float64')
+    norb_list = np.empty(len(run_frg_list),dtype='float64')
+    eorb_p2 = np.empty(len(run_frg_list),dtype='float64')
     eorb_cc = np.empty(len(run_frg_list),dtype='float64')
         
     from jax import random
     seeds = random.randint(random.PRNGKey(options["seed"]),
                         shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
+    options["max_error"] = options["max_error"]/np.sqrt(len(run_frg_list))
 
     for n,ifrag in enumerate(run_frg_list):
         print(f'\n########### running fragment {ifrag+1} ##########')
@@ -522,12 +526,16 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         print(f'# number of active orbitals: {norb_act}')
         print(f'# number of frozen orbitals: {len(frzfrag)}')
 
+        nelec_list[n] = nelec_act
+        norb_list[n] = norb_act
+
         # mp2 is not invariant to lno transformation
         # needs to be done in canoical HF orbitals
         # which the globel mp2 is calculated in
         print('# running fragment MP2')
         ecorr_p2 = \
             lno_maker.lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag)
+        eorb_p2[n] = ecorr_p2
         ecorr_p2 = f'{ecorr_p2:.8f}'
         print(f'# LNO-MP2 Orbital Energy: {ecorr_p2}')
         
@@ -608,6 +616,8 @@ def run_lnoafqmc(mfcc,options,frozen=None,
                     #     eo12[i] = line.split()[-3]
                     # if "AFQMC/CCSD_PT O12_Orbital" in line:
                     #     oo12[i] = line.split()[-3]
+        nelec = np.mean(nelec_list)
+        norb = np.mean(norb_list)
         e_ccsd = sum(eorb_cc)
         e_afqmc_hf = sum(eorb0) 
         e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
@@ -615,6 +625,7 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         e_afqmc_pt_err = np.sqrt(sum(eorb_err**2))
         with open(f'sum_thresh.out', 'a') as out_file:
             print(f'# LNO Thresh: {thresh_pno}',file=out_file)
+            print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
             print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
             print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
             print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)

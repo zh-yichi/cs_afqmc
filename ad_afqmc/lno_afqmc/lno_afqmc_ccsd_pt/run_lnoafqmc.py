@@ -214,7 +214,8 @@ for n in range(sampler.n_blocks):
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (0.9 * prop_data["e_estimate"]
                                + 0.1 * (blk_ecorr + ham_data['E0'])) 
-
+    
+    # eorb_err = np.array([max_err+1e-3])
     if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:
@@ -298,11 +299,17 @@ for n in range(sampler.n_blocks):
                   f"  {eorb:.6f}  {eorb_err:.6f}"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
+        
+        # comm.Barrier()
+        # comm.Bcast(eorb_err, root=0)
+        # print(eorb_err, max_err)
+        # if eorb_err < max_err:
+        #     break
+        # comm.Barrier()
 
 comm.Barrier()
 if rank == 0:
     assert glb_blk_wt is not None
-
     samples_clean, idx = stat_utils.reject_outliers(
         np.stack((
                 glb_blk_wt,
