@@ -541,7 +541,6 @@ def run_lnoafqmc(mfcc,options,frozen=None,
     from pyscf import mp
     mmp = mp.MP2(mf, frozen=frozen)
     e_mp2tot = mmp.kernel()[0]
-    eorb_p2cr = e_mp2tot - eorb_p2
 
     if 'ci' in options['trial']:
         eo = np.empty(len(run_frg_list),dtype='float64')
@@ -589,7 +588,6 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         nelec = np.mean(nelec_list)
         norb = np.mean(norb_list)
         e_mp2 = sum(eorb_p2)
-        e_mp2cr = sum(eorb_p2cr)
         e_ccsd = sum(eorb_cc)
         e_afqmc_hf = sum(eorb0) 
         e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
@@ -612,6 +610,6 @@ def run_lnoafqmc(mfcc,options,frozen=None,
             print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
             print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
             print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
-            print(f'# MP2 Correction: {e_mp2cr:.8f}',file=out_file)
+            print(f'# MP2 Correction: {e_mp2tot-e_mp2:.8f}',file=out_file)
             print(f"# total run time: {tot_time:.2f}",file=out_file)
     return None
