@@ -156,6 +156,7 @@ if rank == 0:
     glb_blk_torb12 = np.zeros(size * sampler.n_blocks,dtype="float64")
 comm.Barrier()
 
+eorb_err = np.array([options["max_error"] + 1e-3])
 for n in range(sampler.n_blocks):
     prop_data, (blk_wt, blk_ecorr, blk_eorb0, blk_eorb012, blk_torb12) = \
         sampler.propagate_phaseless(ham_data, prop, prop_data, trial, wave_data)
@@ -215,7 +216,6 @@ for n in range(sampler.n_blocks):
     prop_data["e_estimate"] = (0.9 * prop_data["e_estimate"]
                                + 0.1 * (blk_ecorr + ham_data['E0'])) 
     
-    # eorb_err = np.array([max_err+1e-3])
     if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:
@@ -285,7 +285,7 @@ for n in range(sampler.n_blocks):
             cov_ete = np.cov([glb_blk_eorb012[:(n+1)*size],
                               glb_blk_torb12[:(n+1)*size],
                               glb_blk_ecorr[:(n+1)*size]])
-            eorb_err = np.sqrt(dE @ cov_ete @ dE)/np.sqrt((n+1)*size)
+            eorb_err[0] = np.sqrt(dE @ cov_ete @ dE)/np.sqrt((n+1)*size)
             
             # ecorr = f"{ecorr:.6f}"
             # eorb0 = f"{eorb0:.6f}"
@@ -296,33 +296,30 @@ for n in range(sampler.n_blocks):
                   f"  {eorb0:.6f}  {eorb0_err:.6f}"
                   f"  {eorb012:.6f}  {eorb012_err:.6f}"
                   f"  {torb12:.6f}  {torb12_err:.6f}"
-                  f"  {eorb:.6f}  {eorb_err:.6f}"
+                  f"  {eorb:.6f}  {eorb_err[0]:.6f}"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
         
-        # comm.Barrier()
-        # comm.Bcast(eorb_err, root=0)
-        # print(eorb_err, max_err)
-        # if eorb_err < max_err:
-        #     break
-        # comm.Barrier()
+        comm.Bcast(eorb_err, root=0)
+        if eorb_err[0] < options["max_error"] and n > 2:
+            break
 
 comm.Barrier()
 if rank == 0:
     assert glb_blk_wt is not None
     samples_clean, idx = stat_utils.reject_outliers(
         np.stack((
-                glb_blk_wt,
-                glb_blk_ecorr,
-                glb_blk_eorb0,
-                glb_blk_eorb012,
-                glb_blk_torb12,
+                glb_blk_wt[:(n+1)*size],
+                glb_blk_ecorr[:(n+1)*size],
+                glb_blk_eorb0[:(n+1)*size],
+                glb_blk_eorb012[:(n+1)*size],
+                glb_blk_torb12[:(n+1)*size],
                 )).T,
                 1,
             )
 
     print(
-        f"# Number of outliers in post: {glb_blk_wt.size - samples_clean.shape[0]} "
+        f"# Number of outliers in post: {glb_blk_wt[:(n+1)*size].size - samples_clean.shape[0]} "
         )
     
     glb_blk_wt = samples_clean[:, 0]

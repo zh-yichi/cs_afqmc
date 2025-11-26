@@ -12,6 +12,7 @@ from ad_afqmc import hamiltonian
 from ad_afqmc.prop_unrestricted import propagation
 from ad_afqmc.lno_afqmc import wavefunctions, sampling
 from jax import numpy as jnp
+
 print = partial(print, flush=True)
 
 def prep_lnoafqmc(mf_cc,mo_coeff,options,norb_act,nelec_act,
@@ -141,7 +142,7 @@ def _prep_afqmc(option_file="options.bin",
     options["n_sr_blocks"] = options.get("n_sr_blocks", 5)
     options["n_blocks"] = options.get("n_blocks", 50)
     options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-    options["n_eql"] = options.get("n_eql", 1)
+    options["n_eql"] = options.get("n_eql", 3)
     options["ad_mode"] = options.get("ad_mode", None)
     assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
     options["orbital_rotation"] = options.get("orbital_rotation", True)
@@ -223,17 +224,6 @@ def _prep_afqmc(option_file="options.bin",
             mo_coeff[0][:, : nelec_sp[0]],
             mo_coeff[1][:, : nelec_sp[1]],
         ]
-    elif options["trial"] == "cisd":
-        try:
-            amplitudes = np.load(amp_file)
-            ci1 = jnp.array(amplitudes["ci1"])
-            ci2 = jnp.array(amplitudes["ci2"])
-            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
-                               "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
-            wave_data.update(trial_wave_data)
-            trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
-        except:
-            raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
     elif options["trial"] == "cisd_ad":
         try:
             amplitudes = np.load(amp_file)
@@ -245,26 +235,6 @@ def _prep_afqmc(option_file="options.bin",
             trial = wavefunctions.cisd_ad(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
-    elif options["trial"] == "ucisd":
-        try:
-            amplitudes = np.load(amp_file)
-            ci1a = jnp.array(amplitudes["ci1a"])
-            ci1b = jnp.array(amplitudes["ci1b"])
-            ci2aa = jnp.array(amplitudes["ci2aa"])
-            ci2ab = jnp.array(amplitudes["ci2ab"])
-            ci2bb = jnp.array(amplitudes["ci2bb"])
-            trial_wave_data = {
-                "ci1A": ci1a,
-                "ci1B": ci1b,
-                "ci2AA": ci2aa,
-                "ci2AB": ci2ab,
-                "ci2BB": ci2bb,
-                "mo_coeff": mo_coeff,
-            }
-            wave_data.update(trial_wave_data)
-            trial = wavefunctions.ucisd(norb, nelec_sp, n_batch=options["n_batch"])
-        except:
-            raise ValueError("Trial specified as ucisd, but amplitudes.npz not found.")
     elif options["trial"] == "ccsd_pt_ad":
         trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
@@ -437,7 +407,7 @@ from ad_afqmc.lno.base import lno
 
 def run_lnoafqmc(mfcc,options,frozen=None,
                  lno_thresh=1e-5,chol_cut=1e-5,
-                 run_frg_list=None):
+                 run_frg_list=None,nproc=None):
 
     if isinstance(mfcc, (CCSD, CISD)):
         mf = mfcc._scf
@@ -565,13 +535,13 @@ def run_lnoafqmc(mfcc,options,frozen=None,
             prjlo=prjlo,norb_frozen=frzfrag,
             ci1=ci1,ci2=ci2,chol_cut=chol_cut,
             )
-        lno_afqmc.run_afqmc(options)
+        lno_afqmc.run_afqmc(options,nproc)
         os.system(f'mv lno_afqmc.out lno_afqmc.out{ifrag+1}')
 
-    # eo = np.empty(len(run_frg_list),dtype='float64')
-    # eo0 = np.empty(len(run_frg_list),dtype='float64')
-    # eo12 = np.empty(len(run_frg_list),dtype='float64')
-    # oo12 = np.empty(len(run_frg_list),dtype='float64')
+    from pyscf import mp
+    mmp = mp.MP2(mf, frozen=frozen)
+    e_mp2tot = mmp.kernel()[0]
+    eorb_p2cr = e_mp2tot - eorb_p2
 
     if 'ci' in options['trial']:
         eo = np.empty(len(run_frg_list),dtype='float64')
@@ -603,6 +573,7 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         eorb_err = np.empty(len(run_frg_list),dtype='float64')
         eo12 = np.empty(len(run_frg_list),dtype='float64')
         oo12 = np.empty(len(run_frg_list),dtype='float64')
+        run_time = np.empty(len(run_frg_list),dtype='float64')
         for n,i in enumerate(run_frg_list):
             with open(f"lno_afqmc.out{i+1}", "r") as rf:
                 for line in rf:
@@ -612,22 +583,35 @@ def run_lnoafqmc(mfcc,options,frozen=None,
                     if "AFQMC/CCSD_PT E_Orbital" in line:
                         eorb[n] = float(line.split()[-3])
                         eorb_err[n] = float(line.split()[-1])
-                    # if "AFQMC/CCSD_PT E12_Orbital" in line:
-                    #     eo12[i] = line.split()[-3]
-                    # if "AFQMC/CCSD_PT O12_Orbital" in line:
-                    #     oo12[i] = line.split()[-3]
+                    if "total run time" in line:
+                        run_time[n] = float(line.split()[-1])
+
         nelec = np.mean(nelec_list)
         norb = np.mean(norb_list)
+        e_mp2 = sum(eorb_p2)
+        e_mp2cr = sum(eorb_p2cr)
         e_ccsd = sum(eorb_cc)
         e_afqmc_hf = sum(eorb0) 
         e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
         e_afqmc_pt = sum(eorb)
         e_afqmc_pt_err = np.sqrt(sum(eorb_err**2))
-        with open(f'sum_thresh.out', 'a') as out_file:
+        tot_time = sum(run_time)
+
+        with open(f'lno_result.out', 'w') as out_file:
+            print('# frag  eorb_mp2  eorb_ccsd  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
+                  file=out_file)
+            for n,i in enumerate(run_frg_list):
+                print(f'{i+1:3d}  '
+                      f'{eorb_p2[n]:.8f}  {eorb_cc[n]:.8f}  '
+                      f'{eorb0[n]:.6f} +/- {eorb0_err[n]:.6f}  '
+                      f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
+                      f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
             print(f'# LNO Thresh: {thresh_pno}',file=out_file)
             print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
+            print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
             print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
             print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
             print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
-
+            print(f'# MP2 Correction: {e_mp2cr:.8f}',file=out_file)
+            print(f"# total run time: {tot_time:.2f}",file=out_file)
     return None
