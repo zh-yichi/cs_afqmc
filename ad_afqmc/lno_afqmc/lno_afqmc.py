@@ -224,7 +224,7 @@ def _prep_afqmc(option_file="options.bin",
             mo_coeff[0][:, : nelec_sp[0]],
             mo_coeff[1][:, : nelec_sp[1]],
         ]
-    elif options["trial"] == "cisd_ad":
+    elif options["trial"] == "cisd":
         try:
             amplitudes = np.load(amp_file)
             ci1 = jnp.array(amplitudes["ci1"])
@@ -232,7 +232,7 @@ def _prep_afqmc(option_file="options.bin",
             trial_wave_data = {"ci1": ci1, "ci2": ci2, 
                                "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
             wave_data.update(trial_wave_data)
-            trial = wavefunctions.cisd_ad(norb, nelec_sp, n_batch=options["n_batch"])
+            trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
     elif options["trial"] == "ccsd_pt_ad":
@@ -543,35 +543,46 @@ def run_lnoafqmc(mfcc,options,frozen=None,
     e_mp2tot = mmp.kernel()[0]
 
     if 'ci' in options['trial']:
-        eo = np.empty(len(run_frg_list),dtype='float64')
-        eo0 = np.empty(len(run_frg_list),dtype='float64')
-        eo12 = np.empty(len(run_frg_list),dtype='float64')
-        oo12 = np.empty(len(run_frg_list),dtype='float64')
+        eorb = np.empty(len(run_frg_list),dtype='float64')
+        eorb_err = np.empty(len(run_frg_list),dtype='float64')
+        run_time = np.empty(len(run_frg_list),dtype='float64')
         for i in run_frg_list:
             with open(f"lno_afqmc.out{i+1}", "r") as rf:
                 for line in rf:
-                    if "AFQMC/HF E_Orbital" in line:
-                        eo0[i] = line.split()[-3]
                     if "AFQMC/CISD E_Orbital" in line:
-                        eo[i] = line.split()[-3]
-                    if "AFQMC/CISD E12_Orbital" in line:
-                        eo12[i] = line.split()[-3]
-                    if "AFQMC/CISD O12_Orbital" in line:
-                        oo12[i] = line.split()[-3]
+                        eorb[n] = float(line.split()[-3])
+                        eorb_err[n] = float(line.split()[-1])
+                    if "total run time" in line:
+                        run_time[n] = float(line.split()[-1])
+        nelec = np.mean(nelec_list)
+        norb = np.mean(norb_list)
+        e_mp2 = sum(eorb_p2)
         e_ccsd = sum(eorb_cc)
-        e_afqmc_hf = sum(eo0)
-        e_afqmc_cisd = sum(eo)/(1+sum(oo12))
-        print(f'# LNO-CCSD Energy: {e_ccsd:.8f}')
-        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f}')
-        print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f}')
+        e_afqmc_cisd = sum(eorb)
+        e_afqmc_cisd_err = np.sqrt(sum(eorb_err**2))
+        tot_time = sum(run_time)
+
+        with open(f'lno_result.out', 'w') as out_file:
+            print('# frag  eorb_mp2  eorb_ccsd  eorb_afqmc/cisd  nelec  norb  time',
+                  file=out_file)
+            for n,i in enumerate(run_frg_list):
+                print(f'{i+1:3d}  '
+                      f'{eorb_p2[n]:.8f}  {eorb_cc[n]:.8f}  '
+                      f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
+                      f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
+            print(f'# LNO Thresh: {thresh_pno}',file=out_file)
+            print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
+            print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
+            print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
+            print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f} +/- {e_afqmc_cisd_err:.6f}',file=out_file)
+            print(f'# MP2 Correction: {e_mp2tot-e_mp2:.8f}',file=out_file)
+            print(f"# total run time: {tot_time:.2f}",file=out_file)
 
     if 'cc' in options['trial']:
         eorb0 = np.empty(len(run_frg_list),dtype='float64')
         eorb0_err = np.empty(len(run_frg_list),dtype='float64')
         eorb = np.empty(len(run_frg_list),dtype='float64')
         eorb_err = np.empty(len(run_frg_list),dtype='float64')
-        eo12 = np.empty(len(run_frg_list),dtype='float64')
-        oo12 = np.empty(len(run_frg_list),dtype='float64')
         run_time = np.empty(len(run_frg_list),dtype='float64')
         for n,i in enumerate(run_frg_list):
             with open(f"lno_afqmc.out{i+1}", "r") as rf:

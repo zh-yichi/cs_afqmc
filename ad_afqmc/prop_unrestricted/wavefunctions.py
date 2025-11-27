@@ -2185,6 +2185,217 @@ class cisd_hf(rhf):
 
 
 @dataclass
+class cisd_pt(wave_function):
+    """A manual implementation of the CISD wave function."""
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    def _calc_rdm1(self, wave_data: dict) -> jax.Array:
+        rdm1 = jnp.array([wave_data["mo_coeff"] @ wave_data["mo_coeff"].T] * 2)
+        return rdm1
+
+    @partial(jit, static_argnums=0)
+    def _calc_overlap_restricted(self, walker: jax.Array, wave_data: dict) -> complex:
+        nocc, ci1, ci2 = walker.shape[1], wave_data["ci1"], wave_data["ci2"]
+        GF = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
+        o0 = jnp.linalg.det(walker[: walker.shape[1], :]) ** 2
+        o1 = oe.contract("ia,ia", ci1, GF[:, nocc:], backend="jax")
+        o2 = 2 * oe.contract(
+            "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax"
+        ) - oe.contract("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax")
+        return (1.0 + 2 * o1 + o2) * o0
+
+    @partial(jit, static_argnums=0)
+    def _calc_force_bias_restricted(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> jax.Array:
+        """Calculates force bias < psi_T | chol_gamma | walker > / < psi_T | walker >"""
+        ci1, ci2 = wave_data["ci1"], wave_data["ci2"]
+        nocc = self.nelec[0]
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:].copy()
+        greenp = jnp.vstack((green_occ, -jnp.eye(self.norb - nocc)))
+
+        chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
+        rot_chol = chol[:, : self.nelec[0], :]
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
+
+        # ref
+        fb_0 = 2 * lg
+
+        # single excitations
+        ci1g = oe.contract("pt,pt->", ci1, green_occ, backend="jax")
+        ci1gp = oe.contract("pt,it->pi", ci1, greenp, backend="jax")
+        gci1gp = oe.contract("pj,pi->ij", green, ci1gp, backend="jax")
+        fb_1_1 = 4 * ci1g * lg
+        fb_1_2 = -2 * oe.contract("gij,ij->g", chol, gci1gp, backend="jax")
+        fb_1 = fb_1_1 + fb_1_2
+
+        # double excitations
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
+        cisd_green_c = (greenp @ ci2g_c.T) @ green
+        cisd_green_e = (greenp @ ci2g_e.T) @ green
+        cisd_green = -4 * cisd_green_c + 2 * cisd_green_e
+        ci2g = 4 * ci2g_c - 2 * ci2g_e
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
+        fb_2_1 = lg * gci2g
+        fb_2_2 = oe.contract("gij,ij->g", chol, cisd_green, backend="jax")
+        fb_2 = fb_2_1 + fb_2_2
+
+        # overlap
+        overlap_1 = 2 * ci1g
+        overlap_2 = gci2g / 2.0
+        overlap = 1.0 + overlap_1 + overlap_2
+
+        return (fb_0 + fb_1 + fb_2) / overlap
+
+    @partial(jit, static_argnums=0)
+    def _calc_energy_restricted(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> complex:
+        ci1, ci2 = wave_data["ci1"], wave_data["ci2"]
+        nocc = self.nelec[0]
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:].copy()
+        greenp = jnp.vstack((green_occ, -jnp.eye(self.norb - nocc)))
+
+        chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
+        # rot_chol = ham_data["rot_chol"]
+        rot_chol = chol[:, : self.nelec[0], :]
+        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+        hg = oe.contract("pj,pj->", h1[:nocc, :], green, backend="jax")
+
+        # 0 body energy
+        h0 = ham_data["h0"]
+
+        # 1 body energy
+        # ref
+        e1_0 = 2 * hg
+
+        # single excitations
+        ci1g = oe.contract("pt,pt->", ci1, green_occ, backend="jax")
+        e1_1_1 = 4 * ci1g * hg
+        gpci1 = greenp @ ci1.T
+        ci1_green = gpci1 @ green
+        e1_1_2 = -2 * oe.contract("ij,ij->", h1, ci1_green, backend="jax")
+        e1_1 = e1_1_1 + e1_1_2
+
+        # double excitations
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
+        ci2_green_c = (greenp @ ci2g_c.T) @ green
+        ci2_green_e = (greenp @ ci2g_e.T) @ green
+        ci2_green = 2 * ci2_green_c - ci2_green_e
+        ci2g = 2 * ci2g_c - ci2g_e
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
+        e1_2_1 = 2 * hg * gci2g
+        e1_2_2 = -2 * oe.contract("ij,ij->", h1, ci2_green, backend="jax")
+        e1_2 = e1_2_1 + e1_2_2
+
+        # two body energy
+        # ref
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
+        # lg1 = jnp.einsum("gpj,pk->gjk", rot_chol, green, optimize="optimal")
+        lg1 = oe.contract("gpj,qj->gpq", rot_chol, green, backend="jax")
+        e2_0_1 = 2 * lg @ lg
+        e2_0_2 = -jnp.sum(vmap(lambda x: x * x.T)(lg1))
+        e2_0 = e2_0_1 + e2_0_2
+
+        # single excitations
+        e2_1_1 = 2 * e2_0 * ci1g
+        lci1g = oe.contract("gij,ij->g", chol, ci1_green, backend="jax")
+        e2_1_2 = -2 * (lci1g @ lg)
+
+        ci1g1 = ci1 @ green_occ.T
+        # e2_1_3 = jnp.einsum("gpq,gpq->", glgpci1, lg1, optimize="optimal")
+        e2_1_3_1 = oe.contract("gpq,gqr,rp->", lg1, lg1, ci1g1, backend="jax")
+        lci1g = oe.contract("gip,qi->gpq", ham_data["lci1"], green, backend="jax")
+        e2_1_3_2 = -oe.contract("gpq,gqp->", lci1g, lg1, backend="jax")
+        e2_1_3 = e2_1_3_1 + e2_1_3_2
+        e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3)
+
+        # double excitations
+        e2_2_1 = e2_0 * gci2g
+        lci2g = oe.contract("gij,ij->g", chol, ci2_green, backend="jax")
+        e2_2_2_1 = -lci2g @ lg
+
+        # lci2g1 = jnp.einsum("gij,jk->gik", chol, ci2_green, optimize="optimal")
+        # lci2_green = jnp.einsum("gpi,ji->gpj", rot_chol, ci2_green, optimize="optimal")
+        # e2_2_2_2 = 0.5 * jnp.einsum("gpi,gpi->", gl, lci2_green, optimize="optimal")
+        def scanned_fun(carry, x):
+            chol_i, rot_chol_i = x
+            gl_i = oe.contract("pj,ji->pi", green, chol_i, backend="jax")
+            lci2_green_i = oe.contract(
+                "pi,ji->pj", rot_chol_i, ci2_green, backend="jax"
+            )
+            carry[0] += 0.5 * oe.contract(
+                "pi,pi->", gl_i, lci2_green_i, backend="jax"
+            )
+            glgp_i = oe.contract("pi,it->pt", gl_i, greenp, backend="jax")
+            l2ci2_1 = oe.contract(
+                "pt,qu,ptqu->",
+                glgp_i,
+                glgp_i,
+                ci2,
+                backend="jax"
+            )
+            l2ci2_2 = oe.contract(
+                "pu,qt,ptqu->",
+                glgp_i,
+                glgp_i,
+                ci2,
+                backend="jax"
+            )
+            carry[1] += 2 * l2ci2_1 - l2ci2_2
+            return carry, 0.0
+
+        [e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0], (chol, rot_chol))
+        e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
+
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        e1 = e1_1 + e1_2
+        e2 = e2_1 + e2_2
+
+        e0 = e1_0 + e2_0
+        e12 = e1 + e2
+
+        # overlap
+        o12 = 2 * ci1g + gci2g
+
+        # E0 = h0 + e0
+        # E1 = e12 - o12*e0
+        # E2 = -o12 * (e12 - o12*e0)
+        # E3 = o12**2 * (e12 - o12*e0)
+        # E4 = -o12**3 * (e12 - o12*e0)
+        # E5 = o12**4 * (e12 - o12*e0)
+        # E6 = -o12**5 * (e12 - o12*e0)
+        # E7 = o12**6 * (e12 - o12*e0)
+        # E8 = -o12**7 * (e12 - o12*e0)
+
+        e_cisd = h0 + e0 + (e12-o12*e0)/(1+o12)
+
+        return e_cisd #E0+E1+E2+E3+E4+E5+E6+E7+E8
+
+
+    @partial(jit, static_argnums=0)
+    def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
+        ham_data["lci1"] = oe.contract(
+            "git,pt->gip",
+            ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
+            wave_data["ci1"],
+            backend="jax"
+        )
+        return ham_data
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+
+
+@dataclass
 class cisd(wave_function):
     """A manual implementation of the CISD wave function."""
 

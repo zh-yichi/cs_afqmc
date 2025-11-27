@@ -473,6 +473,17 @@ def _prep_afqmc(options=None,
             trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
+    elif options["trial"] == "cisd_pt":
+        try:
+            amplitudes = np.load(amp_file)
+            ci1 = jnp.array(amplitudes["ci1"])
+            ci2 = jnp.array(amplitudes["ci2"])
+            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
+                               "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
+            wave_data.update(trial_wave_data)
+            trial = wavefunctions.cisd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+        except:
+            raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
     elif options["trial"] == "cisd_hf":
         try:
             amplitudes = np.load(amp_file)
@@ -690,7 +701,7 @@ def _prep_afqmc(options=None,
                 options["n_walkers"],
                 n_batch=options["n_batch"],
             )
-    if  'pt' in options['trial']:
+    if  'pt' in options['trial'] and 'cc' in options['trial']:
         if '2' in options['trial']:
             sampler = sampling.sampler_pt2(
                 options["n_prop_steps"],
@@ -751,7 +762,7 @@ def run_afqmc(options,nproc=None,dbg=False,
         mpi_prefix = "mpirun "
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
-    if  'pt' in options['trial']:
+    if  'pt' in options['trial'] and 'cc' in options['trial']:
         if '2' in options['trial']:
             if dbg:
                 script='run_afqmc_ccsd_pt2_dbg.py'
