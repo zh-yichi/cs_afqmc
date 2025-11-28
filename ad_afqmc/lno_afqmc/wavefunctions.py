@@ -1030,19 +1030,25 @@ class cisd(wave_function):
         return e_cisd #E0+E1+E2+E3+E4+E5+E6+E7+E8
 
     @partial(jit, static_argnums=0)
-    def _ehf(self, walker: jax.Array, ham_data: dict, wave_data: dict):
-        '''hf correlation energy'''
+    def _ehf12(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        '''<HF|h1+h2|walker>/<HF|walker>'''
         # <HF|H-E0|walker>/<HF|walker>
         rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
-        nocc = rot_h1.shape[0]
-        green_walker = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
-        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
-                        green_walker.T[nocc:,:nocc], backend="jax")
+        # nocc = rot_h1.shape[0]
+        # green_walker = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        # f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+        #                 green_walker.T[nocc:,:nocc], backend="jax")
+        # c = vmap(jnp.trace)(f)
+        # eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
+        # eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
+        # e_corr = eneo2Jt - eneo2ext
+        green_walker = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
+        ene1 = 2.0 * jnp.sum(green_walker * rot_h1)
+        f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
         c = vmap(jnp.trace)(f)
-        eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
-        eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
-        e_corr = eneo2Jt - eneo2ext
-        return jnp.real(e_corr)
+        exc = jnp.sum(vmap(lambda x: x * x.T)(f))
+        ene2 = 2.0 * jnp.sum(c * c) - exc
+        return ene1 + ene2
     
     @partial(jit, static_argnums=0)
     def _ci_olp(self, walker: jax.Array, wave_data: dict) -> complex:
@@ -1116,7 +1122,7 @@ class cisd(wave_function):
         eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
         eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
         hf_orb_en = eneo2Jt - eneo2ext
-        return jnp.real(hf_orb_en)
+        return hf_orb_en
 
     @partial(jit, static_argnums=0)
     def _d2_olp2_i(self, chol_i: jax.Array,walker: jax.Array, wave_data: dict):
@@ -1129,6 +1135,7 @@ class cisd(wave_function):
     def _calc_orb_energy(self, walker: jax.Array, ham_data: dict, wave_data: dict):
         '''
         eorb0 = <HF|(H-E0)_i|walker>/<HF|walker>
+        ehf12 = <HF|h1+h2|walker>/<HF|walker>
         eorb12 = <HF|(c1+c2)_i H|walker>/<HF|walker>
         corb12 = <HF|(c1+c2)_i|walker>/<HF|walker>
         c12 = <HF|(c1+c2)|walker>/<HF|walker>
@@ -1137,13 +1144,13 @@ class cisd(wave_function):
         norb = self.norb
         chol = ham_data["chol"].reshape(-1, norb, norb)
         h1_mod = ham_data['h1_mod']
-        h0_E0 = ham_data["h0"]-ham_data["E0"]
+        # h0 = ham_data["h0"]
 
         nocc = walker.shape[1]
         o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
 
         eorb0 = self._hf_eorb(walker, ham_data, wave_data)
-        ecorr0 = self._ehf(walker, ham_data, wave_data)
+        ehf12 = self._ehf12(walker, ham_data, wave_data)
 
         x = 0.0
         # one body
@@ -1164,7 +1171,7 @@ class cisd(wave_function):
         c12 = self._ci_olp(walker,wave_data) / o0
 
         E0 = eorb0
-        E1 = (eorb12 - corb12*(ecorr0-h0_E0))/(1+c12)
+        E1 = (eorb12 - corb12*ehf12)/(1+c12)
 
         return jnp.real(E0+E1)
     

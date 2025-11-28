@@ -546,7 +546,7 @@ def run_lnoafqmc(mfcc,options,frozen=None,
         eorb = np.empty(len(run_frg_list),dtype='float64')
         eorb_err = np.empty(len(run_frg_list),dtype='float64')
         run_time = np.empty(len(run_frg_list),dtype='float64')
-        for i in run_frg_list:
+        for n,i in enumerate(run_frg_list):
             with open(f"lno_afqmc.out{i+1}", "r") as rf:
                 for line in rf:
                     if "AFQMC/CISD E_Orbital" in line:
