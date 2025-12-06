@@ -205,17 +205,14 @@ def prep_afqmc(
         elif 'cc' in trial.lower():
         # ccsd trial #
             if isinstance(cc, UCCSD):
-                t2aa = cc.t2[0]
-                t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
-                t2aa = t2aa.transpose(0, 2, 1, 3)
-                t2bb = cc.t2[2]
-                t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
-                t2bb = t2bb.transpose(0, 2, 1, 3)
-                t2ab = cc.t2[1]
-                t2ab = t2ab.transpose(0, 2, 1, 3)
                 t1a = np.array(cc.t1[0])
                 t1b = np.array(cc.t1[1])
-                
+                t2aa, t2ab, t2bb = cc.t2
+                t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
+                t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
+                t2aa = t2aa.transpose(0, 2, 1, 3)
+                t2bb = t2bb.transpose(0, 2, 1, 3)
+                t2ab = t2ab.transpose(0, 2, 1, 3)
                 np.savez(
                     amp_file,
                     t1a=t1a,
@@ -316,7 +313,7 @@ def prep_afqmc(
         print("# Size of the correlation space:")
         print(f"# Number of electrons: {nelec}")
         print(f"# Number of basis functions: {nbasis}")
-        print(f"# Number of Cholesky vectors: {chol_a.shape[0]}\n#")
+        print(f"# Number of Cholesky vectors: {chol.shape[-2]}\n#")
 
     
     pyscf_interface.write_dqmc(
