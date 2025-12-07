@@ -1,0 +1,59 @@
+from pyscf import gto, scf, mp, cc
+
+a = 2 # bond length in a cluster
+d = 3 # distance between each cluster
+unit = 'b' # unit of length
+na = 2  # size of a cluster (monomer)
+nc = 5 # set as integer multiple of monomers
+spin = 0 # spin per monomer
+frozen = 0 # frozen orbital per monomer
+elmt = 'H'
+basis = 'sto6g'
+atoms = ""
+for n in range(nc*na):
+    shift = ((n - n % na) // na) * (d-a)
+    atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
+
+mol = gto.M(atom=atoms, basis=basis, spin=0, unit=unit, verbose=4, max_memory=16000)
+mf = scf.UHF(mol).density_fit()
+mf.kernel()
+
+nfrozen = 0
+# mmp = mp.UMP2(mf, frozen=nfrozen)
+# mmp.kernel()
+
+mycc = cc.UCCSD(mf, frozen=nfrozen)
+eris = mycc.ao2mo()
+mycc.kernel(eris=eris)
+et = mycc.ccsd_t(eris=eris)
+
+from pyscf import lo
+import numpy as np
+orbocca = mf.mo_coeff[0][:,nfrozen:np.count_nonzero(mf.mo_occ[0])]
+orbloca = lo.PipekMezey(mol, orbocca).kernel()
+orboccb = mf.mo_coeff[1][:,nfrozen:np.count_nonzero(mf.mo_occ[1])]
+orblocb = lo.PipekMezey(mol, orboccb).kernel()
+lo_coeff = [orbloca, orblocb]
+
+oa = [[[i],[]] for i in range(orbloca.shape[1])]
+ob = [[[],[i]] for i in range(orblocb.shape[1])]
+frag_lolist = oa + ob
+
+options = {'n_eql': 5,
+        'n_prop_steps': 50,
+        'n_ene_blocks': 1,
+        'n_sr_blocks': 10,
+        'n_blocks': 10,
+        'n_walkers': 5,
+        'seed': 98,
+        'walker_type': 'uhf',
+        'trial': 'uccsd_pt_ad',
+        'dt':0.005,
+        'free_projection':False,
+        'ad_mode':None,
+        'use_gpu': False,
+        'max_error': 1e-3
+        }
+
+from ad_afqmc.lno_afqmc import ulno_afqmc
+ulno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,thresh=1e-5,run_frg_list=[0,2,8])

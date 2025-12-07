@@ -49,13 +49,12 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
         "Initial overlaps are zero. Pass walkers with non-zero overlap."
     )
 prop_data["key"] = random.PRNGKey(seed + rank)
-
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 eorb0, eorb012, torb12, ecorr \
-    = trial.calc_orb_energy(prop_data['walkers'], ham_data, wave_data)
+    = trial.calc_eorb_pt(prop_data['walkers'], ham_data, wave_data)
 eorb0 = jnp.array(jnp.sum(eorb0)/ prop.n_walkers)
 eorb012 = jnp.array(jnp.sum(eorb012)/ prop.n_walkers)
 torb12 = jnp.array(jnp.sum(torb12)/ prop.n_walkers)
@@ -68,7 +67,7 @@ if rank == 0:
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print(f"# Initial energy {e_init:.6f}")
     print("# Equilibration sweeps:")
-    print("#   Iter \t <e0> \t \t <e0>_orb \t <e012>_orb \t <t12>_orb \t time")
+    print("#   Iter \t <e0> \t \t <e0>_orb \t <e012>_orb \t <t12>_orb \t eorb \t time")
     print(f"  {0:5d} \t {ecorr:.6f} \t {eorb0:.6f} \t {eorb012:.6f} \t" 
           f"  {torb12:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
@@ -127,11 +126,13 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (0.9 * prop_data["e_estimate"] 
                                + 0.1 * (blk_ecorr + ham_data['E0']))
+    eorb = blk_eorb012 - blk_torb12 * blk_ecorr
 
     comm.Barrier()
     if rank == 0:
-        print(f"  {n:5d} \t {blk_ecorr:.6f}\t{blk_eorb0:.6f}\t"
-              f"{blk_eorb012:.6f}\t{blk_torb12:.6f} \t {time.time() - init_time:.2f} "
+        print(f"  {n:5d} \t {blk_ecorr:.6f} \t {blk_eorb0:.6f} \t"
+              f"  {blk_eorb012:.6f} \t {blk_torb12:.6f} \t {eorb:.6f} \t"
+              f"  {time.time() - init_time:.2f} "
         )
     comm.Barrier()
 

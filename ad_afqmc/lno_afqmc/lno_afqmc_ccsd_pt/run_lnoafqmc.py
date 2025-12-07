@@ -4,7 +4,7 @@ from jax import random
 import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, stat_utils
-from ad_afqmc.lno_afqmc import sampling, lno_afqmc
+from ad_afqmc.lno_afqmc import sampling, ulno_afqmc
 import time
 import argparse
 
@@ -26,8 +26,8 @@ rank = comm.Get_rank()
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, options, _ = (
-    lno_afqmc._prep_afqmc())
+ham_data, prop, trial, wave_data, sampler, options, _ = (
+    ulno_afqmc._prep_afqmc())
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
@@ -40,8 +40,8 @@ init_walkers = None
 trial_rdm1 = trial.get_rdm1(wave_data)
 if "rdm1" not in wave_data:
     wave_data["rdm1"] = trial_rdm1
-ham_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
-ham_data = ham.build_propagation_intermediates(ham_data, prop, trial, wave_data)
+ham_data = trial._build_measurement_intermediates(ham_data, wave_data)
+ham_data = prop._build_propagation_intermediates(ham_data, trial, wave_data)
 
 prop_data = prop.init_prop_data(trial, wave_data, ham_data, init_walkers)
 if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
@@ -49,17 +49,17 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
         "Initial overlaps are zero. Pass walkers with non-zero overlap."
     )
 prop_data["key"] = random.PRNGKey(seed + rank)
-
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 eorb0, eorb012, torb12, ecorr \
-    = trial.calc_orb_energy(prop_data['walkers'], ham_data, wave_data)
+    = trial.calc_eorb_pt(prop_data['walkers'], ham_data, wave_data)
 eorb0 = jnp.array(jnp.sum(eorb0)/ prop.n_walkers)
 eorb012 = jnp.array(jnp.sum(eorb012)/ prop.n_walkers)
 torb12 = jnp.array(jnp.sum(torb12)/ prop.n_walkers)
 ecorr = jnp.array(jnp.sum(ecorr)/ prop.n_walkers)
+eorb = eorb012 - torb12 * ecorr
 
 comm.Barrier()
 if rank == 0:
@@ -68,9 +68,9 @@ if rank == 0:
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print(f"# Initial energy {e_init:.6f}")
     print("# Equilibration sweeps:")
-    print("#   Iter \t <e0> \t \t <e0>_orb \t <e012>_orb \t <t12>_orb \t time")
+    print("#   Iter \t <e0> \t \t <e0>_orb \t <e012>_orb \t <t12>_orb \t eorb \t \t time")
     print(f"  {0:5d} \t {ecorr:.6f} \t {eorb0:.6f} \t {eorb012:.6f} \t" 
-          f"  {torb12:.6f} \t {time.time() - init_time:.2f}")
+          f"  {torb12:.6f} \t {eorb:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
 sampler_eq = sampling.sampler_pt(
@@ -127,11 +127,13 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (0.9 * prop_data["e_estimate"] 
                                + 0.1 * (blk_ecorr + ham_data['E0']))
+    eorb = blk_eorb012 - blk_torb12 * blk_ecorr
 
     comm.Barrier()
     if rank == 0:
-        print(f"  {n:5d} \t {blk_ecorr:.6f}\t{blk_eorb0:.6f}\t"
-              f"{blk_eorb012:.6f}\t{blk_torb12:.6f} \t {time.time() - init_time:.2f} "
+        print(f"  {n:5d} \t {blk_ecorr:.6f} \t {blk_eorb0:.6f} \t"
+              f"  {blk_eorb012:.6f} \t {blk_torb12:.6f} \t {eorb:.6f} \t"
+              f"  {time.time() - init_time:.2f} "
         )
     comm.Barrier()
 
