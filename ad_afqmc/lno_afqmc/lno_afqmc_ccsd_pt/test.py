@@ -3,7 +3,7 @@ from pyscf import gto, scf, mp, cc
 a = 2 # bond length in a cluster
 d = 3 # distance between each cluster
 unit = 'b' # unit of length
-na = 2  # size of a cluster (monomer)
+na = 3  # size of a cluster (monomer)
 nc = 5 # set as integer multiple of monomers
 spin = 0 # spin per monomer
 frozen = 0 # frozen orbital per monomer
@@ -14,9 +14,17 @@ for n in range(nc*na):
     shift = ((n - n % na) // na) * (d-a)
     atoms += f"{elmt} {n*a+shift:.5f} 0.00000 0.00000 \n"
 
-mol = gto.M(atom=atoms, basis=basis, spin=0, unit=unit, verbose=4, max_memory=16000)
+mol = gto.M(atom=atoms, basis=basis, spin=1, unit=unit, verbose=4, max_memory=16000)
 mf = scf.UHF(mol).density_fit()
 mf.kernel()
+
+mo, _ = mf.stability()
+dm = mf.make_rdm1(mo,mf.mo_occ)
+mf.kernel(dm0=dm)
+mo, _ = mf.stability()
+dm = mf.make_rdm1(mo,mf.mo_occ)
+mf.kernel(dm0=dm)
+mf.stability()
 
 nfrozen = 0
 # mmp = mp.UMP2(mf, frozen=nfrozen)
@@ -52,7 +60,7 @@ options = {'n_eql': 5,
         'free_projection':False,
         'ad_mode':None,
         'use_gpu': False,
-        'max_error': 1e-3
+        'max_error': 5e-4
         }
 
 from ad_afqmc.lno_afqmc import ulno_afqmc

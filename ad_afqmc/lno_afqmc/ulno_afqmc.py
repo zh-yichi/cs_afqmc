@@ -93,6 +93,37 @@ def h1e_uas(mf, mo_coeff, ncas, ncore):
              reduce(np.dot, (mo_cas[1].T, hcore[1]+corevhf[1], mo_cas[1])))
     return h1eff, energy_core
 
+def prjmo(prj,s1e,mo):
+    # prj and reconstruct mo
+    # e.g. |B_p> = |A_q><A_q|B_p>
+    #            = C^A_mq C^A(T)_qn|m><n|s> C^B_sp
+    mo_rec = prj @ prj.T @ s1e @ mo
+    return mo_rec
+
+def common_las(mf, lno_coeff, ncas, ncore, torr=1e-5):
+    s1e = mf.get_ovlp()
+    lno_acta = lno_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
+    lno_actb = lno_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
+    lno_actaa = lno_coeff[0].T @ s1e @ lno_acta
+    lno_actba = lno_coeff[0].T @ s1e @ lno_actb
+    m = np.hstack([lno_actaa,lno_actba])
+    u,s,v = np.linalg.svd(m)
+    for idx in range(mf.mol.nao):
+        prj = lno_coeff[0] @ u[:,:idx]
+        lno_act_reca = prjmo(prj,s1e,lno_actb)
+        lno_act_recb = prjmo(prj,s1e,lno_acta)
+        losa = abs(lno_act_reca-lno_actb).max()
+        losb = abs(lno_act_recb-lno_acta).max()
+        # print(losa, losb)
+        if losa < torr and losb < torr:
+            print(f"# Minimum number of SVD orbitals to span both Alpha and Beta active space: {idx}")
+            print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
+            break
+    clas_coeff = lno_coeff[0] @ u[:,:idx]
+    a2c = clas_coeff.T @ s1e @ lno_acta
+    b2c = clas_coeff.T @ s1e @ lno_actb
+    return clas_coeff, a2c, b2c
+
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                options,chol_cut=1e-5,
                option_file='options.bin',
@@ -172,8 +203,10 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
 
     print('# Generating Cholesky Integrals')
     nao = mf.mol.nao
-    s1e = mf.get_ovlp()
-    a2b = mo_coeff[1].T @ s1e @ mo_coeff[0]
+    # s1e = mf.get_ovlp()
+    # a2b = mo_coeff[1].T @ s1e @ mo_coeff[0]
+    clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
+    nclas = clas_coeff.shape[1]
 
     if getattr(mf, "with_df", None) is not None:
         # decompose eri in MO to achieve linear scale
@@ -181,33 +214,33 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
         chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
-        # eri_ao = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df, optimize='optimal')
-        # print("# Composing active space MO ERIs from AO ERIs")
+        eri_ao = lib.einsum('lpr,lqs->prqs', chol_df, chol_df, optimize='optimal')
+        print("# Composing active space MO ERIs from AO ERIs")
         # # FIX: find the space that just span active a and b
-        # eri_mo_a_full = ao2mo.kernel(eri_ao,mo_coeff[0],compact=False)
-        # eri_mo_a_full = eri_mo_a_full.reshape(nao**2,nao**2)
-        # print("# Decomposing MO ERIs to Cholesky vectors")
-        # print(f"# Cholesky cutoff is: {chol_cut}")
-        # chol_a = pyscf_interface.modified_cholesky(eri_mo_a_full,max_error=chol_cut)
-        # chol_a = chol_a.reshape((-1, nao, nao))
-        # # a2b = <B|A>
-        # # <B|L|B> = <B|A><A|L|A><A|B>
-        # # transform Lb from La so they have the same number of vectors
-        # chol_b = jnp.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
-        # chol_b = chol_b.reshape((-1, nao, nao))
-        # <Ap|L|Aq> = <Ap|mu><mu|L|nu><nu|Aq>
-        chol_a = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
-        chol_b = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
-        chol_a = chol_a[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
-        chol_b = chol_b[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
+        eri_clas = ao2mo.kernel(eri_ao,clas_coeff,compact=False)
+        eri_clas = eri_clas.reshape(nclas**2,nclas**2)
+        print("# Decomposing MO ERIs to Cholesky vectors")
+        print(f"# Cholesky cutoff is: {chol_cut}")
+        chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
+        chol_clas = chol_clas.reshape((-1, nclas, nclas))
+        chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
+        chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
+        # # # a2b = <B|A>
+        # # # <B|L|B> = <B|A><A|L|A><A|B>
+        # # # transform Lb from La so they have the same number of vectors
+        # # chol_b = jnp.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
+        # # chol_b = chol_b.reshape((-1, nao, nao))
+        # # <Ap|L|Aq> = <Ap|mu><mu|L|nu><nu|Aq>
+        # chol_a = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
+        # chol_b = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
+        # chol_a = chol_a[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
+        # chol_b = chol_b[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
     else:
-        eri_mo_a_full = ao2mo.kernel(mf.mol,mo_coeff[0],compact=False)
-        chol_a = pyscf_interface.modified_cholesky(eri_mo_a_full,max_error=chol_cut)
-        chol_a = chol_a.reshape((-1, nao, nao))
-        chol_b = jnp.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
-        chol_b = chol_b.reshape((-1, nao, nao))
-        chol_a = chol_a[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
-        chol_b = chol_b[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
+        eri_clas = ao2mo.kernel(mf.mol,clas_coeff,compact=False)
+        chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
+        chol_clas = chol_clas.reshape((-1, nclas, nclas))
+        chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
+        chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
     
     v0_a = 0.5 * jnp.einsum("nik,njk->ij", chol_a, chol_a, optimize="optimal")
     v0_b = 0.5 * jnp.einsum("nik,njk->ij", chol_b, chol_b, optimize="optimal")
@@ -494,8 +527,8 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     lno_thresh = [1e-5, 1e-6] if lno_thresh is None else lno_thresh
     lno_pct_occ = None
     lno_norb = None
-    lo_proj_thresh = 1e-10
-    lo_proj_thresh_active = 0.1
+    # lo_proj_thresh = 1e-10
+    # lo_proj_thresh_active = 0.1
     eris = None
 
     if run_frg_list is None:
@@ -575,7 +608,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
     # finish lno loop
-    mmp = mp.MP2(mf, frozen=frozen)
+    mmp = mp.MP2(mf, frozen=nfrozen)
     emp2_tot = mmp.kernel()[0]
 
     # if 'cc' in options['trial']:
@@ -620,7 +653,8 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
                     f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
         print(f'# LNO Thresh: {lno_thresh}',file=out_file)
-        print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
+        print(f'# LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)
+        print(f'# LNO Average Number of Basis: ({norb[0]:.1f},{norb[1]:.1f})',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
         print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
         print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
