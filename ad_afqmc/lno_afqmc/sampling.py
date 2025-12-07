@@ -185,7 +185,7 @@ class sampler_pt:
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
         eorb0, eorb012, torb12, ecorr \
-            = trial.calc_orb_energy(prop_data["walkers"], ham_data, wave_data)
+            = trial.calc_eorb_pt(prop_data["walkers"], ham_data, wave_data)
         
         ecorr = jnp.where(
             jnp.abs(ham_data['E0'] + ecorr

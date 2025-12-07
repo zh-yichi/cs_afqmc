@@ -1,19 +1,64 @@
-import pickle
+import os, h5py, pickle
 import numpy as np
-from pyscf.ci.cisd import CISD
+from jax import numpy as jnp
+from jax import random
 from pyscf.cc.ccsd import CCSD
 from pyscf.cc.uccsd import UCCSD
-from pyscf import lib, ao2mo, df
-from ad_afqmc import pyscf_interface
-import h5py
-from ad_afqmc import config
+from pyscf import lib, ao2mo, df, mp
+from pyscf.lno import ulnoccsd
+from ad_afqmc import config, pyscf_interface
 from functools import partial
 from ad_afqmc.lno_afqmc import wavefunctions, propagation, sampling
-from jax import numpy as jnp
-
+from collections.abc import Iterable
 print = partial(print, flush=True)
-
 from functools import reduce
+
+def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
+
+    occidxa = mo_occ[0]>1e-10
+    occidxb = mo_occ[1]>1e-10
+    nmo = mo_occ[0].size, mo_occ[1].size
+    moidxa, moidxb = maskact
+
+    orbfrzocca = mo_coeff[0][:, ~moidxa &  occidxa]
+    orbactocca = mo_coeff[0][:,  moidxa &  occidxa]
+    orbactvira = mo_coeff[0][:,  moidxa & ~occidxa]
+    orbfrzvira = mo_coeff[0][:, ~moidxa & ~occidxa]
+    nfrzocca, nactocca, nactvira, nfrzvira = [orb.shape[1]
+                                              for orb in [orbfrzocca,orbactocca,
+                                                          orbactvira,orbfrzvira]]
+    orbfrzoccb = mo_coeff[1][:, ~moidxb &  occidxb]
+    orbactoccb = mo_coeff[1][:,  moidxb &  occidxb]
+    orbactvirb = mo_coeff[1][:,  moidxb & ~occidxb]
+    orbfrzvirb = mo_coeff[1][:, ~moidxb & ~occidxb]
+    nfrzoccb, nactoccb, nactvirb, nfrzvirb = [orb.shape[1]
+                                              for orb in [orbfrzoccb,orbactoccb,
+                                                          orbactvirb,orbfrzvirb]]
+    nlo = [uocc_loc[0].shape[1], uocc_loc[1].shape[1]]
+    prjlo = [uocc_loc[0].T.conj(), uocc_loc[1].T.conj()]
+    if nactocca * nactvira == 0 and nactoccb * nactvirb == 0:
+        elcorr_pt2 = lib.tag_array(0., spin_comp=np.array((0., 0.)))
+        elcorr_cc = lib.tag_array(0., spin_comp=np.array((0., 0.)))
+        elcorr_cc_t = 0.
+    else:
+        # solve impurity problem
+        imp_eris = mcc.ao2mo()
+        # MP2 fragment energy
+        t1, t2 = mcc.init_amps(eris=imp_eris)[1:]
+        elcorr_pt2 = ulnoccsd.get_fragment_energy(imp_eris, t1, t2, prjlo)
+        # CCSD fragment energy
+        t1, t2 = mcc.kernel(eris=imp_eris, t1=t1, t2=t2)[1:]
+        elcorr_cc = ulnoccsd.get_fragment_energy(imp_eris, t1, t2, prjlo)
+        if ccsd_t:
+            from pyscf.lno.ulnoccsd_t_slow import kernel as UCCSD_T
+            elcorr_cc_t = UCCSD_T(mcc, imp_eris, prjlo, t1=t1, t2=t2)
+        else:
+            elcorr_cc_t = 0.
+
+    imp_eris = None
+
+    return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2, prjlo
+
 def get_veff(mf, dm):
     mol = mf.mol
     vj, vk = mf.get_jk(mol, dm, hermi=1)
@@ -175,7 +220,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     print(f'# Number of electrons: {nelec}')
     print(f'# Number of basis functions: {ncas}')
     print(f'# Alpha Basis Cholesky shape: {chol_a.shape}')
-    print(f'# Beta Basis Cholesky shape:  {chol_b.shape}')
+    print(f'#  Beta Basis Cholesky shape: {chol_b.shape}')
     
     chol_a.reshape(chol_a.shape[0], -1)
     chol_b.reshape(chol_b.shape[0], -1)
@@ -185,7 +230,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     write_dqmc(h1e,[h1mod_a,h1mod_b],[chol_a, chol_b],
                nelec,ncas,enuc,mf.e_tot,filename=chol_file)
 
-    return None
+    return nelec, ncas
 
 def write_dqmc(
     h1e,
@@ -306,8 +351,8 @@ def _prep_afqmc(option_file="options.bin",
 
     if options["trial"] == "uhf":
         trial = wavefunctions.uhf(norb, nelec, n_batch=options["n_batch"])
-    elif options["trial"] == "uccsd_pt":
-        trial = wavefunctions.uccsd_pt(norb, nelec, n_batch = options["n_batch"])
+    elif options["trial"] == "uccsd_pt_ad":
+        trial = wavefunctions.uccsd_pt_ad(norb, nelec, n_batch = options["n_batch"])
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
         t1b = jnp.array(amplitudes["t1b"])
@@ -319,21 +364,21 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t2aa"] = t2aa
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
-    elif options["trial"] == "uccsd_pt2":
-        trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
-        amplitudes = np.load(amp_file)
-        t1a = jnp.array(amplitudes["t1a"])
-        t1b = jnp.array(amplitudes["t1b"])
-        t2aa = jnp.array(amplitudes["t2aa"])
-        t2ab = jnp.array(amplitudes["t2ab"])
-        t2bb = jnp.array(amplitudes["t2bb"])
-        mo_ta = trial.thouless_trans(t1a)[:,:nelec[0]]
-        mo_tb = trial.thouless_trans(t1b)[:,:nelec[1]]
-        wave_data['mo_ta'] = mo_ta
-        wave_data['mo_tb'] = mo_tb
-        wave_data["t2aa"] = t2aa
-        wave_data["t2bb"] = t2bb
-        wave_data["t2ab"] = t2ab
+    # elif options["trial"] == "uccsd_pt2":
+    #     trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
+    #     amplitudes = np.load(amp_file)
+    #     t1a = jnp.array(amplitudes["t1a"])
+    #     t1b = jnp.array(amplitudes["t1b"])
+    #     t2aa = jnp.array(amplitudes["t2aa"])
+    #     t2ab = jnp.array(amplitudes["t2ab"])
+    #     t2bb = jnp.array(amplitudes["t2bb"])
+    #     mo_ta = trial.thouless_trans(t1a)[:,:nelec[0]]
+    #     mo_tb = trial.thouless_trans(t1b)[:,:nelec[1]]
+    #     wave_data['mo_ta'] = mo_ta
+    #     wave_data['mo_tb'] = mo_tb
+    #     wave_data["t2aa"] = t2aa
+    #     wave_data["t2bb"] = t2bb
+    #     wave_data["t2ab"] = t2ab
 
     if options["walker_type"] == "rhf":
         # if options["symmetry"]:
@@ -400,7 +445,7 @@ def _prep_afqmc(option_file="options.bin",
     return ham_data, prop, trial, wave_data, sampler, options, MPI
 
 import os
-def run_afqmc(options,nproc=None,
+def run_lnoafqmc(options,nproc=None,
               option_file='options.bin'):
 
     with open(option_file, 'wb') as f:
@@ -419,14 +464,14 @@ def run_afqmc(options,nproc=None,
         mpi_prefix = "mpirun "
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
-    if  'pt' in options['trial']:
-        if '2' in options['trial']:
-            script='lno_afqmc_ccsd_pt2/run_lnoafqmc.py'
-        else:
-            script='lno_afqmc_ccsd_pt/run_lnoafqmc.py'
+    # if  'cc' in options['trial'] and 'pt' in options['trial']:
+    if 'pt2' in options['trial']:
+        script='lno_afqmc_ccsd_pt2/run_lnoafqmc.py'
+    elif 'pt' in options['trial']:
+        script='lno_afqmc_ccsd_pt/run_lnoafqmc.py'
     else:
-        script='lno_afqmc_cisd/run_lnoafqmc.py'
-
+        raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
+    
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
     script = f"{dir_path}/{script}"
@@ -434,232 +479,154 @@ def run_afqmc(options,nproc=None,
     
     os.system(
         f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
-        f"{mpi_prefix} python {script} {gpu_flag} |tee lno_afqmc.out"
+        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc.out"
     )
 
-from pyscf.ci.cisd import CISD
-from pyscf.cc.ccsd import CCSD
-from pyscf import lib
-import jax
-from ad_afqmc.lno.cc import LNOCCSD
-from ad_afqmc.lno_afqmc import lno_maker, lno_afqmc
-from ad_afqmc.lno.base import lno
-
-def run_lnoafqmc(mfcc,options,frozen=None,
-                 lno_thresh=1e-5,chol_cut=1e-5,
-                 run_frg_list=None,nproc=None):
-
-    if isinstance(mfcc, (CCSD, CISD)):
-        mf = mfcc._scf
-    else:
-        mf = mfcc
-
-    if isinstance(lno_thresh, list):
-        thresh_occ, thresh_vir = lno_thresh
-    else:
-        thresh_occ = lno_thresh*10
-        thresh_vir = lno_thresh
-
-    lno_cc = LNOCCSD(mf, frozen=frozen)
-    lno_cc.thresh_occ = thresh_occ
-    lno_cc.thresh_vir = thresh_vir
-    lno_cc.lo_type = 'boys'
-    lno_cc.no_type = 'ie'
-    no_type = 'ie'
-    lno_cc.frag_lolist = '1o'
-    lno_cc.force_outcore_ao2mo = True
-
-    s1e = mf.get_ovlp()
-    loc_occ = lno_cc.get_lo(lo_type='boys') # localized active occ orbitals
-    # lococc,locvir = lno_maker.get_lo(lno_cc,lo_type) ### fix this for DF
-    eris = lno_cc.ao2mo()
-
-    frag_lolist = [[i] for i in range(loc_occ.shape[1])]
-    print('localized occupied orbitals', frag_lolist)
-    nfrag = len(frag_lolist)
-
-    frozen_mask = lno_cc.get_frozen_mask()
-    thresh_pno = [thresh_occ,thresh_vir]
-    print(f'lno thresh {thresh_pno}')
+def run_afqmc(mf, options, lo_coeff, frag_lolist,
+              nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
+              lno_type = ['1h']*2, run_frg_list = None, nproc = None):
+    
+    mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
+    thresh = 1e-4
+    mlno.lno_thresh = [thresh*10,thresh]
+    lno_thresh = mlno.lno_thresh
+    lno_type = ['1h','1h'] if lno_type is None else lno_type
+    lno_thresh = [1e-5, 1e-6] if lno_thresh is None else lno_thresh
+    lno_pct_occ = None
+    lno_norb = None
+    lo_proj_thresh = 1e-10
+    lo_proj_thresh_active = 0.1
+    eris = None
 
     if run_frg_list is None:
+        nfrag = len(frag_lolist)
         run_frg_list = range(nfrag)
+    
+    frag_lolist = [frag_lolist[i] for i in run_frg_list]
+    nfrag = len(frag_lolist)
+    if lno_pct_occ is None:
+        lno_pct_occ = [None, None]
+    if lno_norb is None:
+        lno_norb = [[None,None]] * nfrag
+    mf = mlno._scf
 
-    frag_nonvlist = None
-    if frag_nonvlist is None: frag_nonvlist = lno_cc.frag_nonvlist
-    if frag_nonvlist is None: frag_nonvlist = [[None,None]] * nfrag
+    if eris is None: eris = mlno.ao2mo()
 
-    nelec_list = np.empty(len(run_frg_list),dtype='float64')
-    norb_list = np.empty(len(run_frg_list),dtype='float64')
-    eorb_p2 = np.empty(len(run_frg_list),dtype='float64')
-    eorb_cc = np.empty(len(run_frg_list),dtype='float64')
-        
-    from jax import random
     seeds = random.randint(random.PRNGKey(options["seed"]),
-                        shape=(len(run_frg_list),), minval=0, maxval=100*nfrag)
-    options["max_error"] = options["max_error"]/np.sqrt(len(run_frg_list))
+                        shape=(nfrag,), minval=0, maxval=100*nfrag)
+    options["max_error"] = options["max_error"]/np.sqrt(nfrag)
 
-    for n,ifrag in enumerate(run_frg_list):
-        print(f'\n########### running fragment {ifrag+1} ##########')
+    nelec_list = [None] * nfrag
+    norb_list = [None] * nfrag
+    eorb_mp2_cc = [None] * nfrag
+    # Loop over fragment
+    for ifrag, loidx in enumerate(frag_lolist):
+        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1} ###########')
+        if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
+            orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
+            lno_param = [
+                [
+                    {
+                        'thresh': (
+                            lno_thresh[i][s] if isinstance(lno_thresh[i], Iterable)
+                            else lno_thresh[i]
+                        ),
+                        'pct_occ': (
+                            lno_pct_occ[i][s] if isinstance(lno_pct_occ[i], Iterable)
+                            else lno_pct_occ[i]
+                        ),
+                        'norb': (
+                            lno_norb[ifrag][i][s] if isinstance(lno_norb[ifrag][i], Iterable)
+                            else lno_norb[ifrag][i]
+                        ),
+                    } for i in [0, 1]
+                ] for s in range(2)
+            ]
 
-        fraglo = frag_lolist[ifrag]
-        orbfragloc = loc_occ[:,fraglo]
-        THRESH_INTERNAL = 1e-10
-        # frag_target_nocc, frag_target_nvir = frag_nonvlist[ifrag]
-        frzfrag, orbfrag, can_orbfrag \
-            = lno.make_fpno1(lno_cc, eris, orbfragloc, no_type,
-                                THRESH_INTERNAL, thresh_pno,
-                                frozen_mask=frozen_mask,
-                                frag_target_nocc=None,
-                                frag_target_nvir=None,
-                                canonicalize=True)
+        else:
+            orbloc = lo_coeff[:,loidx]
+            lno_param = [{'thresh': lno_thresh[i], 'pct_occ': lno_pct_occ[i],
+                            'norb': lno_norb[ifrag][i]} for i in [0,1]]
 
-        mol = mf.mol
-        nocc = mol.nelectron // 2 
-        nao = mol.nao
-        actfrag = np.array([i for i in range(nao) if i not in frzfrag])
-        # frzocc = np.array([i for i in range(nocc) if i in frzfrag])
-        actocc = np.array([i for i in range(nocc) if i in actfrag])
-        actvir = np.array([i for i in range(nocc,nao) if i in actfrag])
-        nactocc = len(actocc)
-        nactvir = len(actvir)
-        prjlo = orbfragloc.T @ s1e @ orbfrag[:,actocc]
-        nelec_act = nactocc*2
-        norb_act = nactocc+nactvir
+        lno_coeff, frozen, uocc_loc, _ = mlno.make_las(eris, orbloc, lno_type, lno_param)
+        mo_occ = mlno.mo_occ
+        frozen, maskact = ulnoccsd.get_maskact(frozen, [mo_occ[0].size, mo_occ[1].size])
+        mcc = ulnoccsd.UCCSD(mf, mo_coeff=lno_coeff, frozen=frozen).set(verbose=mlno.verbose_imp)
+        mcc._s1e = mlno._s1e
+        mcc._h1e = mlno._h1e
+        mcc._vhf = mlno._vhf
+        if mlno.kwargs_imp is not None:
+            mcc = mcc.set(**mlno.kwargs_imp)
+        eorb_mp2_cc[ifrag], t1, t2, prjlo =\
+            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=True)
 
-        print(f'# active orbitals: {actfrag}')
-        print(f'# active occupied orbitals: {actocc}')
-        print(f'# active virtual orbitals: {actvir}')
-        print(f'# frozen orbitals: {frzfrag}')
-        print(f'# number of active electrons: {nelec_act}')
-        print(f'# number of active orbitals: {norb_act}')
-        print(f'# number of frozen orbitals: {len(frzfrag)}')
-
-        nelec_list[n] = nelec_act
-        norb_list[n] = norb_act
-
-        # mp2 is not invariant to lno transformation
-        # needs to be done in canoical HF orbitals
-        # which the globel mp2 is calculated in
-        print('# running fragment MP2')
-        ecorr_p2 = \
-            lno_maker.lno_mp2_frg_e(mf,frzfrag,orbfragloc,can_orbfrag)
-        eorb_p2[n] = ecorr_p2
-        ecorr_p2 = f'{ecorr_p2:.8f}'
-        print(f'# LNO-MP2 Orbital Energy: {ecorr_p2}')
+        print(f'# LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
+        print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
+        print(f'# LNO-CCSD(T) Orbital Energy: {eorb_mp2_cc[ifrag][2]:.8f}')
         
-        print('# running fragment CCSD')
-        mcc, ecorr_cc = \
-            lno_maker.lno_cc_solver(mf,orbfrag,orbfragloc,frozen=frzfrag)
-        eorb_cc[n] = ecorr_cc
-        ecorr_cc = f'{ecorr_cc:.8f}'
-        print(f'# LNO-CCSD Energy: {mcc.e_tot}')
-        print(f'# LNO-CCSD Orbital Energy: {ecorr_cc}')
-
         from mpi4py import MPI
         if not MPI.Is_finalized():
             MPI.Finalize()
 
-        if 'ci' in options['trial']:
-            ci1 = np.array(mcc.t1)
-            ci2 = mcc.t2 + lib.einsum("ia,jb->ijab",ci1,ci1)
-        elif 'cc' in options['trial']:
-            ci1 = np.array(mcc.t1)
-            ci2 = mcc.t2
+        options["seed"] = seeds[ifrag]
+        nelec_list[ifrag], norb_list[ifrag] \
+            = prep_afqmc(mf,lno_coeff,t1,t2,frozen,prjlo,options,chol_cut=chol_cut)
+        run_lnoafqmc(options,nproc)
+        os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
-        options["seed"] = seeds[n]
-        prep_ulnoafqmc(
-            mf,orbfrag,options,
-            norb_act=norb_act,nelec_act=nelec_act,
-            prjlo=prjlo,norb_frozen=frzfrag,
-            ci1=ci1,ci2=ci2,chol_cut=chol_cut,
-            )
-        lno_afqmc.run_afqmc(options,nproc)
-        os.system(f'mv lno_afqmc.out lno_afqmc.out{ifrag+1}')
-
-    from pyscf import mp
+    # finish lno loop
     mmp = mp.MP2(mf, frozen=frozen)
-    e_mp2tot = mmp.kernel()[0]
+    emp2_tot = mmp.kernel()[0]
 
-    if 'ci' in options['trial']:
-        eorb = np.empty(len(run_frg_list),dtype='float64')
-        eorb_err = np.empty(len(run_frg_list),dtype='float64')
-        run_time = np.empty(len(run_frg_list),dtype='float64')
-        for n,i in enumerate(run_frg_list):
-            with open(f"lno_afqmc.out{i+1}", "r") as rf:
-                for line in rf:
-                    if "AFQMC/CISD E_Orbital" in line:
-                        eorb[n] = float(line.split()[-3])
-                        eorb_err[n] = float(line.split()[-1])
-                    if "total run time" in line:
-                        run_time[n] = float(line.split()[-1])
-        nelec = np.mean(nelec_list)
-        norb = np.mean(norb_list)
-        e_mp2 = sum(eorb_p2)
-        e_ccsd = sum(eorb_cc)
-        e_afqmc_cisd = sum(eorb)
-        e_afqmc_cisd_err = np.sqrt(sum(eorb_err**2))
-        tot_time = sum(run_time)
+    # if 'cc' in options['trial']:
+    eorb0 = np.empty(nfrag,dtype='float64')
+    eorb0_err = np.empty(nfrag,dtype='float64')
+    eorb = np.empty(nfrag,dtype='float64')
+    eorb_err = np.empty(nfrag,dtype='float64')
+    run_time = np.empty(nfrag,dtype='float64')
+    for n, i in enumerate(run_frg_list):
+        with open(f"lnoafqmc.out{i+1}", "r") as rf:
+            for line in rf:
+                if "AFQMC/HF E_Orbital" in line:
+                    eorb0[n] = float(line.split()[-3])
+                    eorb0_err[n] = float(line.split()[-1])
+                if "AFQMC/CCSD_PT E_Orbital" in line:
+                    eorb[n] = float(line.split()[-3])
+                    eorb_err[n] = float(line.split()[-1])
+                if "total run time" in line:
+                    run_time[n] = float(line.split()[-1])
 
-        with open(f'lno_result.out', 'w') as out_file:
-            print('# frag  eorb_mp2  eorb_ccsd  eorb_afqmc/cisd  nelec  norb  time',
-                  file=out_file)
-            for n,i in enumerate(run_frg_list):
-                print(f'{i+1:3d}  '
-                      f'{eorb_p2[n]:.8f}  {eorb_cc[n]:.8f}  '
-                      f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
-                      f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
-            print(f'# LNO Thresh: {thresh_pno}',file=out_file)
-            print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
-            print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
-            print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
-            print(f'# LNO-AFQMC/CISD Energy: {e_afqmc_cisd:.6f} +/- {e_afqmc_cisd_err:.6f}',file=out_file)
-            print(f'# MP2 Correction: {e_mp2tot-e_mp2:.8f}',file=out_file)
-            print(f"# total run time: {tot_time:.2f}",file=out_file)
+    nelec_list = np.array(nelec_list)
+    norb_list = np.array(norb_list)
+    eorb_mp2_cc = np.array(eorb_mp2_cc)
+    nelec = (np.mean(nelec_list[:,0]),np.mean(nelec_list[:,1]))
+    norb = (np.mean(norb_list[:,0]),np.mean(norb_list[:,1]))
+    e_mp2 = sum(eorb_mp2_cc[:,0])
+    e_ccsd = sum(eorb_mp2_cc[:,1])
+    e_ccsd_pt = sum(eorb_mp2_cc[:,2])
+    e_afqmc_hf = sum(eorb0) 
+    e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
+    e_afqmc_pt = sum(eorb)
+    e_afqmc_pt_err = np.sqrt(sum(eorb_err**2))
+    tot_time = sum(run_time)
 
-    if 'cc' in options['trial']:
-        eorb0 = np.empty(len(run_frg_list),dtype='float64')
-        eorb0_err = np.empty(len(run_frg_list),dtype='float64')
-        eorb = np.empty(len(run_frg_list),dtype='float64')
-        eorb_err = np.empty(len(run_frg_list),dtype='float64')
-        run_time = np.empty(len(run_frg_list),dtype='float64')
-        for n,i in enumerate(run_frg_list):
-            with open(f"lno_afqmc.out{i+1}", "r") as rf:
-                for line in rf:
-                    if "AFQMC/HF E_Orbital" in line:
-                        eorb0[n] = float(line.split()[-3])
-                        eorb0_err[n] = float(line.split()[-1])
-                    if "AFQMC/CCSD_PT E_Orbital" in line:
-                        eorb[n] = float(line.split()[-3])
-                        eorb_err[n] = float(line.split()[-1])
-                    if "total run time" in line:
-                        run_time[n] = float(line.split()[-1])
+    with open(f'lno_result.out', 'w') as out_file:
+        print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t)  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
+                file=out_file)
+        for n, i in enumerate(run_frg_list):
+            print(f'{i+1:3d}  '
+                    f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
+                    f'{eorb0[n]:.6f} +/- {eorb0_err[n]:.6f}  '
+                    f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
+                    f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
+        print(f'# LNO Thresh: {lno_thresh}',file=out_file)
+        print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
+        print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
+        print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
+        print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
+        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
+        print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
+        print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
+        print(f"# total run time: {tot_time:.2f}",file=out_file)
 
-        nelec = np.mean(nelec_list)
-        norb = np.mean(norb_list)
-        e_mp2 = sum(eorb_p2)
-        e_ccsd = sum(eorb_cc)
-        e_afqmc_hf = sum(eorb0) 
-        e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
-        e_afqmc_pt = sum(eorb)
-        e_afqmc_pt_err = np.sqrt(sum(eorb_err**2))
-        tot_time = sum(run_time)
-
-        with open(f'lno_result.out', 'w') as out_file:
-            print('# frag  eorb_mp2  eorb_ccsd  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
-                  file=out_file)
-            for n,i in enumerate(run_frg_list):
-                print(f'{i+1:3d}  '
-                      f'{eorb_p2[n]:.8f}  {eorb_cc[n]:.8f}  '
-                      f'{eorb0[n]:.6f} +/- {eorb0_err[n]:.6f}  '
-                      f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
-                      f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
-            print(f'# LNO Thresh: {thresh_pno}',file=out_file)
-            print(f'# LNO Average Active Space: ({nelec:.1f},{norb:.1f})',file=out_file)
-            print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
-            print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
-            print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
-            print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
-            print(f'# MP2 Correction: {e_mp2tot-e_mp2:.8f}',file=out_file)
-            print(f"# total run time: {tot_time:.2f}",file=out_file)
     return None

@@ -1,6 +1,10 @@
 # Python cache files
 __pycache__/
 *.pyc
-FCI_DUMP
+*FCIDUMP_chol*
 *.bin
 *.npz
+*.out*
+*_chol
+*.dat
+*.txt
