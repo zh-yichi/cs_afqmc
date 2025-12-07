@@ -55,7 +55,13 @@ def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
         else:
             elcorr_cc_t = 0.
 
+        t1_0 = [t1[0]*0, t1[1]*0]
+        elcorr_cc0 = ulnoccsd.get_fragment_energy(imp_eris, t1_0, t2, prjlo)
+        print('# LNO-UCCSD (T1 = 0) fragment energy:', elcorr_cc0)
+
     imp_eris = None
+    t1_0 = None
+    elcorr_cc0 = None
 
     return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2, prjlo
 
@@ -101,6 +107,7 @@ def prjmo(prj,s1e,mo):
     return mo_rec
 
 def common_las(mf, lno_coeff, ncas, ncore, torr=1e-5):
+    print("# Constracting common LAS that span both Alpha and Beta active space")
     s1e = mf.get_ovlp()
     lno_acta = lno_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
     lno_actb = lno_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
@@ -108,17 +115,17 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-5):
     lno_actba = lno_coeff[0].T @ s1e @ lno_actb
     m = np.hstack([lno_actaa,lno_actba])
     u,s,v = np.linalg.svd(m)
-    for idx in range(mf.mol.nao):
+    for idx in range(m.shape[1]):
         prj = lno_coeff[0] @ u[:,:idx]
         lno_act_reca = prjmo(prj,s1e,lno_actb)
         lno_act_recb = prjmo(prj,s1e,lno_acta)
         losa = abs(lno_act_reca-lno_actb).max()
         losb = abs(lno_act_recb-lno_acta).max()
-        # print(losa, losb)
+        print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
         if losa < torr and losb < torr:
-            print(f"# Minimum number of SVD orbitals to span both Alpha and Beta active space: {idx}")
-            print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
             break
+    print(f"# Minimum number of SVD orbitals to span both Alpha and Beta active space: {idx+1}")
+    # print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
     clas_coeff = lno_coeff[0] @ u[:,:idx]
     a2c = clas_coeff.T @ s1e @ lno_acta
     b2c = clas_coeff.T @ s1e @ lno_actb
@@ -520,7 +527,6 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
               lno_type = ['1h']*2, run_frg_list = None, nproc = None):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
-    thresh = 1e-4
     mlno.lno_thresh = [thresh*10,thresh]
     lno_thresh = mlno.lno_thresh
     lno_type = ['1h','1h'] if lno_type is None else lno_type

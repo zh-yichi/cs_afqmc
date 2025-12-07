@@ -558,45 +558,76 @@ class rhf(wave_function):
         exc = jnp.sum(vmap(lambda x: x * x.T)(f))
         ene2 = jnp.sum(c * c) - exc
         return ene2 + ene1 + ene0
+    
+    @partial(jit, static_argnums=0)
+    def _calc_ecorr(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        '''hf correlation energy'''
+        # <HF|H-E0|walker>/<HF|walker>
+        rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
+        nocc = rot_h1.shape[0]
+        green_walker = self._calc_green(walker, wave_data)
+        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+                        green_walker.T[nocc:,:nocc], backend="jax")
+        c = vmap(jnp.trace)(f)
+        eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
+        eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
+        e_corr = eneo2Jt - eneo2ext
+        return jnp.real(e_corr)
+    
+    @partial(jit, static_argnums=0)
+    def _calc_eorb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+        '''hf orbital correlation energy'''
+        # <HF|H_i|walker>/<HF|walker>
+        rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
+        m = wave_data["prjlo"]
+        nocc = rot_h1.shape[0]
+        green_walker = self._calc_green(walker, wave_data)
+        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+                        green_walker.T[nocc:,:nocc], backend="jax")
+        c = vmap(jnp.trace)(f)
+        eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
+        eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
+        e_orb = eneo2Jt - eneo2ext
+        return jnp.real(e_orb)
 
     def _calc_rdm1(self, wave_data: dict) -> jax.Array:
         rdm1 = jnp.array([wave_data["mo_coeff"] @ wave_data["mo_coeff"].T] * 2)
         return rdm1
 
-    @partial(jit, static_argnums=0)
-    def optimize(self, ham_data: dict, wave_data: dict) -> dict:
-        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        h2 = ham_data["chol"]
-        h2 = h2.reshape((h2.shape[0], h1.shape[0], h1.shape[0]))
-        nelec = self.nelec[0]
-        h1 = (h1 + h1.T) / 2.0
+    # @partial(jit, static_argnums=0)
+    # def optimize(self, ham_data: dict, wave_data: dict) -> dict:
+    #     h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+    #     h2 = ham_data["chol"]
+    #     h2 = h2.reshape((h2.shape[0], h1.shape[0], h1.shape[0]))
+    #     nelec = self.nelec[0]
+    #     h1 = (h1 + h1.T) / 2.0
 
-        def scanned_fun(carry, x):
-            dm = carry
-            f = oe.contract("gij,ik->gjk", h2, dm, backend="jax")
-            c = vmap(jnp.trace)(f)
-            vj = oe.contract("g,gij->ij", c, h2, backend="jax")
-            vk = oe.contract("glj,gjk->lk", f, h2, backend="jax")
-            vhf = vj - 0.5 * vk
-            fock = h1 + vhf
-            mo_energy, mo_coeff = linalg_utils._eigh(fock)
-            idx = jnp.argmax(abs(mo_coeff.real), axis=0)
-            mo_coeff = jnp.where(
-                mo_coeff[idx, jnp.arange(len(mo_energy))].real < 0, -mo_coeff, mo_coeff
-            )
-            e_idx = jnp.argsort(mo_energy)
-            nmo = mo_energy.size
-            mo_occ = jnp.zeros(nmo)
-            nocc = nelec
-            mo_occ = mo_occ.at[e_idx[:nocc]].set(2)
-            mocc = mo_coeff[:, jnp.nonzero(mo_occ, size=nocc)[0]]
-            dm = (mocc * mo_occ[jnp.nonzero(mo_occ, size=nocc)[0]]).dot(mocc.T)
-            return dm, mo_coeff
+    #     def scanned_fun(carry, x):
+    #         dm = carry
+    #         f = oe.contract("gij,ik->gjk", h2, dm, backend="jax")
+    #         c = vmap(jnp.trace)(f)
+    #         vj = oe.contract("g,gij->ij", c, h2, backend="jax")
+    #         vk = oe.contract("glj,gjk->lk", f, h2, backend="jax")
+    #         vhf = vj - 0.5 * vk
+    #         fock = h1 + vhf
+    #         mo_energy, mo_coeff = linalg_utils._eigh(fock)
+    #         idx = jnp.argmax(abs(mo_coeff.real), axis=0)
+    #         mo_coeff = jnp.where(
+    #             mo_coeff[idx, jnp.arange(len(mo_energy))].real < 0, -mo_coeff, mo_coeff
+    #         )
+    #         e_idx = jnp.argsort(mo_energy)
+    #         nmo = mo_energy.size
+    #         mo_occ = jnp.zeros(nmo)
+    #         nocc = nelec
+    #         mo_occ = mo_occ.at[e_idx[:nocc]].set(2)
+    #         mocc = mo_coeff[:, jnp.nonzero(mo_occ, size=nocc)[0]]
+    #         dm = (mocc * mo_occ[jnp.nonzero(mo_occ, size=nocc)[0]]).dot(mocc.T)
+    #         return dm, mo_coeff
 
-        dm0 = 2 * wave_data["mo_coeff"] @ wave_data["mo_coeff"].T.conj()
-        _, mo_coeff = lax.scan(scanned_fun, dm0, None, length=self.n_opt_iter)
-        wave_data["mo_coeff"] = mo_coeff[-1][:, :nelec]
-        return wave_data
+    #     dm0 = 2 * wave_data["mo_coeff"] @ wave_data["mo_coeff"].T.conj()
+    #     _, mo_coeff = lax.scan(scanned_fun, dm0, None, length=self.n_opt_iter)
+    #     wave_data["mo_coeff"] = mo_coeff[-1][:, :nelec]
+    #     return wave_data
 
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
@@ -617,19 +648,19 @@ class rhf(wave_function):
             backend="jax")
         return ham_data
         
-    @partial(jit, static_argnums=0)
-    def _calc_orbenergy(self, rot_h1, rot_chol, walker, wave_data=None):
-        ene0 =0
-        m = wave_data["prjlo"]
-        nocc = rot_h1.shape[0]
-        green_walker = self._calc_green(walker, wave_data) # in ao
-        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:], green_walker.T[nocc:,:nocc], 
-                        backend="jax")
-        c = vmap(jnp.trace)(f)
+    # @partial(jit, static_argnums=0)
+    # def _calc_orbenergy(self, rot_h1, rot_chol, walker, wave_data=None):
+    #     ene0 =0
+    #     m = wave_data["prjlo"]
+    #     nocc = rot_h1.shape[0]
+    #     green_walker = self._calc_green(walker, wave_data) # in ao
+    #     f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:], green_walker.T[nocc:,:nocc], 
+    #                     backend="jax")
+    #     c = vmap(jnp.trace)(f)
 
-        eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
-        eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax") 
-        return eneo2Jt - eneo2ext 
+    #     eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
+    #     eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax") 
+    #     return eneo2Jt - eneo2ext
     
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
@@ -1308,36 +1339,36 @@ class ccsd_pt_ad(rhf):
         olp = self._t_orb(walker_2x, wave_data)
         return olp
     
-    @partial(jit, static_argnums=0)
-    def _ehf(self, walker: jax.Array, ham_data: dict, wave_data: dict):
-        '''hf correlation energy'''
-        # <HF|H-E0|walker>/<HF|walker>
-        rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
-        nocc = rot_h1.shape[0]
-        green_walker = self._calc_green(walker, wave_data)
-        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
-                        green_walker.T[nocc:,:nocc], backend="jax")
-        c = vmap(jnp.trace)(f)
-        eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
-        eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
-        e_corr = eneo2Jt - eneo2ext
-        return jnp.real(e_corr)
+    # @partial(jit, static_argnums=0)
+    # def _calc_ecorr(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+    #     '''hf correlation energy'''
+    #     # <HF|H-E0|walker>/<HF|walker>
+    #     rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
+    #     nocc = rot_h1.shape[0]
+    #     green_walker = self._calc_green(walker, wave_data)
+    #     f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+    #                     green_walker.T[nocc:,:nocc], backend="jax")
+    #     c = vmap(jnp.trace)(f)
+    #     eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
+    #     eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
+    #     e_corr = eneo2Jt - eneo2ext
+    #     return jnp.real(e_corr)
 
-    @partial(jit, static_argnums=0)
-    def _hf_eorb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
-        '''hf orbital correlation energy'''
-        # <HF|H_i|walker>/<HF|walker>
-        rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
-        m = wave_data["prjlo"]
-        nocc = rot_h1.shape[0]
-        green_walker = self._calc_green(walker, wave_data)
-        f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
-                        green_walker.T[nocc:,:nocc], backend="jax")
-        c = vmap(jnp.trace)(f)
-        eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
-        eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
-        e_orb = eneo2Jt - eneo2ext
-        return jnp.real(e_orb)
+    # @partial(jit, static_argnums=0)
+    # def _hf_eorb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
+    #     '''hf orbital correlation energy'''
+    #     # <HF|H_i|walker>/<HF|walker>
+    #     rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
+    #     m = wave_data["prjlo"]
+    #     nocc = rot_h1.shape[0]
+    #     green_walker = self._calc_green(walker, wave_data)
+    #     f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
+    #                     green_walker.T[nocc:,:nocc], backend="jax")
+    #     c = vmap(jnp.trace)(f)
+    #     eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
+    #     eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
+    #     e_orb = eneo2Jt - eneo2ext
+    #     return jnp.real(e_orb)
 
     @partial(jit, static_argnums=0)
     def _d2_exp2_i(self, chol_i: jax.Array,walker: jax.Array, wave_data: dict):
@@ -1382,20 +1413,18 @@ class ccsd_pt_ad(rhf):
     @partial(jit, static_argnums=0)
     def _calc_eorb_pt(self, walker: jax.Array, ham_data: dict, wave_data: dict):
         
-        eorb0 = self._hf_eorb(walker, ham_data, wave_data)
-        eorb12, torb12 = self._te_orb(walker, ham_data, wave_data)
-        ecorr = self._ehf(walker, ham_data, wave_data)
-        
-        eorb012 = eorb0 + eorb12
+        eorb = self._calc_eorb(walker, ham_data, wave_data)
+        teorb, torb = self._te_orb(walker, ham_data, wave_data)
+        ecorr = self._calc_ecorr(walker, ham_data, wave_data)
 
-        return eorb0, eorb012, torb12, ecorr
+        return eorb, teorb, torb, ecorr
 
     @partial(jit, static_argnums=(0)) 
     def calc_eorb_pt(self,walkers,ham_data,wave_data):
-        eorb0, eorb012, torb12, ecorr = vmap(
+        eorb, teorb, torb, ecorr = vmap(
             self._calc_eorb_pt,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
-        return eorb0, eorb012, torb12, ecorr
+        return eorb, teorb, torb, ecorr
     
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
@@ -1424,7 +1453,7 @@ class uccsd_pt_ad(uhf):
         greena, greenb = greena[:nocca, nocca:], greenb[:noccb, noccb:]
         o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
         o1 = oe.contract("ia,ka,ik->", t1a, greena, pa, backend="jax") \
-              + oe.contract("ia,ka,ik->", t1b, greenb, pa, backend="jax")
+              + oe.contract("ia,ka,ik->", t1b, greenb, pb, backend="jax")
         o2 = (oe.contract("iajb,ka,jb,ik->", t2aa, greena, greena, pa, backend="jax")
               + oe.contract("iajb,ka,jb,ik->", t2bb, greenb, greenb, pb, backend="jax")
               + oe.contract("iajb,ka,jb,ik->", t2ab, greena, greenb, pa, backend="jax")
@@ -1508,22 +1537,22 @@ class uccsd_pt_ad(uhf):
                       ham_data: dict,
                       wave_data: dict):
         
-        eorb0 = self._calc_eorb(walker_up, walker_dn, ham_data, wave_data)
+        eorb = self._calc_eorb(walker_up, walker_dn, ham_data, wave_data)
         teorb, torb = self._te_orb(walker_up, walker_dn, ham_data, wave_data)
-        ecorr0 = self._calc_ecorr(walker_up, walker_dn, ham_data, wave_data)
-        eorb012 = eorb0 + teorb
+        ecorr = self._calc_ecorr(walker_up, walker_dn, ham_data, wave_data)
+        # eorb012 = eorb0 + teorb
 
-        return eorb0, eorb012, torb, ecorr0
+        return eorb, teorb, torb, ecorr
 
     @partial(jit, static_argnums=(0)) 
     def calc_eorb_pt(self,
                      walkers: list,
                      ham_data: dict, 
                      wave_data: dict) -> jax.Array:
-        eorb0, eorb012, torb, ecorr0 = vmap(
+        eorb, teorb, torb, ecorr = vmap(
             self._calc_eorb_pt,in_axes=(0, 0, None, None))(
             walkers[0], walkers[1], ham_data, wave_data)
-        return eorb0, eorb012, torb, ecorr0
-
+        return eorb, teorb, torb, ecorr
+    
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
