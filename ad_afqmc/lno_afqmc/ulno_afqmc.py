@@ -117,10 +117,10 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-5):
     u,s,v = np.linalg.svd(m)
     for idx in range(m.shape[1]):
         prj = lno_coeff[0] @ u[:,:idx]
-        lno_act_reca = prjmo(prj,s1e,lno_actb)
-        lno_act_recb = prjmo(prj,s1e,lno_acta)
-        losa = abs(lno_act_reca-lno_actb).max()
-        losb = abs(lno_act_recb-lno_acta).max()
+        prj_acta = prjmo(prj,s1e,lno_actb)
+        prj_actb = prjmo(prj,s1e,lno_acta)
+        losa = abs(prj_acta-lno_actb).max()
+        losb = abs(prj_actb-lno_acta).max()
         print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
         if losa < torr and losb < torr:
             break
@@ -506,9 +506,9 @@ def run_lnoafqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     # if  'cc' in options['trial'] and 'pt' in options['trial']:
     if 'pt2' in options['trial']:
-        script='lno_afqmc_ccsd_pt2/run_lnoafqmc.py'
+        script='ccsd_pt2/run_afqmc.py'
     elif 'pt' in options['trial']:
-        script='lno_afqmc_ccsd_pt/run_lnoafqmc.py'
+        script='ccsd_pt/run_afqmc.py'
     else:
         raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
     
@@ -618,20 +618,20 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     emp2_tot = mmp.kernel()[0]
 
     # if 'cc' in options['trial']:
-    eorb0 = np.empty(nfrag,dtype='float64')
-    eorb0_err = np.empty(nfrag,dtype='float64')
-    eorb = np.empty(nfrag,dtype='float64')
-    eorb_err = np.empty(nfrag,dtype='float64')
+    eorb_hf = np.empty(nfrag,dtype='float64')
+    eorb_hf_err = np.empty(nfrag,dtype='float64')
+    eorb_pt = np.empty(nfrag,dtype='float64')
+    eorb_pt_err = np.empty(nfrag,dtype='float64')
     run_time = np.empty(nfrag,dtype='float64')
     for n, i in enumerate(run_frg_list):
         with open(f"lnoafqmc.out{i+1}", "r") as rf:
             for line in rf:
-                if "AFQMC/HF E_Orbital" in line:
-                    eorb0[n] = float(line.split()[-3])
-                    eorb0_err[n] = float(line.split()[-1])
-                if "AFQMC/CCSD_PT E_Orbital" in line:
-                    eorb[n] = float(line.split()[-3])
-                    eorb_err[n] = float(line.split()[-1])
+                if "AFQMC/HF Orbital <H-E0>" in line:
+                    eorb_hf[n] = float(line.split()[-3])
+                    eorb_hf_err[n] = float(line.split()[-1])
+                if "AFQMC/CCSD_PT Orbital Ept" in line:
+                    eorb_pt[n] = float(line.split()[-3])
+                    eorb_pt_err[n] = float(line.split()[-1])
                 if "total run time" in line:
                     run_time[n] = float(line.split()[-1])
 
@@ -643,20 +643,21 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
     e_ccsd_pt = sum(eorb_mp2_cc[:,2])
-    e_afqmc_hf = sum(eorb0) 
-    e_afqmc_hf_err = np.sqrt(sum(eorb0_err**2))
-    e_afqmc_pt = sum(eorb)
-    e_afqmc_pt_err = np.sqrt(sum(eorb_err**2))
+    e_afqmc_hf = sum(eorb_hf)
+    e_afqmc_hf_err = np.sqrt(sum(eorb_hf_err**2))
+    e_afqmc_pt = sum(eorb_pt)
+    e_afqmc_pt_err = np.sqrt(sum(eorb_pt_err**2))
     tot_time = sum(run_time)
 
     with open(f'lno_result.out', 'w') as out_file:
-        print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t)  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
+        print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t) ' \
+              '  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
                 file=out_file)
         for n, i in enumerate(run_frg_list):
             print(f'{i+1:3d}  '
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
-                    f'{eorb0[n]:.6f} +/- {eorb0_err[n]:.6f}  '
-                    f'{eorb[n]:.6f} +/- {eorb_err[n]:.6f}  '
+                    f'{eorb_hf[n]:.6f} +/- {eorb_hf_err[n]:.6f}  '
+                    f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
         print(f'# LNO Thresh: {lno_thresh}',file=out_file)
         print(f'# LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)

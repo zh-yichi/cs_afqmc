@@ -305,7 +305,7 @@ if rank == 0:
     torb_err = np.sqrt(np.sum(glb_wt * (glb_torb - torb)**2) / wt / nsamples)
     ecorr_err = np.sqrt(np.sum(glb_wt * (glb_ecorr - ecorr)**2) / wt / nsamples)
 
-    eorb = eorb + teorb - torb * ecorr
+    eorb_pt = eorb + teorb - torb * ecorr
     dE = np.array([1,1,-ecorr,-torb])
     cov = np.cov([glb_eorb,glb_teorb,glb_torb,glb_ecorr])
     eorb_pt_err = np.sqrt(dE @ cov @ dE) / np.sqrt(nsamples)
