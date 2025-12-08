@@ -262,7 +262,7 @@ for n in range(sampler.n_blocks):
         comm.Barrier()
         
         comm.Bcast(eorb_pt_err, root=0)
-        if eorb_pt_err[0] < options["max_error"] and n > 5:
+        if eorb_pt_err[0] < options["max_error"] and n > 10:
             break
 
 comm.Barrier()
