@@ -212,8 +212,8 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     nao = mf.mol.nao
     # s1e = mf.get_ovlp()
     # a2b = mo_coeff[1].T @ s1e @ mo_coeff[0]
-    clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
-    nclas = clas_coeff.shape[1]
+    # clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
+    # nclas = clas_coeff.shape[1]
 
     if getattr(mf, "with_df", None) is not None:
         # decompose eri in MO to achieve linear scale
@@ -221,33 +221,34 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
         chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
-        eri_ao = lib.einsum('lpr,lqs->prqs', chol_df, chol_df, optimize='optimal')
+        # eri_ao = lib.einsum('lpr,lqs->prqs', chol_df, chol_df, optimize='optimal')
         print("# Composing active space MO ERIs from AO ERIs")
         # # FIX: find the space that just span active a and b
-        eri_clas = ao2mo.kernel(eri_ao,clas_coeff,compact=False)
-        eri_clas = eri_clas.reshape(nclas**2,nclas**2)
-        print("# Decomposing MO ERIs to Cholesky vectors")
-        print(f"# Cholesky cutoff is: {chol_cut}")
-        chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-        chol_clas = chol_clas.reshape((-1, nclas, nclas))
-        chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
-        chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
+        # eri_clas = ao2mo.kernel(eri_ao,clas_coeff,compact=False)
+        # eri_clas = eri_clas.reshape(nclas**2,nclas**2)
+        # print("# Decomposing MO ERIs to Cholesky vectors")
+        # print(f"# Cholesky cutoff is: {chol_cut}")
+        # chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
+        # chol_clas = chol_clas.reshape((-1, nclas, nclas))
+        # chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
+        # chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
         # # # a2b = <B|A>
         # # # <B|L|B> = <B|A><A|L|A><A|B>
         # # # transform Lb from La so they have the same number of vectors
         # # chol_b = jnp.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
         # # chol_b = chol_b.reshape((-1, nao, nao))
         # # <Ap|L|Aq> = <Ap|mu><mu|L|nu><nu|Aq>
-        # chol_a = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
-        # chol_b = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
-        # chol_a = chol_a[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
-        # chol_b = chol_b[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
+        chol_a = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
+        chol_b = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
+        chol_a = chol_a[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
+        chol_b = chol_b[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
     else:
-        eri_clas = ao2mo.kernel(mf.mol,clas_coeff,compact=False)
-        chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-        chol_clas = chol_clas.reshape((-1, nclas, nclas))
-        chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
-        chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
+        raise  NotImplementedError('Use DF Only!')
+        # eri_clas = ao2mo.kernel(mf.mol,clas_coeff,compact=False)
+        # chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
+        # chol_clas = chol_clas.reshape((-1, nclas, nclas))
+        # chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
+        # chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
     
     v0_a = 0.5 * jnp.einsum("nik,njk->ij", chol_a, chol_a, optimize="optimal")
     v0_b = 0.5 * jnp.einsum("nik,njk->ij", chol_b, chol_b, optimize="optimal")
@@ -404,6 +405,16 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t2aa"] = t2aa
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
+        prja, prjb = wave_data['prjlo']
+        t1a_prj = jnp.einsum('ia,ik->ka',t1a,prja)
+        t1b_prj = jnp.einsum('ia,ik->ka',t1b,prjb)
+        t2aa_prj = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+        t2ab_prj = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+        t2ba_prj = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+        t2bb_prj = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        wave_data["t1a_prj"], wave_data["t1b_prj"] = t1a_prj, t1b_prj
+        wave_data["t2aa_prj"], wave_data["t2ab_prj"] = t2aa_prj, t2ab_prj
+        wave_data["t2ba_prj"], wave_data["t2bb_prj"] = t2ba_prj, t2bb_prj
     # elif options["trial"] == "uccsd_pt2":
     #     trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
     #     amplitudes = np.load(amp_file)

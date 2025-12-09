@@ -1305,13 +1305,13 @@ class ccsd_pt_ad(rhf):
         = (C_ia G_ia + C_iajb (G_ia G_jb-G_ib G_ja)) * <HF|walker>
         prj onto orbital i
         '''
-        m = wave_data["prjlo"]
-        nocc, t1, t2 = walker.shape[1], wave_data["t1"], wave_data["t2"]
+        nocc = walker.shape[1]
+        t1, t2 = wave_data["t1_prj"], wave_data["t2_prj"]
         gf = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
         o0 = jnp.linalg.det(walker[: nocc, :]) ** 2
-        o1 = oe.contract("ia,ka,ik->", t1, gf[:, nocc:],m, backend="jax")
-        o2 = 2 * oe.contract("iajb,ka,jb,ik->", t2, gf[:, nocc:], gf[:, nocc:],m, backend="jax") \
-            - oe.contract("iajb,kb,ja,ik->", t2, gf[:, nocc:], gf[:, nocc:],m, backend="jax")
+        o1 = oe.contract("ia,ia->", t1, gf[:, nocc:], backend="jax")
+        o2 = 2 * oe.contract("iajb,ia,jb->", t2, gf[:, nocc:], gf[:, nocc:], backend="jax") \
+            - oe.contract("iajb,ib,ja->", t2, gf[:, nocc:], gf[:, nocc:], backend="jax")
         olp = (2*o1+o2) * o0
         return olp
 
@@ -1339,36 +1339,6 @@ class ccsd_pt_ad(rhf):
         olp = self._t_orb(walker_2x, wave_data)
         return olp
     
-    # @partial(jit, static_argnums=0)
-    # def _calc_ecorr(self, walker: jax.Array, ham_data: dict, wave_data: dict):
-    #     '''hf correlation energy'''
-    #     # <HF|H-E0|walker>/<HF|walker>
-    #     rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
-    #     nocc = rot_h1.shape[0]
-    #     green_walker = self._calc_green(walker, wave_data)
-    #     f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
-    #                     green_walker.T[nocc:,:nocc], backend="jax")
-    #     c = vmap(jnp.trace)(f)
-    #     eneo2Jt = oe.contract('g,g->',c,c, backend="jax")*2 
-    #     eneo2ext = oe.contract('gij,gji->',f,f, backend="jax")
-    #     e_corr = eneo2Jt - eneo2ext
-    #     return jnp.real(e_corr)
-
-    # @partial(jit, static_argnums=0)
-    # def _hf_eorb(self, walker: jax.Array, ham_data: dict, wave_data: dict):
-    #     '''hf orbital correlation energy'''
-    #     # <HF|H_i|walker>/<HF|walker>
-    #     rot_h1, rot_chol = ham_data['rot_h1'], ham_data['rot_chol']
-    #     m = wave_data["prjlo"]
-    #     nocc = rot_h1.shape[0]
-    #     green_walker = self._calc_green(walker, wave_data)
-    #     f = oe.contract('gij,jk->gik', rot_chol[:,:nocc,nocc:],
-    #                     green_walker.T[nocc:,:nocc], backend="jax")
-    #     c = vmap(jnp.trace)(f)
-    #     eneo2Jt = oe.contract('Gxk,xk,G->',f,m,c, backend="jax")*2 
-    #     eneo2ext = oe.contract('Gxy,Gyk,xk->',f,f,m, backend="jax")
-    #     e_orb = eneo2Jt - eneo2ext
-    #     return jnp.real(e_orb)
 
     @partial(jit, static_argnums=0)
     def _d2_exp2_i(self, chol_i: jax.Array,walker: jax.Array, wave_data: dict):
@@ -1445,19 +1415,20 @@ class uccsd_pt_ad(uhf):
         = (C_ia G_ia + C_iajb (G_ia G_jb-G_ib G_ja)) * <HF|walker>
         prj onto spin-orbit i
         '''
-        pa, pb = wave_data["prjlo"]
+        # pa, pb = wave_data["prjlo"]
         nocca, noccb = self.nelec
-        t1a, t1b = wave_data["t1a"], wave_data["t1b"]
-        t2aa, t2ab, t2bb = wave_data["t2aa"], wave_data["t2ab"], wave_data["t2bb"]
+        t1a, t1b = wave_data["t1a_prj"], wave_data["t1b_prj"]
+        t2aa, t2ab = wave_data["t2aa_prj"], wave_data["t2ab_prj"]
+        t2ba, t2bb = wave_data["t2ba_prj"], wave_data["t2bb_prj"]
         greena, greenb = self._calc_green(walker_up, walker_dn, wave_data)
         greena, greenb = greena[:nocca, nocca:], greenb[:noccb, noccb:]
         o0 = self._calc_overlap(walker_up,walker_dn,wave_data)
-        o1 = oe.contract("ia,ka,ik->", t1a, greena, pa, backend="jax") \
-              + oe.contract("ia,ka,ik->", t1b, greenb, pb, backend="jax")
-        o2 = (oe.contract("iajb,ka,jb,ik->", t2aa, greena, greena, pa, backend="jax")
-              + oe.contract("iajb,ka,jb,ik->", t2bb, greenb, greenb, pb, backend="jax")
-              + oe.contract("iajb,ka,jb,ik->", t2ab, greena, greenb, pa, backend="jax")
-              + oe.contract("jbia,jb,ka,ik->", t2ab, greena, greenb, pb, backend="jax")) * 0.5
+        o1 = oe.contract("ia,ia->", t1a, greena, backend="jax") \
+              + oe.contract("ia,ia->", t1b, greenb, backend="jax")
+        o2 = (oe.contract("iajb,ia,jb->", t2aa, greena, greena, backend="jax")
+              + oe.contract("iajb,ia,jb->", t2ab, greena, greenb, backend="jax")
+              + oe.contract("iajb,ia,jb->", t2ba, greenb, greena, backend="jax")
+              + oe.contract("iajb,ia,jb->", t2bb, greenb, greenb, backend="jax")) * 0.5
         return (o1 + o2) * o0
 
     @partial(jit, static_argnums=0)
