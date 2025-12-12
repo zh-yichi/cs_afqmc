@@ -184,24 +184,23 @@ class sampler_pt:
         prop_data = prop.orthonormalize_walkers(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-        eorb, teorb, torb, ecorr \
+        eorb, teorb, torb, e0 \
             = trial.calc_eorb_pt(prop_data["walkers"], ham_data, wave_data)
         
-        ecorr = jnp.where(
-            jnp.abs(ham_data['E0'] + ecorr
-                    - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-                      prop_data["e_estimate"] - ham_data['E0'], ecorr)
+        e0 = jnp.where(
+            jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt), 
+            prop_data["e_estimate"], e0)
 
         blk_wt = jnp.sum(prop_data["weights"])
         blk_eorb = jnp.sum(eorb * prop_data["weights"]) / blk_wt
         blk_teorb = jnp.sum(teorb * prop_data["weights"]) / blk_wt
         blk_torb = jnp.sum(torb * prop_data["weights"]) / blk_wt
-        blk_ecorr = jnp.sum(ecorr * prop_data["weights"]) / blk_wt
+        blk_e0 = jnp.sum(e0 * prop_data["weights"]) / blk_wt
 
-        prop_data["pop_control_ene_shift"] \
-            = 0.9 * prop_data["pop_control_ene_shift"] + 0.1 * (blk_ecorr + ham_data['E0'])
+        prop_data["pop_control_ene_shift"] = \
+            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_e0
         
-        return prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_ecorr)
+        return prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_e0)
     
 
     @partial(jit, static_argnums=(0, 3, 4))
@@ -217,12 +216,12 @@ class sampler_pt:
         def _block_scan_wrapper(x,_):
             return self._block_scan(x,ham_data,prop,trial,wave_data)
 
-        prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_ecorr) = \
+        prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_e0) = \
             lax.scan(_block_scan_wrapper, prop_data, None, length=self.n_ene_blocks)
 
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        return prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_ecorr)
+        return prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_e0)
     
     @partial(jit, static_argnums=(0, 2, 4))
     def propagate_phaseless(
@@ -240,7 +239,7 @@ class sampler_pt:
         prop_data["n_killed_walkers"] = 0
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
-        prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_ecorr) = \
+        prop_data, (blk_wt, blk_eorb, blk_teorb, blk_torb, blk_e0) = \
             lax.scan(_sr_block_scan_wrapper, prop_data, None, length=self.n_sr_blocks)
         prop_data["n_killed_walkers"] /= (
             self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
@@ -250,9 +249,9 @@ class sampler_pt:
         eorb = jnp.sum(blk_eorb * blk_wt) / wt
         teorb = jnp.sum(blk_teorb * blk_wt) / wt
         torb = jnp.sum(blk_torb * blk_wt) / wt
-        ecorr = jnp.sum(blk_ecorr * blk_wt) / wt
+        e0 = jnp.sum(blk_e0 * blk_wt) / wt
 
-        return prop_data, (wt, eorb, teorb, torb, ecorr)
+        return prop_data, (wt, eorb, teorb, torb, e0)
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

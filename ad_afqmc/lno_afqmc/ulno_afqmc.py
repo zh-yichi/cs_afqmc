@@ -400,21 +400,28 @@ def _prep_afqmc(option_file="options.bin",
         t2aa = jnp.array(amplitudes["t2aa"])
         t2ab = jnp.array(amplitudes["t2ab"])
         t2bb = jnp.array(amplitudes["t2bb"])
-        wave_data['t1a'] = t1a
-        wave_data['t1b'] = t1b
-        wave_data["t2aa"] = t2aa
-        wave_data["t2bb"] = t2bb
-        wave_data["t2ab"] = t2ab
         prja, prjb = wave_data['prjlo']
-        t1a_prj = jnp.einsum('ia,ik->ka',t1a,prja)
-        t1b_prj = jnp.einsum('ia,ik->ka',t1b,prjb)
-        t2aa_prj = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-        t2ab_prj = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-        t2ba_prj = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-        t2bb_prj = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
-        wave_data["t1a_prj"], wave_data["t1b_prj"] = t1a_prj, t1b_prj
-        wave_data["t2aa_prj"], wave_data["t2ab_prj"] = t2aa_prj, t2ab_prj
-        wave_data["t2ba_prj"], wave_data["t2bb_prj"] = t2ba_prj, t2bb_prj
+        wave_data["t1a"] = jnp.einsum('ia,ik->ka',t1a,prja)
+        wave_data["t1b"] = jnp.einsum('ia,ik->ka',t1b,prjb)
+        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+    elif options["trial"] == "uccsd_pt":
+        trial = wavefunctions.uccsd_pt(norb, nelec, n_batch = options["n_batch"])
+        amplitudes = np.load(amp_file)
+        t1a = jnp.array(amplitudes["t1a"])
+        t1b = jnp.array(amplitudes["t1b"])
+        t2aa = jnp.array(amplitudes["t2aa"])
+        t2ab = jnp.array(amplitudes["t2ab"])
+        t2bb = jnp.array(amplitudes["t2bb"])
+        prja, prjb = wave_data['prjlo']
+        wave_data["t1a"] = jnp.einsum('ia,ik->ka',t1a,prja)
+        wave_data["t1b"] = jnp.einsum('ia,ik->ka',t1b,prjb)
+        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
     # elif options["trial"] == "uccsd_pt2":
     #     trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
     #     amplitudes = np.load(amp_file)

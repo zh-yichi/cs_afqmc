@@ -3780,13 +3780,13 @@ class uccsd_pt(uhf):
             ),
         ]
         ham_data["lt1_a"] = oe.contract(
-            "git,pt->gip",
+            "gpa,ia->gpi",
             ham_data["chol"][0].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
             wave_data["t1a"],
             backend="jax"
         )
         ham_data["lt1_b"] = oe.contract(
-            "git,pt->gip",
+            "gpa,ia->gpi",
             ham_data["chol"][1].reshape(-1, self.norb, self.norb)[:, :, self.nelec[1] :],
             wave_data["t1b"],
             backend="jax"

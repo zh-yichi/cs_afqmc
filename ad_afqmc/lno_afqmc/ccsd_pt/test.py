@@ -4,7 +4,7 @@ a = 2 # bond length in a cluster
 d = 2 # distance between each cluster
 unit = 'b' # unit of length
 na = 3  # size of a cluster (monomer)
-nc = 5 # set as integer multiple of monomers
+nc = 7 # set as integer multiple of monomers
 spin = 0 # spin per monomer
 frozen = 0 # frozen orbital per monomer
 elmt = 'H'
@@ -53,14 +53,14 @@ options = {'n_eql': 2,
         'n_ene_blocks': 1,
         'n_sr_blocks': 5,
         'n_blocks': 10,
-        'n_walkers': 2,
+        'n_walkers': 50,
         'seed': 98,
         'walker_type': 'uhf',
-        'trial': 'uccsd_pt_ad',
+        'trial': 'uccsd_pt',
         'dt':0.005,
         'free_projection':False,
         'ad_mode':None,
-        'use_gpu': False,
+        'use_gpu': True,
         'max_error': 5e-4
         }
 
