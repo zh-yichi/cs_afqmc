@@ -273,27 +273,27 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t2aa"] = t2aa
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
-    elif options["trial"] == "uccsd_pt2":
-        trial = wavefunctions.uccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
-        noccA, noccB = trial.nelec[0], trial.nelec[1]
-        wave_data["mo_coeff"] = [
-            mo_coeff[0][:, : noccA],
-            mo_coeff[1][:, : noccB],
-        ]
-        ham_data['h1_mod'] = h1_mod
-        amplitudes = np.load(amp_file)
-        t1a = jnp.array(amplitudes["t1a"])
-        t1b = jnp.array(amplitudes["t1b"])
-        t2aa = jnp.array(amplitudes["t2aa"])
-        t2ab = jnp.array(amplitudes["t2ab"])
-        t2bb = jnp.array(amplitudes["t2bb"])
-        mo_ta = trial.thouless_trans(t1a)[:,:noccA]
-        mo_tb = trial.thouless_trans(t1b)[:,:noccB]
-        wave_data['mo_ta'] = mo_ta
-        wave_data['mo_tb'] = mo_tb
-        wave_data["t2aa"] = t2aa
-        wave_data["t2bb"] = t2bb
-        wave_data["t2ab"] = t2ab
+    # elif options["trial"] == "uccsd_pt2":
+    #     trial = wavefunctions.uccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
+    #     noccA, noccB = trial.nelec[0], trial.nelec[1]
+    #     wave_data["mo_coeff"] = [
+    #         mo_coeff[0][:, : noccA],
+    #         mo_coeff[1][:, : noccB],
+    #     ]
+    #     ham_data['h1_mod'] = h1_mod
+    #     amplitudes = np.load(amp_file)
+    #     t1a = jnp.array(amplitudes["t1a"])
+    #     t1b = jnp.array(amplitudes["t1b"])
+    #     t2aa = jnp.array(amplitudes["t2aa"])
+    #     t2ab = jnp.array(amplitudes["t2ab"])
+    #     t2bb = jnp.array(amplitudes["t2bb"])
+    #     mo_ta = trial.thouless_trans(t1a)[:,:noccA]
+    #     mo_tb = trial.thouless_trans(t1b)[:,:noccB]
+    #     wave_data['mo_ta'] = mo_ta
+    #     wave_data['mo_tb'] = mo_tb
+    #     wave_data["t2aa"] = t2aa
+    #     wave_data["t2bb"] = t2bb
+    #     wave_data["t2ab"] = t2ab
 
     if options["walker_type"] == "rhf":
         if options["symmetry"]:
