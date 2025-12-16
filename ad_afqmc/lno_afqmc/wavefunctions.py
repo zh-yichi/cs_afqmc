@@ -1330,7 +1330,7 @@ class ccsd_pt2_ad(rhf):
         '''
         nocc = trial.nelec[0]
         prjlo = wave_data['prjlo']
-        e0 = ham_data['e0_bar'] # <psi_0|H_bar|psi_0>
+        e0 = ham_data['e0t1orb'] # <psi_0|H_bar|psi_0>
         rot_fock = ham_data['rot_fock_bar']
         rot_chol = ham_data['rot_chol_bar']
 

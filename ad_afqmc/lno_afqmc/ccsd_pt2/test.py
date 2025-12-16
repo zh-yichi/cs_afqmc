@@ -1,13 +1,13 @@
 from pyscf import gto, scf, cc
 
 a = 2 # bond length in a cluster
-d = 10 # distance between each cluster
+d = 2 # distance between each cluster
 unit = 'b' # unit of length
-na = 2  # size of a cluster (monomer)
-nc = 2 # set as integer multiple of monomers
+na = 6  # size of a cluster (monomer)
+nc = 1 # set as integer multiple of monomers
 spin = 0 # spin per monomer
-frozen = 0 # frozen orbital per monomer
-elmt = 'H'
+frozen = 6 # frozen orbital per monomer
+elmt = 'C'
 basis = 'sto6g'
 atoms = ""
 for n in range(nc*na):
@@ -29,34 +29,43 @@ from pyscf import lo
 import numpy as np
 lo_method = lo.PM
 nocc = np.count_nonzero(mf.mo_occ)
-orbocc = mf.mo_coeff[:, nfrozen:nocc]
-lo_coeff = lo_method(mol, orbocc).kernel()
+orbocc = mf.mo_coeff[:, nfrozen: nocc]
+mlo = lo_method(mol, orbocc)
+lo_coeff = mlo.kernel()
+
+# always performing jacobi sweep to avoid trapping in local minimum/saddle point
+lo_coeff1 = mlo.stability_jacobi()[1]
+# if lo_coeff1 is lo_coeff: break
+mlo = lo_method(mf.mol, lo_coeff1).set(verbose=4)
+mlo.init_guess = None
+lo_coeff = mlo.kernel()
 
 frag_lolist = [[i] for i in range(lo_coeff.shape[1])]
+frag_lolist = [[1]]
+# from pyscf.lno import lnoccsd
+# mcc = lnoccsd.LNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=frozen).set(verbose=5)
+# mcc.lno_thresh = [1e-4,1e-5]
+# mcc.kernel()
 
-from pyscf.lno import lnoccsd
-mcc = lnoccsd.LNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=frozen).set(verbose=5)
-mcc.lno_thresh = [1e-4,1e-5]
-mcc.kernel()
-# options = {'n_eql': 3,
-#            'n_prop_steps': 50,
-#             'n_ene_blocks': 1,
-#             'n_sr_blocks': 1,
-#             'n_blocks': 10,
-#             'n_walkers': 3,
-#             'seed': 2,
-#             'walker_type': 'rhf',
-#             'trial': 'ccsd_pt2_ad',
-#             'dt':0.005,
-#             'free_projection':False,
-#             'ad_mode':None,
-#             'use_gpu': False,
-#             "max_error":1e-4
-#             }
+options = {'n_eql': 3,
+           'n_prop_steps': 50,
+            'n_ene_blocks': 1,
+            'n_sr_blocks': 5,
+            'n_blocks': 10,
+            'n_walkers': 100,
+            'seed': 2,
+            'walker_type': 'rhf',
+            'trial': 'ccsd_pt2_ad',
+            'dt':0.005,
+            'free_projection':False,
+            'ad_mode':None,
+            'use_gpu': True,
+            "max_error":1e-4
+            }
 
-# from ad_afqmc.lno_afqmc.ccsd_pt2 import lno_afqmc
-# # lno_afqmc.prep_afqmc(mf,mf.mo_coeff,mycc.t1,mycc.t2,[],prjlo,options,chol_cut=1e-5)
-# lno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,nproc=1)
+from ad_afqmc.lno_afqmc.ccsd_pt2 import lno_afqmc
+# lno_afqmc.prep_afqmc(mf,mf.mo_coeff,mycc.t1,mycc.t2,[],prjlo,options,chol_cut=1e-5)
+lno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,nfrozen=nfrozen,nproc=1,thresh=1e-4)
 
 # import numpy as np
 # nocc = mol.nelectron // 2

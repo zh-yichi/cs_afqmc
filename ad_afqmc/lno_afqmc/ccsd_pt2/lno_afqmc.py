@@ -53,7 +53,6 @@ def solve_lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
         elcorr_cc = lnoccsd.get_fragment_energy(oovv, t2, uocc_loc)
         t1t1 = lib.einsum('ia,jb->ijab',t1,t1)
         elcorr_t1 = lnoccsd.get_fragment_energy(oovv, t1t1, uocc_loc)
-        
         # CCSD(T) fragment energy
         if ccsd_t:
             from pyscf.lno.lnoccsd_t import kernel as CCSD_T
@@ -61,8 +60,8 @@ def solve_lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
             elcorr_cc_t = CCSD_T(mcc, imp_eris, uocc_loc, t1=t1, t2=t2)
         else:
             elcorr_cc_t = 0.
+            t2 -= lib.einsum('ia,jb->ijab',t1,t1)
 
-    t2 -= lib.einsum('ia,jb->ijab',t1,t1)
     oovv = imp_eris = mcc = None
 
     return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2, elcorr_t1
@@ -347,7 +346,11 @@ def _prep_afqmc(option_file="options.bin",
         wave_data['exp_mt1'] = jsp.linalg.expm(-t1_full)
         wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
         wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
-        wave_data["mo_coeff"] = mo_coeff[:, : nelec_sp[0]]
+        wave_data["mo_coeff"] = mo_coeff[:, :nocc]
+        lt1 = jnp.einsum('ia,gja->gij', t1, chol[:, :nocc, nocc:])
+        e0t1orb = 2 * jnp.einsum('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1) \
+                    - jnp.einsum('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'])
+        ham_data['e0t1orb'] = e0t1orb
         
     if options["walker_type"] == "rhf":
         prop = propagation.propagator_restricted(
@@ -480,7 +483,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     norb_list = [None] * nfrag
     eorb_mp2_cc = [None] * nfrag
     # Loop over fragment
-    for ifrag, loidx in enumerate(frag_lolist):
+    for ifrag,loidx in enumerate(frag_lolist):
         print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1} ###########')
         if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
             orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
@@ -502,27 +505,27 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
                     } for i in [0, 1]
                 ] for s in range(2)
             ]
-
         else:
             orbloc = lo_coeff[:,loidx]
             lno_param = [{'thresh': lno_thresh[i], 'pct_occ': lno_pct_occ[i],
                             'norb': lno_norb[ifrag][i]} for i in [0,1]]
 
-        lno_coeff, frozen, uocc_loc, _ = mlno.make_las(eris, orbloc, lno_type, lno_param)
-        print(frozen)
+        lno_coeff, lno_frozen, uocc_loc, _ = mlno.make_las(eris, orbloc, lno_type, lno_param)
+        print(f'# frozen LNO orbitals {lno_frozen}, nfrozen = {len(lno_frozen)}')
         mo_occ = mlno.mo_occ
-        frozen, maskact = lnoccsd.get_maskact(frozen, mo_occ.size)
-        print(frozen)
-        mcc = lnoccsd.CCSD(mf, mo_coeff=lno_coeff, frozen=frozen).set(verbose=4)
+        lno_frozen, maskact = lnoccsd.get_maskact(lno_frozen, mo_occ.size)
+        # print(lno_frozen)
+        mcc = lnoccsd.CCSD(mf, mo_coeff=lno_coeff, frozen=lno_frozen).set(verbose=4)
         mcc._s1e = mlno._s1e
         mcc._h1e = mlno._h1e
         mcc._vhf = mlno._vhf
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
         eorb_mp2_cc[ifrag], t1, t2, elcorr_t1 =\
-            solve_lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False)
+            solve_lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=True)
         
         prjlo = uocc_loc @ uocc_loc.T.conj()
+        # print(prjlo)
 
         print(f'# LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
         print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
@@ -535,7 +538,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
-            = prep_afqmc(mf,lno_coeff,t1,t2,frozen,prjlo,
+            = prep_afqmc(mf,lno_coeff,t1,t2,lno_frozen,prjlo,
                          options,chol_cut=chol_cut)
         run_lnoafqmc(options,nproc)
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
@@ -545,18 +548,18 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     emp2_tot = mmp.kernel()[0]
 
     # if 'cc' in options['trial']:
-    eorb_hf = np.empty(nfrag,dtype='float64')
-    eorb_hf_err = np.empty(nfrag,dtype='float64')
+    # eorb_hf = np.empty(nfrag,dtype='float64')
+    # eorb_hf_err = np.empty(nfrag,dtype='float64')
     eorb_pt = np.empty(nfrag,dtype='float64')
     eorb_pt_err = np.empty(nfrag,dtype='float64')
     run_time = np.empty(nfrag,dtype='float64')
     for n, i in enumerate(run_frg_list):
-        with open(f"lnoafqmc.out{i+1}", "r") as rf:
-            for line in rf:
-                if "AFQMC/HF Orbital <H-E0>" in line:
-                    eorb_hf[n] = float(line.split()[-3])
-                    eorb_hf_err[n] = float(line.split()[-1])
-                if "AFQMC/CCSD_PT Orbital Ept" in line:
+        with open(f"lnoafqmc.out{i+1}", "r") as readfile:
+            for line in readfile:
+                # if "AFQMC/HF Orbital <H-E0>" in line:
+                #     eorb_hf[n] = float(line.split()[-3])
+                #     eorb_hf_err[n] = float(line.split()[-1])
+                if "AFQMC/CCSD_PT2 Orbital Ept (direct observation):" in line:
                     eorb_pt[n] = float(line.split()[-3])
                     eorb_pt_err[n] = float(line.split()[-1])
                 if "total run time" in line:
@@ -566,33 +569,33 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     norb_list = np.array(norb_list)
     eorb_mp2_cc = np.array(eorb_mp2_cc)
     nelec = (np.mean(nelec_list[:,0]),np.mean(nelec_list[:,1]))
-    norb = (np.mean(norb_list[:,0]),np.mean(norb_list[:,1]))
+    norb = np.mean(norb_list)
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
     e_ccsd_pt = sum(eorb_mp2_cc[:,2])
-    e_afqmc_hf = sum(eorb_hf)
-    e_afqmc_hf_err = np.sqrt(sum(eorb_hf_err**2))
+    # e_afqmc_hf = sum(eorb_hf)
+    # e_afqmc_hf_err = np.sqrt(sum(eorb_hf_err**2))
     e_afqmc_pt = sum(eorb_pt)
     e_afqmc_pt_err = np.sqrt(sum(eorb_pt_err**2))
     tot_time = sum(run_time)
 
     with open(f'lno_result.out', 'w') as out_file:
         print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t) ' \
-              '  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
+              '  eorb_afqmc/ccsd_pt  nelec  norb  time',
                 file=out_file)
         for n, i in enumerate(run_frg_list):
             print(f'{i+1:3d}  '
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
-                    f'{eorb_hf[n]:.6f} +/- {eorb_hf_err[n]:.6f}  '
+                    # f'{eorb_hf[n]:.6f} +/- {eorb_hf_err[n]:.6f}  '
                     f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
         print(f'# LNO Thresh: {lno_thresh}',file=out_file)
         print(f'# LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)
-        print(f'# LNO Average Number of Basis: ({norb[0]:.1f},{norb[1]:.1f})',file=out_file)
+        print(f'# LNO Average Number of Basis: {norb:.1f}',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
         print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
         print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
-        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
+        # print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
         print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
         print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
         print(f"# total run time: {tot_time:.2f}",file=out_file)

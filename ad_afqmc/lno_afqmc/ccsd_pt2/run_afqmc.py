@@ -55,9 +55,9 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 e_init = prop_data["e_estimate"]
 h0 = ham_data['h0']
 e0_bar = trial._calc_energy_bar(prop_data['walkers'][0], ham_data, wave_data)
-ham_data['e0_bar'] = jnp.real(h0 + e0_bar)
-if rank == 0:
-    print(f"# <Hbar> = {ham_data['e0_bar']:.6f}, <H> = {e_init:.6f}")
+# ham_data['e0_bar'] = jnp.real(h0 + e0_bar)
+# if rank == 0:
+#     print(f"# <Hbar> = {ham_data['e0_bar']:.6f}, <H> = {e_init:.6f}")
 e0, t1olp, eorb, t2eorb, t2orb, e0bar \
     = trial._calc_eorb_pt2(prop_data['walkers'][0], ham_data, wave_data)
 e0 = jnp.real(e0)
@@ -74,8 +74,8 @@ if rank == 0:
     print(f"# Initial energy {e_init:.6f}")
     print("# All brakets are measured with HF Trial")
     print("# Equilibration sweeps:")
-    print("#   Iter \t Energy_hf \t <exp(T1)H>_orb \t "
-          "   <T2H>_orb \t <T2>_orb \t <H_bar> Ept_orb \t time")
+    print("#   Iter \t Energy_hf \t <Hbar>_orb \t "
+          "   <T2Hbar>_orb \t <T2>_orb \t <Hbar> \t Ept_orb \t time")
     print(f"  {0:5d} \t {e0:.6f} \t {eorb:.6f} \t {t2eorb:.6f} \t" 
           f"  {t2orb:.6f} \t {h0+e0bar:.6f} \t {eorb_pt:.6f} \t "
           f"  {time.time() - init_time:.2f}")
@@ -147,12 +147,13 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = \
           0.9 * prop_data["e_estimate"] + 0.1 * e0
-    eorb_pt = eorb + t2eorb - t2orb*e0bar
+    # eorb_pt = eorb + t2eorb - t2orb*e0bar
+    eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
 
     comm.Barrier()
     if rank == 0:
         print(f"  {n:5d} \t {e0:.6f} \t {eorb:.6f} \t"
-              f"  {t2eorb:.6f} \t {t2orb:.6f} \t {e0bar:.6f} \t {eorb_pt:.6f} \t"
+              f"  {t2eorb:.6f} \t {t2orb:.6f} \t {h0+e0bar:.6f} \t {eorb_pt:.6f} \t"
               f"  {time.time() - init_time:.2f} ")
     comm.Barrier()
 
@@ -181,6 +182,7 @@ if rank == 0:
     glb_t2orb = np.zeros(size * sampler.n_blocks,dtype="float64")
     glb_e0bar = np.zeros(size * sampler.n_blocks,dtype="float64")
     glb_t1olp = np.zeros(size * sampler.n_blocks,dtype="float64")
+    ept_samples = np.zeros(sampler.n_blocks,dtype="float64")
 comm.Barrier()
 
 eorb_pt_err = np.array([options["max_error"] + 1e-3])
@@ -257,6 +259,12 @@ for n in range(sampler.n_blocks):
     prop_data["e_estimate"] = \
         0.9 * prop_data["e_estimate"] + 0.1 * e0
     
+    comm.Barrier()
+    if rank == 0:
+        eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
+        ept_samples[n] = eorb_pt
+    comm.Barrier()
+    
     if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:                        
@@ -283,11 +291,12 @@ for n in range(sampler.n_blocks):
             
             eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
             # (p_eorb,p_t2eorb,p_t2orb,p_t2orb,p_t1olp)
-            dE = np.array([1/t1olp,1/t1olp,-e0bar/t1olp**2,-t2orb/t1olp**2,2*t2orb*e0bar/t1olp])
+            dE = np.array([1/t1olp,1/t1olp,-e0bar/t1olp**2,-t2orb/t1olp**2,
+                           -eorb/t1olp**2-t2eorb/t1olp**2+t2orb*e0bar/t1olp**3])
             cov = np.cov([glb_eorb[:(n+1)*size],
                           glb_t2eorb[:(n+1)*size],
                           glb_t2orb[:(n+1)*size],
-                          glb_e0bar[:(n+1)*size],
+                          glb_e0bar[:(n+1)*size], 
                           glb_t1olp[:(n+1)*size]])
             eorb_pt_err[0] = np.sqrt(dE @ cov @ dE)/np.sqrt((n+1)*size)
             
@@ -295,7 +304,7 @@ for n in range(sampler.n_blocks):
                   f"  {eorb:.6f}  {eorb_err:.6f}"
                   f"  {t2eorb:.6f}  {t2eorb_err:.6f}"
                   f"  {t2orb:.6f}  {t2orb_err:.6f}"
-                  f"  {e0bar:.6f}  {e0bar_err:.6f}"
+                  f"  {h0+e0bar:.6f}  {e0bar_err:.6f}"
                   f"  {t1olp:.6f}  {t1olp_err:.6f}"
                   f"  {eorb_pt:.6f}  {eorb_pt_err[0]:.6f}"
                   f"  {time.time() - init_time:.2f}")
@@ -350,10 +359,21 @@ if rank == 0:
 
     eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
     # (p_eorb,p_t2eorb,p_t2orb,p_t2orb,p_t1olp)
-    dE = np.array([1/t1olp,1/t1olp,-e0bar/t1olp**2,-t2orb/t1olp**2,2*t2orb*e0bar/t1olp])
+    dE = np.array([1/t1olp,1/t1olp,-e0bar/t1olp**2,-t2orb/t1olp**2,
+                   -eorb/t1olp**2-t2eorb/t1olp**2+t2orb*e0bar/t1olp**3])
     cov = np.cov([glb_eorb,glb_t2eorb,glb_t2orb,glb_e0bar,glb_t1olp])
     eorb_pt_err = np.sqrt(dE @ cov @ dE)/np.sqrt(nsamples)
-    
+
+    ept_samples = ept_samples[:n+1]
+    d = np.abs(ept_samples-np.median(ept_samples))
+    d_med = np.median(d) + 1e-7
+    mask = d/d_med < 10
+    ept_clean = ept_samples[mask]
+    print('# remove outliers in direct sampling: ', len(ept_samples)-len(ept_clean))
+
+    eorb_pt_do = np.mean(ept_clean)
+    eorb_pt_do_err = np.std(ept_clean)/np.sqrt(n)
+
     print(f"# Final Results")
     print(f"# AFQMC/HF Energy: {e0:.6f} +/- {e0_err:.6f}")
     print(f"# AFQMC/CCSD_PT2 Orbital <Hbar>: {eorb:.6f} +/- {eorb_err:.6f}")
@@ -361,6 +381,7 @@ if rank == 0:
     print(f"# AFQMC/CCSD_PT2 Orbital <T2>: {t2orb:.6f} +/- {t2orb_err:.6f}")
     print(f"# AFQMC/CCSD_PT2 Orbital <Hbar>: {h0+e0bar:.6f} +/- {e0bar_err:.6f}")
     print(f"# AFQMC/CCSD_PT2 Orbital Ept: {eorb_pt:.6f} +/- {eorb_pt_err:.6f}")
+    print(f"# AFQMC/CCSD_PT2 Orbital Ept (direct observation): {eorb_pt_do:.6f} +/- {eorb_pt_do_err:.6f}")
     print(f"# total run time: {time.time() - init_time:.2f}")
 
 comm.Barrier()
