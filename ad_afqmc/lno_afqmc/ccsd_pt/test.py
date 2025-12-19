@@ -1,10 +1,10 @@
 from pyscf import gto, scf, mp, cc
 
 a = 2 # bond length in a cluster
-d = 3 # distance between each cluster
+d = 2.5 # distance between each cluster
 unit = 'b' # unit of length
-na = 3  # size of a cluster (monomer)
-nc = 4 # set as integer multiple of monomers
+na = 2  # size of a cluster (monomer)
+nc = 10  # set as integer multiple of monomers
 spin = 0 # spin per monomer
 frozen = 0 # frozen orbital per monomer
 elmt = 'H'
