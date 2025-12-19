@@ -1,13 +1,13 @@
 from pyscf import gto, scf, cc
 
-a = 2 # bond length in a cluster
-d = 2 # distance between each cluster
+a = 2.5 # bond length in a cluster
+d = 100 # distance between each cluster
 unit = 'b' # unit of length
-na = 6  # size of a cluster (monomer)
-nc = 1 # set as integer multiple of monomers
+na = 2  # size of a cluster (monomer)
+nc = 2 # set as integer multiple of monomers
 spin = 0 # spin per monomer
-frozen = 6 # frozen orbital per monomer
-elmt = 'C'
+frozen = 2 # frozen orbital per monomer
+elmt = 'O'
 basis = 'sto6g'
 atoms = ""
 for n in range(nc*na):
@@ -19,6 +19,17 @@ mol.build()
 
 mf = scf.RHF(mol).density_fit()
 mf.kernel()
+
+mo, _ = mf.stability()
+dm = mf.make_rdm1(mo,mf.mo_occ)
+mf.kernel(dm0=dm)
+mo, _ = mf.stability()
+dm = mf.make_rdm1(mo,mf.mo_occ)
+mf.kernel(dm0=dm)
+mo, _ = mf.stability()
+dm = mf.make_rdm1(mo,mf.mo_occ)
+mf.kernel(dm0=dm)
+mf.stability()
 
 nfrozen = nc*frozen
 
@@ -41,7 +52,7 @@ mlo.init_guess = None
 lo_coeff = mlo.kernel()
 
 frag_lolist = [[i] for i in range(lo_coeff.shape[1])]
-frag_lolist = [[1]]
+frag_lolist = [[5]]
 # from pyscf.lno import lnoccsd
 # mcc = lnoccsd.LNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=frozen).set(verbose=5)
 # mcc.lno_thresh = [1e-4,1e-5]
@@ -52,10 +63,10 @@ options = {'n_eql': 3,
             'n_ene_blocks': 1,
             'n_sr_blocks': 5,
             'n_blocks': 10,
-            'n_walkers': 100,
+            'n_walkers': 5,
             'seed': 2,
             'walker_type': 'rhf',
-            'trial': 'ccsd_pt2_ad',
+            'trial': 'ccsd_pt2',
             'dt':0.005,
             'free_projection':False,
             'ad_mode':None,
@@ -65,7 +76,7 @@ options = {'n_eql': 3,
 
 from ad_afqmc.lno_afqmc.ccsd_pt2 import lno_afqmc
 # lno_afqmc.prep_afqmc(mf,mf.mo_coeff,mycc.t1,mycc.t2,[],prjlo,options,chol_cut=1e-5)
-lno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,nfrozen=nfrozen,nproc=1,thresh=1e-4)
+lno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,nfrozen=nfrozen,nproc=1,thresh=1e-5)
 
 # import numpy as np
 # nocc = mol.nelectron // 2

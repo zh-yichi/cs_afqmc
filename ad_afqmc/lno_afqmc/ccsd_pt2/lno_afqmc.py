@@ -209,7 +209,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     print(f'# Number of basis functions: {ncas}')
     print(f'# Cholesky shape: {chol.shape}')
 
-    v0 = 0.5 * jnp.einsum("nik,njk->ij", chol, chol, optimize="optimal")
+    v0 = 0.5 * jnp.einsum("gpr,grq->pq", chol, chol, optimize="optimal")
     h1e_mod = h1e - v0
     chol = chol.reshape((chol.shape[0], -1))
     np.savez(mo_file,prjlo=prjlo)
@@ -333,6 +333,7 @@ def _prep_afqmc(option_file="options.bin",
         t2 = jnp.array(amplitudes["t2"])
         wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
         wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
+        wave_data["mo_coeff"] = mo_coeff[:, :nocc]
     elif options["trial"] == "ccsd_pt2_ad":
         trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch = options["n_batch"])
         from jax import scipy as jsp
@@ -344,7 +345,25 @@ def _prep_afqmc(option_file="options.bin",
         t1_full[:nocc, nocc:] = t1
         wave_data['exp_t1'] = jsp.linalg.expm(t1_full)
         wave_data['exp_mt1'] = jsp.linalg.expm(-t1_full)
-        wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
+        # wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
+        wave_data["t2"] =  jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
+        wave_data["mo_coeff"] = mo_coeff[:, :nocc]
+        lt1 = jnp.einsum('ia,gja->gij', t1, chol[:, :nocc, nocc:])
+        e0t1orb = 2 * jnp.einsum('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1) \
+                    - jnp.einsum('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'])
+        ham_data['e0t1orb'] = e0t1orb
+    elif options["trial"] == "ccsd_pt2":
+        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
+        from jax import scipy as jsp
+        nocc = nelec_sp[0]
+        amplitudes = np.load(amp_file)
+        t1 = jnp.array(amplitudes["t1"])
+        t2 = jnp.array(amplitudes["t2"])
+        t1_full = np.zeros((norb, norb))
+        t1_full[:nocc, nocc:] = t1
+        wave_data['exp_t1'] = jsp.linalg.expm(t1_full)
+        wave_data['exp_mt1'] = jsp.linalg.expm(-t1_full)
+        # wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
         wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
         wave_data["mo_coeff"] = mo_coeff[:, :nocc]
         lt1 = jnp.einsum('ia,gja->gij', t1, chol[:, :nocc, nocc:])

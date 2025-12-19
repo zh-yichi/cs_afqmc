@@ -5,8 +5,7 @@ from jax import numpy as jnp
 from jax import random
 from functools import partial
 from ad_afqmc import config, stat_utils
-from ad_afqmc.lno_afqmc import sampling
-from ad_afqmc.lno_afqmc.ccsd_pt2 import lno_afqmc
+from ad_afqmc.lno_afqmc import sampling, ulno_afqmc
 
 from ad_afqmc import config
 
@@ -27,7 +26,7 @@ rank = comm.Get_rank()
 print = partial(print, flush=True)
 
 ham_data, prop, trial, wave_data, sampler, options, _ = (
-    lno_afqmc._prep_afqmc())
+    ulno_afqmc._prep_afqmc())
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
@@ -59,7 +58,7 @@ h0 = ham_data['h0']
 # if rank == 0:
 #     print(f"# <Hbar> = {ham_data['e0_bar']:.6f}, <H> = {e_init:.6f}")
 e0, t1olp, eorb, t2eorb, t2orb, e0bar \
-    = trial._calc_eorb_pt2(prop_data['walkers'][0], ham_data, wave_data)
+    = trial._calc_eorb_pt2(prop_data['walkers'][0][0], prop_data['walkers'][1][0], ham_data, wave_data)
 e0 = jnp.real(e0)
 t1olp = jnp.real(t1olp)
 eorb = jnp.real(eorb)

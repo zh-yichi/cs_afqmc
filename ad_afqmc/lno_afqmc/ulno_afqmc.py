@@ -56,14 +56,16 @@ def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
             elcorr_cc_t = 0.
 
         t1_0 = [t1[0]*0, t1[1]*0]
-        elcorr_cc0 = ulnoccsd.get_fragment_energy(imp_eris, t1_0, t2, prjlo)
-        print('# LNO-UCCSD (T1 = 0) fragment energy:', elcorr_cc0)
+        ecct1_0 = ulnoccsd.get_fragment_energy(imp_eris, t1_0, t2, prjlo)
+        print('# LNO-UCCSD (T1 = 0) fragment energy:', ecct1_0)
+        t2_0 = [t2[0]*0, t2[1]*0, t2[2]*0]
+        ecct2_0 = ulnoccsd.get_fragment_energy(imp_eris, t1, t2_0, prjlo)
+        print('# LNO-UCCSD (T2 = 0) fragment energy:', ecct2_0)
 
     imp_eris = None
-    t1_0 = None
-    elcorr_cc0 = None
+    t1_0 = t2_0 = None
 
-    return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2, prjlo
+    return (elcorr_pt2, elcorr_cc, elcorr_cc_t ,ecct1_0, ecct2_0), t1, t2
 
 def get_veff(mf, dm):
     mol = mf.mol
@@ -266,7 +268,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     chol_a.reshape(chol_a.shape[0], -1)
     chol_b.reshape(chol_b.shape[0], -1)
     
-    np.savez(mo_file,prjloa=prjlo[0],prjlob=prjlo[1])
+    np.savez(mo_file,prja=prjlo[0],prjb=prjlo[1])
 
     write_dqmc(h1e,[h1mod_a,h1mod_b],[chol_a, chol_b],
                nelec,ncas,enuc,mf.e_tot,filename=chol_file)
@@ -379,10 +381,9 @@ def _prep_afqmc(option_file="options.bin",
                         chol_b.reshape(chol_b.shape[0], -1)]
 
     wave_data = {}
-    prjlo_a = jnp.array(np.load(mo_file)["prjloa"])
-    prjlo_b = jnp.array(np.load(mo_file)["prjlob"])
-    wave_data['prjlo'] = [jnp.dot(prjlo_a.T,prjlo_a),
-                          jnp.dot(prjlo_b.T,prjlo_b)]
+    prja = jnp.array(np.load(mo_file)["prja"])
+    prjb = jnp.array(np.load(mo_file)["prjb"])
+    wave_data['prjlo'] = [prja,prjb]
     mo_coeff_a = jnp.array(np.eye(nmo_a))
     mo_coeff_b = jnp.array(np.eye(nmo_b))
     wave_data["mo_coeff"] = [
@@ -422,27 +423,74 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
         wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
         wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
-    # elif options["trial"] == "uccsd_pt2":
-    #     trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
-    #     amplitudes = np.load(amp_file)
-    #     t1a = jnp.array(amplitudes["t1a"])
-    #     t1b = jnp.array(amplitudes["t1b"])
-    #     t2aa = jnp.array(amplitudes["t2aa"])
-    #     t2ab = jnp.array(amplitudes["t2ab"])
-    #     t2bb = jnp.array(amplitudes["t2bb"])
-    #     mo_ta = trial.thouless_trans(t1a)[:,:nelec[0]]
-    #     mo_tb = trial.thouless_trans(t1b)[:,:nelec[1]]
-    #     wave_data['mo_ta'] = mo_ta
-    #     wave_data['mo_tb'] = mo_tb
-    #     wave_data["t2aa"] = t2aa
-    #     wave_data["t2bb"] = t2bb
-    #     wave_data["t2ab"] = t2ab
+    elif options["trial"] == "uccsd_pt2_ad":
+        trial = wavefunctions.uccsd_pt2_ad(norb, nelec, n_batch = options["n_batch"])
+        nocca, noccb = nelec
+        norba, norbb = norb
+        amplitudes = np.load(amp_file)
+        t1a = jnp.array(amplitudes["t1a"])
+        t1b = jnp.array(amplitudes["t1b"])
+        t2aa = jnp.array(amplitudes["t2aa"])
+        t2ab = jnp.array(amplitudes["t2ab"])
+        t2bb = jnp.array(amplitudes["t2bb"])
+        t1a_full = np.zeros((norba, norba))
+        t1a_full[:nocca, nocca:] = t1a
+        t1b_full = np.zeros((norbb, norbb))
+        t1b_full[:noccb, noccb:] = t1b
+        from jax import scipy as jsp
+        wave_data['exp_t1a'] = jsp.linalg.expm(t1a_full)
+        wave_data['exp_mt1a'] = jsp.linalg.expm(-t1a_full)
+        wave_data['exp_t1b'] = jsp.linalg.expm(t1b_full)
+        wave_data['exp_mt1b'] = jsp.linalg.expm(-t1b_full)
+        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        lt1a = jnp.einsum('ia,gja->gij', t1a, chol_a[:, :nocca, nocca:])
+        lt1b = jnp.einsum('ia,gja->gij', t1b, chol_b[:, :noccb, noccb:])
+        # e0t1orb = <exp(T1)HF|H|HF>_i
+        e0t1orb_aa = (jnp.einsum('gik,ik,gjj->',lt1a, prja, lt1a) 
+                    - jnp.einsum('gij,gjk,ik->',lt1a, lt1a, prja)) * 0.5
+        e0t1orb_ab = jnp.einsum('gik,ik,gjj->',lt1a, prja, lt1b) * 0.5
+        e0t1orb_ba = jnp.einsum('gik,ik,gjj->',lt1b, prjb, lt1a) * 0.5
+        e0t1orb_bb = (jnp.einsum('gik,ik,gjj->',lt1b, prjb, lt1b)
+                    - jnp.einsum('gij,gjk,ik->',lt1b, lt1b, prjb)) * 0.5
+        ham_data['e0t1orb'] = e0t1orb_aa + e0t1orb_ab + e0t1orb_ba + e0t1orb_bb
+    elif options["trial"] == "uccsd_pt2":
+        trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
+        nocca, noccb = nelec
+        norba, norbb = norb
+        amplitudes = np.load(amp_file)
+        t1a = jnp.array(amplitudes["t1a"])
+        t1b = jnp.array(amplitudes["t1b"])
+        t2aa = jnp.array(amplitudes["t2aa"])
+        t2ab = jnp.array(amplitudes["t2ab"])
+        t2bb = jnp.array(amplitudes["t2bb"])
+        t1a_full = np.zeros((norba, norba))
+        t1a_full[:nocca, nocca:] = t1a
+        t1b_full = np.zeros((norbb, norbb))
+        t1b_full[:noccb, noccb:] = t1b
+        from jax import scipy as jsp
+        wave_data['exp_t1a'] = jsp.linalg.expm(t1a_full)
+        wave_data['exp_mt1a'] = jsp.linalg.expm(-t1a_full)
+        wave_data['exp_t1b'] = jsp.linalg.expm(t1b_full)
+        wave_data['exp_mt1b'] = jsp.linalg.expm(-t1b_full)
+        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        lt1a = jnp.einsum('ia,gja->gij', t1a, chol_a[:, :nocca, nocca:])
+        lt1b = jnp.einsum('ia,gja->gij', t1b, chol_b[:, :noccb, noccb:])
+        # e0t1orb = <exp(T1)HF|H|HF>_i
+        e0t1orb_aa = (jnp.einsum('ia,jb,gka,gjb,ik->',t1a,t1a,chol_a[:, :nocca, nocca:],chol_a[:, :nocca, nocca:],prja)
+                    - jnp.einsum('ia,jb,gkb,gja,ik->',t1a,t1a,chol_a[:, :nocca, nocca:],chol_a[:, :nocca, nocca:],prja)) * 0.5
+        e0t1orb_ab = jnp.einsum('ia,jb,gka,gjb,ik->',t1a,t1b,chol_a[:, :nocca, nocca:],chol_b[:, :noccb, noccb:],prja) * 0.5
+        e0t1orb_ba = jnp.einsum('ia,jb,gka,gjb,ik->',t1b,t1a,chol_b[:, :noccb, noccb:],chol_a[:, :nocca, nocca:],prjb) * 0.5
+        e0t1orb_bb = (jnp.einsum('ia,jb,gka,gjb,ik->',t1b,t1b,chol_b[:, :noccb, noccb:],chol_b[:, :noccb, noccb:],prjb)
+                    - jnp.einsum('ia,jb,gkb,gja,ik->',t1b,t1b,chol_b[:, :noccb, noccb:],chol_b[:, :noccb, noccb:],prjb)) * 0.5
+        ham_data['e0t1orb'] = e0t1orb_aa + e0t1orb_ab + e0t1orb_ba + e0t1orb_bb 
 
     if options["walker_type"] == "rhf":
-        # if options["symmetry"]:
-        #     ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
-        # else:
-        #     ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
         prop = propagation.propagator_restricted(
             options["dt"], 
             options["n_walkers"], 
@@ -451,10 +499,6 @@ def _prep_afqmc(option_file="options.bin",
         )
 
     elif options["walker_type"] == "uhf":
-        # if options["symmetry"]:
-        #     ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
-        # else:
-        #     ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
         if options["free_projection"]:
             prop = propagation.propagator_unrestricted(
                 options["dt"],
@@ -524,9 +568,9 @@ def run_lnoafqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     # if  'cc' in options['trial'] and 'pt' in options['trial']:
     if 'pt2' in options['trial']:
-        script='ccsd_pt2/run_afqmc.py'
+        script='ccsd_pt2/run_uafqmc.py'
     elif 'pt' in options['trial']:
-        script='ccsd_pt/run_afqmc.py'
+        script='ccsd_pt/run_uafqmc.py'
     else:
         raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
     
@@ -614,8 +658,12 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         mcc._vhf = mlno._vhf
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
-        eorb_mp2_cc[ifrag], t1, t2, prjlo =\
+        eorb_mp2_cc[ifrag], t1, t2 =\
             ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=True)
+        
+        prja = uocc_loc[0] @ uocc_loc[0].T.conj()
+        prjb = uocc_loc[1] @ uocc_loc[1].T.conj()
+        prjlo = [prja, prjb]
 
         print(f'# LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
         print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
