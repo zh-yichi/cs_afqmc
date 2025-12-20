@@ -317,14 +317,14 @@ def _prep_afqmc(option_file="options.bin",
                 amp_file="amplitudes.npz",
                 chol_file="FCIDUMP_chol"):
     
-    try:
-        with open(option_file, "rb") as f:
-            options = pickle.load(f)
-    except:
-        print('# Using default options')
-        options = {}
+    # try:
+    with open(option_file, "rb") as f:
+        options = pickle.load(f)
+    # except:
+    #     print('# Using default options')
+    #     options = {}
 
-    options["dt"] = options.get("dt", 0.01)
+    options["dt"] = options.get("dt", 0.005)
     options["n_exp_terms"] = options.get("n_exp_terms",6)
     options["n_walkers"] = options.get("n_walkers", 50)
     options["n_prop_steps"] = options.get("n_prop_steps", 50)
@@ -344,6 +344,7 @@ def _prep_afqmc(option_file="options.bin",
     options["ene0"] = options.get("ene0", 0.0)
     options["free_projection"] = options.get("free_projection", False)
     options["n_batch"] = options.get("n_batch", 1)
+    options['use_gpu'] = options.get("use_gpu", True)
 
     if options['use_gpu']:
         config.afqmc_config["use_gpu"] = True
@@ -381,12 +382,6 @@ def _prep_afqmc(option_file="options.bin",
     ham_data["E0"] = emf
     ham_data["ene0"] = options["ene0"]
 
-    # ham_data["h1a"] = jnp.array(h1_a)
-    # ham_data["h1b"] = jnp.array(h1_b)
-    # ham_data["h1mod_a"] = jnp.array(h1mod_a)
-    # ham_data["h1mod_b"] = jnp.array(h1mod_b)
-    # ham_data["chol_a"] = chol_a.reshape(chol_a[0].shape[0], -1)
-    # ham_data["chol_b"] = chol_b.reshape(chol_b[1].shape[0], -1)
     ham_data["h1"] = [jnp.array(h1_a), jnp.array(h1_b)]
     ham_data["h1_mod"] = [jnp.array(h1mod_a), jnp.array(h1mod_b)]
     ham_data["chol"] = [chol_a.reshape(chol_a.shape[0], -1),
@@ -435,8 +430,7 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
         wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
         wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
-    elif options["trial"] == "uccsd_pt2_ad":
-        trial = wavefunctions.uccsd_pt2_ad(norb, nelec, n_batch = options["n_batch"])
+    elif "uccsd_pt2" in options["trial"]:
         nocca, noccb = nelec
         norba, norbb = norb
         amplitudes = np.load(amp_file)
@@ -454,10 +448,6 @@ def _prep_afqmc(option_file="options.bin",
         wave_data['exp_mt1a'] = jsp.linalg.expm(-t1a_full)
         wave_data['exp_t1b'] = jsp.linalg.expm(t1b_full)
         wave_data['exp_mt1b'] = jsp.linalg.expm(-t1b_full)
-        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
         lt1a = jnp.einsum('ia,gja->gij', t1a, chol_a[:, :nocca, nocca:])
         lt1b = jnp.einsum('ia,gja->gij', t1b, chol_b[:, :noccb, noccb:])
         # e0t1orb = <exp(T1)HF|H|HF>_i
@@ -468,39 +458,26 @@ def _prep_afqmc(option_file="options.bin",
         e0t1orb_bb = (jnp.einsum('gik,ik,gjj->',lt1b, prjb, lt1b)
                     - jnp.einsum('gij,gjk,ik->',lt1b, lt1b, prjb)) * 0.5
         ham_data['e0t1orb'] = e0t1orb_aa + e0t1orb_ab + e0t1orb_ba + e0t1orb_bb
-    elif options["trial"] == "uccsd_pt2":
-        trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
-        nocca, noccb = nelec
-        norba, norbb = norb
-        amplitudes = np.load(amp_file)
-        t1a = jnp.array(amplitudes["t1a"])
-        t1b = jnp.array(amplitudes["t1b"])
-        t2aa = jnp.array(amplitudes["t2aa"])
-        t2ab = jnp.array(amplitudes["t2ab"])
-        t2bb = jnp.array(amplitudes["t2bb"])
-        t1a_full = np.zeros((norba, norba))
-        t1a_full[:nocca, nocca:] = t1a
-        t1b_full = np.zeros((norbb, norbb))
-        t1b_full[:noccb, noccb:] = t1b
-        from jax import scipy as jsp
-        wave_data['exp_t1a'] = jsp.linalg.expm(t1a_full)
-        wave_data['exp_mt1a'] = jsp.linalg.expm(-t1a_full)
-        wave_data['exp_t1b'] = jsp.linalg.expm(t1b_full)
-        wave_data['exp_mt1b'] = jsp.linalg.expm(-t1b_full)
-        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
-        lt1a = jnp.einsum('ia,gja->gij', t1a, chol_a[:, :nocca, nocca:])
-        lt1b = jnp.einsum('ia,gja->gij', t1b, chol_b[:, :noccb, noccb:])
-        # e0t1orb = <exp(T1)HF|H|HF>_i
-        e0t1orb_aa = (jnp.einsum('ia,jb,gka,gjb,ik->',t1a,t1a,chol_a[:, :nocca, nocca:],chol_a[:, :nocca, nocca:],prja)
-                    - jnp.einsum('ia,jb,gkb,gja,ik->',t1a,t1a,chol_a[:, :nocca, nocca:],chol_a[:, :nocca, nocca:],prja)) * 0.5
-        e0t1orb_ab = jnp.einsum('ia,jb,gka,gjb,ik->',t1a,t1b,chol_a[:, :nocca, nocca:],chol_b[:, :noccb, noccb:],prja) * 0.5
-        e0t1orb_ba = jnp.einsum('ia,jb,gka,gjb,ik->',t1b,t1a,chol_b[:, :noccb, noccb:],chol_a[:, :nocca, nocca:],prjb) * 0.5
-        e0t1orb_bb = (jnp.einsum('ia,jb,gka,gjb,ik->',t1b,t1b,chol_b[:, :noccb, noccb:],chol_b[:, :noccb, noccb:],prjb)
-                    - jnp.einsum('ia,jb,gkb,gja,ik->',t1b,t1b,chol_b[:, :noccb, noccb:],chol_b[:, :noccb, noccb:],prjb)) * 0.5
-        ham_data['e0t1orb'] = e0t1orb_aa + e0t1orb_ab + e0t1orb_ba + e0t1orb_bb 
+        if "ad" in options["trial"]:
+            trial = wavefunctions.uccsd_pt2_ad(norb, nelec, n_batch = options["n_batch"])
+            wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+            wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+            wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+            wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        elif "alpha" in options["trial"]:
+            trial = wavefunctions.uccsd_pt2_alpha(norb, nelec, n_batch = options["n_batch"])
+            wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+            wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+        elif "beta" in options["trial"]:
+            trial = wavefunctions.uccsd_pt2_beta(norb, nelec, n_batch = options["n_batch"])
+            wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+            wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        else:
+            trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
+            wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
+            wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+            wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
+            wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
 
     if options["walker_type"] == "rhf":
         prop = propagation.propagator_restricted(
@@ -663,9 +640,17 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
                             'norb': lno_norb[ifrag][i]} for i in [0,1]]
 
         lno_coeff, frozen, uocc_loc, _ = mlno.make_las(eris, orbloc, lno_type, lno_param)
+
+        if uocc_loc[0].size > 0 and uocc_loc[1].size == 0:
+            lno_elec_type = 'alpha'
+        elif uocc_loc[0].size == 0 and uocc_loc[1].size > 0:
+            lno_elec_type = 'beta'
+        else: lno_elec_type = 'How could it be???'
+        print(f'# LNO Electron Type: {lno_elec_type}')
+
         mo_occ = mlno.mo_occ
         frozen, maskact = ulnoccsd.get_maskact(frozen, [mo_occ[0].size, mo_occ[1].size])
-        mcc = ulnoccsd.UCCSD(mf, mo_coeff=lno_coeff, frozen=frozen).set(verbose=mlno.verbose_imp)
+        mcc = ulnoccsd.UCCSD(mf, mo_coeff=lno_coeff, frozen=frozen).set(verbose=4)
         mcc._s1e = mlno._s1e
         mcc._h1e = mlno._h1e
         mcc._vhf = mlno._vhf
@@ -685,6 +670,12 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         from mpi4py import MPI
         if not MPI.Is_finalized():
             MPI.Finalize()
+
+        if 'ad' not in options["trial"]:
+            if lno_elec_type == 'alpha':
+                options["trial"] += '_alpha'
+            elif lno_elec_type == 'beta':
+                options["trial"] += '_beta'
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \

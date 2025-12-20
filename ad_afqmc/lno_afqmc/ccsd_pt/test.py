@@ -48,21 +48,21 @@ oa = [[[i],[]] for i in range(orbloca.shape[1])]
 ob = [[[],[i]] for i in range(orblocb.shape[1])]
 frag_lolist = oa + ob
 
-options = {'n_eql': 4,
+options = {'n_eql': 2,
         'n_prop_steps': 50,
         'n_ene_blocks': 1,
         'n_sr_blocks': 5,
         'n_blocks': 10,
-        'n_walkers': 50,
+        'n_walkers': 5,
         'seed': 98,
         'walker_type': 'uhf',
         'trial': 'uccsd_pt2',
         'dt':0.005,
         'free_projection':False,
         'ad_mode':None,
-        'use_gpu': True,
+        'use_gpu': False,
         'max_error': 5e-4
         }
 
 from ad_afqmc.lno_afqmc import ulno_afqmc
-ulno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,thresh=1e-6,run_frg_list=[0])
+ulno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,thresh=1e-4,run_frg_list=[0],nproc=1)

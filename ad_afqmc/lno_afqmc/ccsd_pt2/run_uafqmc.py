@@ -74,7 +74,7 @@ if rank == 0:
     print(f"# Initial energy {e_init:.6f}")
     print("# All brakets are measured with HF Trial")
     print("# Equilibration sweeps:")
-    print("#   Iter \t Energy_hf \t <T1> \t <Hbar>_orb \t "
+    print("#   Iter \t Energy_hf \t <T1> \t \t <Hbar>_orb \t "
           "   <T2Hbar>_orb \t <T2>_orb \t <Hbar> \t Ept_orb \t time")
     print(f"  {0:5d} \t {e0:.6f} \t {t1olp:.6f} \t {eorb:.6f} \t {t2eorb:.6f} \t" 
           f"  {t2orb:.6f} \t {h0+e0bar:.6f} \t {eorb_pt:.6f} \t "
