@@ -696,21 +696,15 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     mmp = mp.MP2(mf, frozen=nfrozen)
     emp2_tot = mmp.kernel()[0]
 
-    # if 'cc' in options['trial']:
-    eorb_hf = np.empty(nfrag,dtype='float64')
-    eorb_hf_err = np.empty(nfrag,dtype='float64')
-    eorb_pt = np.empty(nfrag,dtype='float64')
-    eorb_pt_err = np.empty(nfrag,dtype='float64')
+    eorb_pt2 = np.empty(nfrag,dtype='float64')
+    eorb_pt2_err = np.empty(nfrag,dtype='float64')
     run_time = np.empty(nfrag,dtype='float64')
     for n, i in enumerate(run_frg_list):
         with open(f"lnoafqmc.out{i+1}", "r") as rf:
             for line in rf:
-                if "AFQMC/HF Orbital <H-E0>" in line:
-                    eorb_hf[n] = float(line.split()[-3])
-                    eorb_hf_err[n] = float(line.split()[-1])
-                if "AFQMC/CCSD_PT Orbital Ept" in line:
-                    eorb_pt[n] = float(line.split()[-3])
-                    eorb_pt_err[n] = float(line.split()[-1])
+                if "Ept (direct observation)" in line:
+                    eorb_pt2[n] = float(line.split()[-3])
+                    eorb_pt2_err[n] = float(line.split()[-1])
                 if "total run time" in line:
                     run_time[n] = float(line.split()[-1])
 
@@ -721,22 +715,19 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     norb = (np.mean(norb_list[:,0]),np.mean(norb_list[:,1]))
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
-    e_ccsd_pt = sum(eorb_mp2_cc[:,2])
-    e_afqmc_hf = sum(eorb_hf)
-    e_afqmc_hf_err = np.sqrt(sum(eorb_hf_err**2))
-    e_afqmc_pt = sum(eorb_pt)
-    e_afqmc_pt_err = np.sqrt(sum(eorb_pt_err**2))
+    e_ccsd_pt = e_ccsd + sum(eorb_mp2_cc[:,2])
+    e_afqmc_pt2 = sum(eorb_pt2)
+    e_afqmc_pt2_err = np.sqrt(sum(eorb_pt2_err**2))
     tot_time = sum(run_time)
 
     with open(f'lno_result.out', 'w') as out_file:
         print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t) ' \
-              '  eorb_afqmc/hf  eorb_afqmc/ccsd_pt  nelec  norb  time',
+              '  eorb_afqmc/ccsd_pt2  nelec  norb  time',
                 file=out_file)
         for n, i in enumerate(run_frg_list):
             print(f'{i+1:3d}  '
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
-                    f'{eorb_hf[n]:.6f} +/- {eorb_hf_err[n]:.6f}  '
-                    f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
+                    f'{eorb_pt2[n]:.6f} +/- {eorb_pt2_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
         print(f'# LNO Thresh: {lno_thresh}',file=out_file)
         print(f'# LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)
@@ -744,8 +735,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
         print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
         print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
-        print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
-        print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
+        print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt2:.6f} +/- {e_afqmc_pt2_err:.6f}',file=out_file)
         print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
         print(f"# total run time: {tot_time:.2f}",file=out_file)
 

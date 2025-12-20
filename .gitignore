@@ -8,4 +8,4 @@ __pycache__/
 *_chol
 *.dat
 *.txt
-.env
+*.env
