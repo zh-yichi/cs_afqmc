@@ -228,17 +228,24 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
         chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         chol_df = chol_df.reshape((-1, nao, nao))
-        eri_ao = lib.einsum('lpr,lqs->prqs', chol_df, chol_df, optimize='optimal')
+        print(f'# DF Tensors shape: {chol_df.shape}')
+        chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
+        eri_clas = lib.einsum('lpr,lqs->prqs', chol_df_clas, chol_df_clas, optimize='optimal')
+        chol_df_clas = chol_df = None
         print("# Composing LAS ERIs from AO ERIs")
         # find the minimum common Local Active Space that spans both a and b
-        eri_clas = ao2mo.kernel(eri_ao,clas_coeff,compact=False)
+        # eri_clas = ao2mo.kernel(eri_ao,clas_coeff,compact=False,max_memory=mf.mol.max_memory)
+        # eri_clas_half = lib.einsum("pu,xr,uxvw->prvw",clas_coeff.T,clas_coeff,eri_ao)
+        # eri_clas = lib.einsum("prvw,qv,ws->prqs",eri_clas_half,clas_coeff.T,clas_coeff)
+        print("# Finished Composing LAS ERIs")
         eri_clas = eri_clas.reshape(nclas**2,nclas**2)
         print("# Decomposing MO ERIs to Cholesky vectors")
         print(f"# Cholesky cutoff is: {chol_cut}")
         chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
         chol_clas = chol_clas.reshape((-1, nclas, nclas))
-        chola = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
-        cholb = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
+        chola = jnp.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
+        cholb = jnp.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
+        eri_clas = chol_clas = None
         # # # a2b = <B|A>
         # # # <B|L|B> = <B|A><A|L|A><A|B>
         # # # transform Lb from La so they have the same number of vectors
@@ -610,6 +617,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     
     frag_lolist = [frag_lolist[i] for i in run_frg_list]
     nfrag = len(frag_lolist)
+    print(f'# Number of LNO-FRAGMENT: {nfrag}')
     if lno_pct_occ is None:
         lno_pct_occ = [None, None]
     if lno_norb is None:
@@ -627,7 +635,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     eorb_mp2_cc = [None] * nfrag
     # Loop over fragment
     for ifrag, loidx in enumerate(frag_lolist):
-        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1} ###########')
+        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag} ###########')
         if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
             orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
             lno_param = [
