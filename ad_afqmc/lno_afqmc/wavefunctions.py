@@ -594,11 +594,11 @@ class rhf(wave_function):
         return rdm1
 
     @partial(jit, static_argnums=0)
-    def _calc_energy_ref(trial, walker, ham_data, trial_coeff):
+    def _calc_energy_ref(self, walker, ham_data, trial_coeff):
         ''' straight-ahead <HF|H|walker>/<HF|walker>
             without half rotating integrals and gf '''
         h0, h1 = ham_data["h0"], ham_data["h1"][0]
-        chol = ham_data["chol"].reshape(-1, trial.norb, trial.norb)
+        chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
         gf = (walker.dot(jnp.linalg.inv(trial_coeff.T @ walker)) @ trial_coeff.T).T
         ene1 = 2.0 * jnp.sum(gf * h1)
         f = oe.contract("gij,jk->gik", chol, gf.T, backend="jax")
@@ -2563,14 +2563,14 @@ class uccsd_pt2(uhf):
 
     @partial(jit, static_argnums=0)
     def _t2eorb_tc(
-        trial,
+        self,
         walker_up,
         walker_dn,
         ham_data,
         wave_data):
         
-        norb_a, norb_b = trial.norb
-        nocc_a, nocc_b = trial.nelec
+        norb_a, norb_b = self.norb
+        nocc_a, nocc_b = self.nelec
         # h0 = ham_data["h0"], ham_data["E0"]
         h1a, h1b = ham_data["h1bar"]
         t2aa, t2ab = wave_data["t2aa"], wave_data["t2ab"]
@@ -2793,9 +2793,9 @@ class uccsd_pt2_alpha(uhf):
         return e_corr
 
     @partial(jit, static_argnums=0)
-    def _t2eorb_tc(trial,walker_up,walker_dn,ham_data,wave_data):
-        norb_a, norb_b = trial.norb
-        nocc_a, nocc_b = trial.nelec
+    def _t2eorb_tc(self,walker_up,walker_dn,ham_data,wave_data):
+        norb_a, norb_b = self.norb
+        nocc_a, nocc_b = self.nelec
         h1a, h1b = ham_data["h1bar"]
         t2aa, t2ab = wave_data["t2aa"], wave_data["t2ab"]
         chol_a, chol_b = ham_data["chol_bar"]

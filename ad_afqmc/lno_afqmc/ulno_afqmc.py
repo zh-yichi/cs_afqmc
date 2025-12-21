@@ -587,6 +587,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     # lo_proj_thresh = 1e-10
     # lo_proj_thresh_active = 0.1
     eris = None
+    trial = options["trial"]
 
     if run_frg_list is None:
         nfrag = len(frag_lolist)
@@ -670,7 +671,8 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         from mpi4py import MPI
         if not MPI.Is_finalized():
             MPI.Finalize()
-
+        
+        options["trial"] = trial
         if 'ad' not in options["trial"]:
             if lno_elec_type == 'alpha':
                 options["trial"] += '_alpha'
