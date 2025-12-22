@@ -575,7 +575,8 @@ def run_lnoafqmc(options,nproc=None,
 
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
               nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
-              lno_type = ['1h']*2, run_frg_list = None, nproc = None):
+              lno_type = ['1h']*2, run_frg_list = None, 
+              nproc = None, fast = True):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
@@ -675,9 +676,15 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         options["trial"] = trial
         if 'ad' not in options["trial"]:
             if lno_elec_type == 'alpha':
-                options["trial"] += '_alpha'
+                if fast:
+                    options["trial"] += '_alpha_fast'
+                else:
+                    options["trial"] += '_alpha'
             elif lno_elec_type == 'beta':
-                options["trial"] += '_beta'
+                if fast:
+                    options["trial"] += '_beta_fast'
+                else:
+                    options["trial"] += '_beta'
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
