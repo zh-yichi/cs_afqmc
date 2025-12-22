@@ -557,7 +557,7 @@ def run_lnoafqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     # if  'cc' in options['trial'] and 'pt' in options['trial']:
     if 'pt2' in options['trial']:
-        script='ccsd_pt2/run_uafqmc.py'
+        script='ccsd_pt2/run_uafqmc_new.py'
     elif 'pt' in options['trial']:
         script='ccsd_pt/run_uafqmc.py'
     else:

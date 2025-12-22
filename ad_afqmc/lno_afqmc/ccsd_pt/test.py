@@ -65,4 +65,4 @@ options = {'n_eql': 2,
         }
 
 from ad_afqmc.lno_afqmc import ulno_afqmc
-ulno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,thresh=1e-4,run_frg_list=[19],nproc=1)
+ulno_afqmc.run_afqmc(mf,options,lo_coeff,frag_lolist,thresh=1e-4,run_frg_list=[0],nproc=1)
