@@ -576,7 +576,7 @@ def run_lnoafqmc(options,nproc=None,
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
               nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
               lno_type = ['1h']*2, run_frg_list = None, 
-              nproc = None, fast = True):
+              nproc = None, fast = True, ccsd_t=False):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
@@ -659,7 +659,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
         eorb_mp2_cc[ifrag], t1, t2 =\
-            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=True)
+            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
         
         prja = uocc_loc[0] @ uocc_loc[0].T.conj()
         prjb = uocc_loc[1] @ uocc_loc[1].T.conj()
