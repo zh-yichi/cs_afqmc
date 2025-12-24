@@ -771,16 +771,21 @@ class uhf(wave_function):
         rot_chola = ham_data["chol"][0].reshape(-1,norba,norba)[:,:nocca,nocca:]
         rot_cholb = ham_data["chol"][1].reshape(-1,norbb,norbb)[:,:noccb,noccb:]
         greena, greenb = self._calc_green(walker_up, walker_dn, wave_data)
-        lga = oe.contract('gia,ak->gik', rot_chola, greena.T[nocca:,:nocca], backend="jax")
-        lgb = oe.contract('gij,jk->gik', rot_cholb, greenb.T[noccb:,:noccb], backend="jax")
+        lga = oe.contract('gia,ka->gik', rot_chola, greena[:nocca,nocca:], backend="jax")
+        lgb = oe.contract('gia,ka->gik', rot_cholb, greenb[:noccb,noccb:], backend="jax")
         tr_lga = oe.contract('gii->g',lga, backend="jax")
         tr_lgb = oe.contract('gii->g',lgb, backend="jax")
-        lglg_aa = oe.contract('g,g->',tr_lga,tr_lga, backend="jax") \
-              - oe.contract('gij,gji->',lga,lga, backend="jax")
-        lglg_ab = oe.contract('g,g->',tr_lga,tr_lgb, backend="jax")*2
-        lglg_bb = oe.contract('g,g->',tr_lgb,tr_lgb, backend="jax") \
-              - oe.contract('gij,gji->',lgb,lgb, backend="jax")
-        ecorr = 0.5*(lglg_aa + lglg_ab + lglg_bb)
+        tr_lg = tr_lga + tr_lgb
+        e_col = oe.contract('g,g->', tr_lg, tr_lg, backend="jax") / 2
+        e_exc = (oe.contract('gij,gji->',lga,lga, backend="jax")
+                 + oe.contract('gij,gji->',lgb,lgb, backend="jax")) / 2
+        ecorr = e_col - e_exc
+        # lglg_aa = oe.contract('g,g->',tr_lga,tr_lga, backend="jax") \
+        #       - oe.contract('gij,gji->',lga,lga, backend="jax")
+        # lglg_ab = oe.contract('g,g->',tr_lga,tr_lgb, backend="jax")*2
+        # lglg_bb = oe.contract('g,g->',tr_lgb,tr_lgb, backend="jax") \
+        #       - oe.contract('gij,gji->',lgb,lgb, backend="jax")
+        # ecorr = 0.5*(lglg_aa + lglg_ab + lglg_bb)
         return e0 + ecorr
     
     @partial(jit, static_argnums=0)
