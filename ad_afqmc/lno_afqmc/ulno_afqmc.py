@@ -108,19 +108,20 @@ def prjmo(prj,s1e,mo):
     mo_rec = prj @ prj.T @ s1e @ mo
     return mo_rec
 
-def common_las(mf, lno_coeff, ncas, ncore, torr=1e-6):
+def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     print("# Constracting cLAS that span both Alpha and Beta active space")
     s1e = mf.get_ovlp()
     lno_acta = lno_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
     lno_actb = lno_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
-    lno_actaa = lno_coeff[0].T @ s1e @ lno_acta
-    lno_actba = lno_coeff[0].T @ s1e @ lno_actb
-    m = np.hstack([lno_actaa,lno_actba])
-    u, s, _ = np.linalg.svd(m)
+    lno_actaa = lno_coeff[0].T @ s1e @ lno_acta # proj to the complete
+    lno_actba = lno_coeff[0].T @ s1e @ lno_actb # alpha basis for orthogonal
+    clno_act = np.hstack([lno_actaa,lno_actba]) # common active lno
+    print('# Naive Common LAS Shape: ', clno_act.shape)
+    u, s, _ = np.linalg.svd(clno_act)
     print(f'# Common Active Space SVD Singular values:')
     print(s)
     print(f"# cLAS projection torr: {torr}")
-    for idx in range(1,m.shape[1]+1):
+    for idx in range(lno_acta.shape[1],u.shape[1]+1):
         prj = lno_coeff[0] @ u[:,:idx]
         prj_acta = prjmo(prj,s1e,lno_actb)
         prj_actb = prjmo(prj,s1e,lno_acta)
@@ -130,14 +131,16 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-6):
         if losa < torr and losb < torr:
             break
     print(f"# Minimum size of cLAS to span both Alpha and Beta LAS: {idx}")
-    clas_coeff = lno_coeff[0] @ u[:,:idx]
-    a2c = clas_coeff.T @ s1e @ lno_acta
-    b2c = clas_coeff.T @ s1e @ lno_actb
+    # span{|C>} = span{|A>} U span{|B>}
+    clas_coeff = lno_coeff[0] @ u[:,:idx] # in ao
+    print('# True Common LAS Shape: ', clas_coeff.shape)
+    a2c = clas_coeff.T @ s1e @ lno_acta # <C|A>
+    b2c = clas_coeff.T @ s1e @ lno_actb # <C|B>
     return clas_coeff, a2c, b2c
 
 
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
-               options,chol_cut=1e-5,
+               options,chol_cut=1e-5,use_df=False,
                option_file='options.bin',
                mo_file="mo_coeff.npz",
                amp_file="amplitudes.npz",
@@ -219,43 +222,45 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     # lno_actb = mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
     # s1e = mf.get_ovlp()
     # a2b = mo_coeff[1].T @ s1e @ mo_coeff[0]
-    clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore, chol_cut)
+    clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
     nclas = clas_coeff.shape[1]
 
     if getattr(mf, "with_df", None) is not None:
-        # decompose eri in MO to achieve linear scale
-        print("# Composing AO ERIs from DF basis")
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
         chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         chol_df = chol_df.reshape((-1, nao, nao))
-        print(f'# DF Tensors shape: {chol_df.shape}')
-        chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
-        eri_clas = lib.einsum('lpr,lqs->prqs', chol_df_clas, chol_df_clas, optimize='optimal')
-        chol_df_clas = chol_df = None
-        print("# Composing LAS ERIs from AO ERIs")
-        # find the minimum common Local Active Space that spans both a and b
-        # eri_clas = ao2mo.kernel(eri_ao,clas_coeff,compact=False,max_memory=mf.mol.max_memory)
-        # eri_clas_half = lib.einsum("pu,xr,uxvw->prvw",clas_coeff.T,clas_coeff,eri_ao)
-        # eri_clas = lib.einsum("prvw,qv,ws->prqs",eri_clas_half,clas_coeff.T,clas_coeff)
-        print("# Finished Composing LAS ERIs")
-        eri_clas = eri_clas.reshape(nclas**2,nclas**2)
-        print("# Decomposing MO ERIs to Cholesky vectors")
-        print(f"# Cholesky cutoff is: {chol_cut}")
-        chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-        chol_clas = chol_clas.reshape((-1, nclas, nclas))
-        chola = jnp.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
-        cholb = jnp.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
-        eri_clas = chol_clas = None
-        # # # a2b = <B|A>
-        # # # <B|L|B> = <B|A><A|L|A><A|B>
-        # # # transform Lb from La so they have the same number of vectors
-        # # chol_b = jnp.einsum('pr,grs,sq->gpq',a2b,chol_a,a2b.T)
-        # # chol_b = chol_b.reshape((-1, nao, nao))
-        # # <Ap|L|Aq> = <Ap|mu><mu|L|nu><nu|Aq>
-        # chola = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
-        # cholb = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
-        # chola = chola[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
-        # cholb = cholb[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
+        print(f'# DF Tensor shape: {chol_df.shape}')
+        if not use_df:
+            # decompose eri in active LNO to achieve linear scale on the auxilary axis
+            print("# Composing AO ERIs from DF basis")
+            chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
+            eri_clas = lib.einsum('lpr,lqs->prqs', chol_df_clas, chol_df_clas, optimize='optimal')
+            print("# Finished Composing LAS ERIs")
+            eri_clas = eri_clas.reshape(nclas**2,nclas**2)
+            print("# Decomposing MO ERIs to Cholesky vectors")
+            print("# Tighter Chol_cutoff is recommended for LNO")
+            print(f"# Cholesky cutoff is: {chol_cut}")
+            chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
+            chol_clas = chol_clas.reshape((-1, nclas, nclas))
+            chola = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
+            cholb = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
+            print(f'# Alpha chol1 shape: {chola.shape}')
+            print(f'#  Beta chol1 shape: {cholb.shape}')
+        elif use_df:
+            # use DF Tensors
+            print("# Transform DF Tenor into LNO Basis")
+            chola = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
+            cholb = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
+            chola = chola[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
+            cholb = cholb[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
+            print(f'# Alpha chol shape: {chola.shape}')
+            print(f'#  Beta chol shape: {cholb.shape}')
+
+        # eria1 = lib.einsum('lpr,lqs->prqs',chola1,chola1)
+        # eria2 = lib.einsum('lpr,lqs->prqs',chola2,chola2)
+        # print(abs(eria1-eria2).max())
+        # chola = chola1
+        # cholb = cholb1
     else:
         raise  NotImplementedError('Use DF Only!')
         # eri_clas = ao2mo.kernel(mf.mol,clas_coeff,compact=False)
@@ -574,7 +579,7 @@ def run_lnoafqmc(options,nproc=None,
     )
 
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
-              nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
+              nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5, use_df = False,
               lno_type = ['1h']*2, run_frg_list = None, 
               nproc = None, fast = True, ccsd_t=False):
     
@@ -688,7 +693,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
-            = prep_afqmc(mf,lno_coeff,t1,t2,frozen,prjlo,options,chol_cut=chol_cut)
+            = prep_afqmc(mf,lno_coeff,t1,t2,frozen,prjlo,options,chol_cut=chol_cut,use_df=use_df)
         run_lnoafqmc(options,nproc)
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
