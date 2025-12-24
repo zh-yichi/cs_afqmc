@@ -218,12 +218,6 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
 
     print('# Generating Cholesky Integrals')
     nao = mf.mol.nao
-    # lno_acta = mo_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
-    # lno_actb = mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
-    # s1e = mf.get_ovlp()
-    # a2b = mo_coeff[1].T @ s1e @ mo_coeff[0]
-    clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
-    nclas = clas_coeff.shape[1]
 
     if getattr(mf, "with_df", None) is not None:
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
@@ -231,6 +225,8 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         chol_df = chol_df.reshape((-1, nao, nao))
         print(f'# DF Tensor shape: {chol_df.shape}')
         if not use_df:
+            clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
+            nclas = clas_coeff.shape[1]
             # decompose eri in active LNO to achieve linear scale on the auxilary axis
             print("# Composing AO ERIs from DF basis")
             chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
