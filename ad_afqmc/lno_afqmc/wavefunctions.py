@@ -240,11 +240,6 @@ class wave_function(ABC):
             walkers.reshape(self.n_batch, batch_size, self.norb, -1),
         )
         return energies.reshape(n_walkers)
-    
-    @singledispatchmethod
-    def calc_orbenergy(self, walkers,ham_data:dict , wave_data:dict, orbE:int) -> jnp.ndarray:
-        return vmap(self._calc_orbenergy, in_axes=(None, None, None, 0, None,None))(
-            ham_data['h0'], ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,orbE)
 
     @partial(jit, static_argnums=0)
     def _calc_energy_restricted(
@@ -367,87 +362,11 @@ class wave_function(ABC):
         """
         return ham_data
 
-    def optimize(self, ham_data: dict, wave_data: dict) -> dict:
-        """Optimize the wave function parameters.
 
-        Args:
-            ham_data: The hamiltonian data.
-            wave_data: The trial wave function data.
-
-        Returns:
-            wave_data: The updated trial wave function data.
-        """
-        return wave_data
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
 
-
-class wave_function_cpmc(wave_function):
-    """This is used in CPMC. Not as well tested and supported as ab initio currently."""
-
-    @abstractmethod
-    def calc_green_diagonal_vmap(self, walkers: Sequence, wave_data: dict) -> jnp.array:
-        """Calculate the diagonal elements of the greens function.
-
-        Args:
-            walkers: The walkers. (mapped over)
-            wave_data: The trial wave function data.
-
-        Returns:
-            diag_green: The diagonal elements of the greens function.
-        """
-        pass
-
-    @abstractmethod
-    def calc_full_green_vmap(self, walkers: Sequence, wave_data: dict) -> jnp.array:
-        """Calculate the greens function.
-
-        Args:
-            walkers: The walkers. (mapped over)
-            wave_data: The trial wave function data.
-
-        Returns:
-            green: The greens function.
-        """
-        pass
-
-    @abstractmethod
-    def calc_overlap_ratio_vmap(
-        self, greens: Sequence, update_indices: jax.Array, update_constants: jnp.array
-    ) -> jax.Array:
-        """Calculate the overlap ratio.
-
-        Args:
-            greens: The greens functions. (mapped over)
-            update_indices: Proposed update indices.
-            constants: Proposed update constants.
-
-        Returns:
-            overlap_ratios: The overlap ratios.
-        """
-        pass
-
-    @abstractmethod
-    def update_greens_function_vmap(
-        self,
-        greens: Sequence,
-        ratios: jax.Array,
-        update_indices: jax.Array,
-        update_constants: jax.Array,
-    ) -> jax.Array:
-        """Update the greens function.
-
-        Args:
-            greens: The old greens functions. (mapped over)
-            ratios: The overlap ratios. (mapped over)
-            indices: Where to update.
-            constants: What to update with. (mapped over)
-
-        Returns:
-            green: The updated greens functions.
-        """
-        pass
 
 
 # we assume afqmc is performed in the rhf orbital basis
@@ -2506,12 +2425,7 @@ class uccsd_pt2(uhf):
         return e_corr
 
     @partial(jit, static_argnums=0)
-    def _t2eorb_tc(
-        self,
-        walker_up,
-        walker_dn,
-        ham_data,
-        wave_data):
+    def _t2eorb_tc(self, walker_up, walker_dn, ham_data, wave_data):
         
         norb_a, norb_b = self.norb
         nocc_a, nocc_b = self.nelec
@@ -2617,13 +2531,9 @@ class uccsd_pt2(uhf):
         t2eorb = e1_2 + e2_2 # <HF|T2(h1+h2)|walker>/<HF|walker>
 
         return t2eorb, t2orb, e12bar
-
+    
     @partial(jit, static_argnums=0)
-    def _calc_eorb_pt2(self,
-                      walker_up: jax.Array,
-                      walker_dn: jax.Array,
-                      ham_data: dict,
-                      wave_data: dict):
+    def _calc_eorb_pt2(self, walker_up: jax.Array, walker_dn: jax.Array, ham_data: dict, wave_data: dict):
         
         o0 = jnp.linalg.det(walker_up[:walker_up.shape[1],:]) \
             * jnp.linalg.det(walker_dn[:walker_dn.shape[1],:])
@@ -2642,14 +2552,36 @@ class uccsd_pt2(uhf):
         return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
 
     @partial(jit, static_argnums=(0)) 
-    def calc_eorb_pt2(self,
-                     walkers: list,
-                     ham_data: dict, 
-                     wave_data: dict) -> jax.Array:
-        e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar = vmap(
-            self._calc_eorb_pt2,in_axes=(0, 0, None, None))(
-            walkers[0], walkers[1], ham_data, wave_data)
+    def calc_eorb_pt2(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
+
+        n_walkers = walkers[0].shape[0]
+        batch_size = n_walkers // self.n_batch
+        
+        def scan_batch(carry, walker_batch):
+            batch_walker_up, batch_walker_dn = walker_batch
+            e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar \
+                = vmap(self._calc_eorb_pt2, in_axes=(0, 0, None, None))(
+                batch_walker_up, batch_walker_dn, ham_data, wave_data
+            )
+            return carry, (e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar)
+        
+        _, (e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar) \
+            = lax.scan(scan_batch, None,
+            (
+                walkers[0].reshape(self.n_batch, batch_size, self.norb[0], self.nelec[0]),
+                walkers[1].reshape(self.n_batch, batch_size, self.norb[1], self.nelec[1]),
+            ),
+        )
+
+        e0 = e0.reshape(n_walkers)
+        t1olp = t1olp.reshape(n_walkers)
+        eorb_bar = eorb_bar.reshape(n_walkers)
+        t2eorb = t2eorb.reshape(n_walkers)
+        t2orb = t2orb.reshape(n_walkers)
+        e12bar = e12bar.reshape(n_walkers)
+
         return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
+
     
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
@@ -2690,7 +2622,7 @@ class uccsd_pt2(uhf):
 
 
 @dataclass
-class uccsd_pt2_alpha(uhf):
+class uccsd_pt2_alpha(uccsd_pt2):
     '''
     Alpha LNO UCCSD_PT2 Trial:
     separate Alpha and Beta LNO projection 
@@ -2818,36 +2750,6 @@ class uccsd_pt2_alpha(uhf):
 
         [e2_0, e2_2_2_1, e2_2_2_2, e2_2_3], _ \
             = lax.scan(scan_chol, [0.0,0.0,0.0,0.0], (chol_a, rot_chol_a, chol_b, rot_chol_b))
-
-        # explicit tensor contraction
-        # gl_a = oe.contract("ir,gpr->gip", green_a, chol_a, backend="jax")
-        # gl_b = oe.contract("ir,gpr->gip", green_b, chol_b, backend="jax")
-        # tr_gl_a = oe.contract("gii->g", gl_a[:,:nocc_a,:nocc_a], backend="jax")
-        # tr_gl_b = oe.contract("gii->g", gl_b[:,:nocc_b,:nocc_b], backend="jax")
-        # gl_c = tr_gl_a + tr_gl_b
-        # e2_0_1 = oe.contract('g,g->', gl_c, gl_c) / 2.0
-        # e2_0_2 = - (oe.contract("gij,gji->", gl_a[:,:nocc_a,:nocc_a], gl_a[:,:nocc_a,:nocc_a], backend="jax")
-        #             + oe.contract("gij,gji->", gl_b[:,:nocc_b,:nocc_b], gl_b[:,:nocc_b,:nocc_b], backend="jax")) / 2.0
-        # e2_0 = e2_0_1 + e2_0_2
-
-        # # double excitations
-        # e2_2_1 = e2_0 * gt2g
-        # lt2g_a = oe.contract("gpq,pq->g", chol_a, 2*t2_green_aaa + 2*t2_green_aba,backend="jax")
-        # lt2g_b = oe.contract("gpq,pq->g", chol_b, 2*t2_green_abb, backend="jax")
-        # e2_2_2_1 = -oe.contract('g,g->', lt2g_a + lt2g_b, gl_c, backend="jax") / 2.0
-
-        # lt2_green_a = oe.contract("gpi,ji->gpj", rot_chol_a, 2*t2_green_aaa + 2*t2_green_aba, backend="jax")
-        # lt2_green_b = oe.contract("gpi,ji->gpj", rot_chol_b, 2*t2_green_abb, backend="jax")
-        # e2_2_2_2 = (oe.contract("gip,gip->", gl_a, lt2_green_a, backend="jax")
-        #             + oe.contract("gip,gip->", gl_b, lt2_green_b, backend="jax")) / 2
-        
-        # glgp_a = oe.contract("gip,pa->gia", gl_a, greenp_a, backend="jax")
-        # glgp_b = oe.contract("gip,pa->gia", gl_b, greenp_b, backend="jax")
-        # l2t2_aa_a = oe.contract("gia,iajb->gjb", glgp_a, t2aa, backend="jax")
-        # l2t2_ab_a = oe.contract("gia,iajb->gjb", glgp_a, t2ab, backend="jax")
-        # l2t2_aa = 0.5 * oe.contract("gjb,gjb->", l2t2_aa_a, glgp_a, backend="jax")
-        # l2t2_ab = 0.5 * oe.contract("gjb,gjb->", l2t2_ab_a, glgp_b, backend="jax")
-        # e2_2_3 = l2t2_aa + l2t2_ab
         
         e2_2_1 = e2_0 * gt2g
         e2_2_2 = e2_2_2_1 + e2_2_2_2
@@ -2858,39 +2760,6 @@ class uccsd_pt2_alpha(uhf):
         t2eorb = e1_2 + e2_2 # <HF|T2(h1+h2)|walker>/<HF|walker>
 
         return t2eorb, t2orb, e12bar
-
-    @partial(jit, static_argnums=0)
-    def _calc_eorb_pt2(self,
-                      walker_up: jax.Array,
-                      walker_dn: jax.Array,
-                      ham_data: dict,
-                      wave_data: dict):
-        
-        o0 = jnp.linalg.det(walker_up[:walker_up.shape[1],:]) \
-            * jnp.linalg.det(walker_dn[:walker_dn.shape[1],:])
-        e0 = self._calc_energy(walker_up, walker_dn, ham_data, wave_data)
-        
-        walker_up_bar = wave_data['exp_t1a'] @ walker_up
-        walker_dn_bar = wave_data['exp_t1b'] @ walker_dn
-        
-        obar = jnp.linalg.det(walker_up_bar[:walker_up_bar.shape[1], :]) \
-            * jnp.linalg.det(walker_dn_bar[:walker_dn_bar.shape[1], :])
-        t1olp = obar/o0 # <exp(T1)HF|walker>/<HF|walker>
-        
-        eorb_bar = self._calc_eorb_bar(walker_up_bar, walker_dn_bar, ham_data, wave_data)
-        t2eorb, t2orb, e12bar = self._t2eorb_tc(walker_up_bar, walker_dn_bar, ham_data, wave_data)
-
-        return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
-
-    @partial(jit, static_argnums=(0)) 
-    def calc_eorb_pt2(self,
-                     walkers: list,
-                     ham_data: dict, 
-                     wave_data: dict) -> jax.Array:
-        e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar = vmap(
-            self._calc_eorb_pt2,in_axes=(0, 0, None, None))(
-            walkers[0], walkers[1], ham_data, wave_data)
-        return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
     
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
@@ -2930,7 +2799,7 @@ class uccsd_pt2_alpha(uhf):
         return hash(tuple(self.__dict__.values()))
     
 @dataclass
-class uccsd_pt2_beta(uhf):
+class uccsd_pt2_beta(uccsd_pt2):
     '''
     Beta LNO UCCSD_PT2 Trial
     Checkout the definition and comment 
@@ -3057,36 +2926,6 @@ class uccsd_pt2_beta(uhf):
 
         [e2_0, e2_2_2_1, e2_2_2_2, e2_2_3], _ \
             = lax.scan(scan_chol, [0.0,0.0,0.0,0.0], (chol_a, rot_chol_a, chol_b, rot_chol_b))
-
-        # explicity tensor contraction faster high memory
-        # gl_a = oe.contract("ir,gpr->gip", green_a, chol_a, backend="jax")
-        # gl_b = oe.contract("ir,gpr->gip", green_b, chol_b, backend="jax")
-        # tr_gl_a = oe.contract("gii->g", gl_a[:,:nocc_a,:nocc_a], backend="jax")
-        # tr_gl_b = oe.contract("gii->g", gl_b[:,:nocc_b,:nocc_b], backend="jax")
-        # gl_c = tr_gl_a + tr_gl_b
-        # e2_0_1 = oe.contract('g,g->', gl_c, gl_c) / 2.0
-        # e2_0_2 = - (oe.contract("gij,gji->", gl_a[:,:nocc_a,:nocc_a], gl_a[:,:nocc_a,:nocc_a], backend="jax")
-        #             + oe.contract("gij,gji->", gl_b[:,:nocc_b,:nocc_b], gl_b[:,:nocc_b,:nocc_b], backend="jax")) / 2.0
-        # e2_0 = e2_0_1 + e2_0_2
-
-        # # double excitations
-        # e2_2_1 = e2_0 * gt2g
-        # lt2g_a = oe.contract("gpq,pq->g", chol_a, 2*t2_green_baa,backend="jax")
-        # lt2g_b = oe.contract("gpq,pq->g", chol_b, 2*t2_green_bbb + 2*t2_green_bab, backend="jax")
-        # e2_2_2_1 = -oe.contract('g,g->', lt2g_a + lt2g_b, gl_c, backend="jax") / 2.0
-
-        # lt2_green_a = oe.contract("gpi,ji->gpj", rot_chol_a, 2*t2_green_baa, backend="jax")
-        # lt2_green_b = oe.contract("gpi,ji->gpj", rot_chol_b, 2*t2_green_bbb + 2*t2_green_bab, backend="jax")
-        # e2_2_2_2 = (oe.contract("gip,gip->", gl_a, lt2_green_a, backend="jax")
-        #             + oe.contract("gip,gip->", gl_b, lt2_green_b, backend="jax")) / 2
-        
-        # glgp_a = oe.contract("gip,pa->gia", gl_a, greenp_a, backend="jax")
-        # glgp_b = oe.contract("gip,pa->gia", gl_b, greenp_b, backend="jax")
-        # l2t2_ba_b = oe.contract("gia,iajb->gjb", glgp_b, t2ba, backend="jax")
-        # l2t2_bb_b = oe.contract("gia,iajb->gjb", glgp_b, t2bb, backend="jax")
-        # l2t2_ba = 0.5 * oe.contract("gjb,gjb->", l2t2_ba_b, glgp_a, backend="jax")
-        # l2t2_bb = 0.5 * oe.contract("gjb,gjb->", l2t2_bb_b, glgp_b, backend="jax")
-        # e2_2_3 = l2t2_ba + l2t2_bb
         
         e2_2_1 = e2_0 * gt2g
         e2_2_2 = e2_2_2_1 + e2_2_2_2
@@ -3098,38 +2937,6 @@ class uccsd_pt2_beta(uhf):
 
         return t2eorb, t2orb, e12bar
 
-    @partial(jit, static_argnums=0)
-    def _calc_eorb_pt2(self,
-                      walker_up: jax.Array,
-                      walker_dn: jax.Array,
-                      ham_data: dict,
-                      wave_data: dict):
-        
-        o0 = jnp.linalg.det(walker_up[:walker_up.shape[1],:]) \
-            * jnp.linalg.det(walker_dn[:walker_dn.shape[1],:])
-        e0 = self._calc_energy(walker_up, walker_dn, ham_data, wave_data)
-        
-        walker_up_bar = wave_data['exp_t1a'] @ walker_up
-        walker_dn_bar = wave_data['exp_t1b'] @ walker_dn
-        
-        obar = jnp.linalg.det(walker_up_bar[:walker_up_bar.shape[1], :]) \
-            * jnp.linalg.det(walker_dn_bar[:walker_dn_bar.shape[1], :])
-        t1olp = obar/o0 # <exp(T1)HF|walker>/<HF|walker>
-        
-        eorb_bar = self._calc_eorb_bar(walker_up_bar, walker_dn_bar, ham_data, wave_data)
-        t2eorb, t2orb, e12bar = self._t2eorb_tc(walker_up_bar, walker_dn_bar, ham_data, wave_data)
-
-        return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
-
-    @partial(jit, static_argnums=(0)) 
-    def calc_eorb_pt2(self,
-                     walkers: list,
-                     ham_data: dict, 
-                     wave_data: dict) -> jax.Array:
-        e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar = vmap(
-            self._calc_eorb_pt2,in_axes=(0, 0, None, None))(
-            walkers[0], walkers[1], ham_data, wave_data)
-        return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
     
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
@@ -3226,42 +3033,6 @@ class uccsd_pt2_alpha_fast(uccsd_pt2_alpha):
         e1_2 = e1_2_1 + e1_2_2 # <HF|T2 h1|walker>/<HF|walker>
 
         # two body energy
-        # scan over chol vecs
-        # def scan_chol(carry, x):
-        #     chol_a_i, rot_chol_a_i, chol_b_i, rot_chol_b_i = x
-        #     gl_a_i = oe.contract("ir,pr->ip", green_a, chol_a_i, backend="jax")
-        #     gl_b_i = oe.contract("ir,pr->ip", green_b, chol_b_i, backend="jax")
-        #     tr_gl_a_i = oe.contract("ii->", gl_a_i[:nocc_a,:nocc_a], backend="jax")
-        #     tr_gl_b_i = oe.contract("ii->", gl_b_i[:nocc_b,:nocc_b], backend="jax")
-        #     gl_c_i = tr_gl_a_i + tr_gl_b_i
-        #     e2_0_c_i = gl_c_i * gl_c_i / 2.0
-        #     e2_0_e_i = - (oe.contract("ij,ji->", gl_a_i[:nocc_a,:nocc_a], gl_a_i[:nocc_a,:nocc_a], backend="jax")
-        #                 + oe.contract("ij,ji->", gl_b_i[:nocc_b,:nocc_b], gl_b_i[:nocc_b,:nocc_b], backend="jax")) / 2.0
-        #     carry[0] += e2_0_e_i + e2_0_c_i
-
-        #     # double excitations
-        #     lt2g_a_i = oe.contract("pq,pq->", chol_a_i, 2*t2_green_aaa + 2*t2_green_aba,backend="jax")
-        #     lt2g_b_i = oe.contract("pq,pq->", chol_b_i, 2*t2_green_abb, backend="jax")
-        #     carry[1] += - (lt2g_a_i + lt2g_b_i) * gl_c_i / 2.0
-
-        #     lt2_green_a_i = oe.contract("pi,ji->pj", rot_chol_a_i, 2*t2_green_aaa + 2*t2_green_aba, backend="jax")
-        #     lt2_green_b_i = oe.contract("pi,ji->pj", rot_chol_b_i, 2*t2_green_abb, backend="jax")
-        #     carry[2] += (oe.contract("ip,ip->", gl_a_i, lt2_green_a_i, backend="jax")
-        #                 + oe.contract("ip,ip->", gl_b_i, lt2_green_b_i, backend="jax")) / 2
-            
-        #     glgp_a_i = oe.contract("ip,pa->ia", gl_a_i, greenp_a, backend="jax")
-        #     glgp_b_i = oe.contract("ip,pa->ia", gl_b_i, greenp_b, backend="jax")
-        #     # l2t2_aa_a_i = oe.contract("ia,iajb->jb", glgp_a_i, t2aa, backend="jax")
-        #     # l2t2_ab_a = oe.contract("gia,iajb->gjb", glgp_a, t2ab, backend="jax")
-        #     l2t2_aa_i = 0.5 * oe.contract("ia,iajb,jb->", glgp_a_i, t2aa, glgp_a_i, backend="jax")
-        #     l2t2_ab_i = 0.5 * oe.contract("ia,iajb,jb->", glgp_a_i, t2ab, glgp_b_i, backend="jax")
-        #     carry[3] += l2t2_aa_i + l2t2_ab_i
-            
-        #     return carry, 0.0
-
-        # [e2_0, e2_2_2_1, e2_2_2_2, e2_2_3], _ \
-        #     = lax.scan(scan_chol, [0.0,0.0,0.0,0.0], (chol_a, rot_chol_a, chol_b, rot_chol_b))
-
         # explicit tensor contraction
         gl_a = oe.contract("ir,gpr->gip", green_a, chol_a, backend="jax")
         gl_b = oe.contract("ir,gpr->gip", green_b, chol_b, backend="jax")
@@ -3366,42 +3137,6 @@ class uccsd_pt2_beta_fast(uccsd_pt2_beta):
         e1_2 = e1_2_1 + e1_2_2 # <HF|T2 h1|walker>/<HF|walker>
 
         # two body energy
-        # scan over chol vecs
-        # def scan_chol(carry, x):
-        #     chol_a_i, rot_chol_a_i, chol_b_i, rot_chol_b_i = x
-        #     gl_a_i = oe.contract("ir,pr->ip", green_a, chol_a_i, backend="jax")
-        #     gl_b_i = oe.contract("ir,pr->ip", green_b, chol_b_i, backend="jax")
-        #     tr_gl_a_i = oe.contract("ii->", gl_a_i[:nocc_a,:nocc_a], backend="jax")
-        #     tr_gl_b_i = oe.contract("ii->", gl_b_i[:nocc_b,:nocc_b], backend="jax")
-        #     gl_c_i = tr_gl_a_i + tr_gl_b_i
-        #     e2_0_c_i = gl_c_i * gl_c_i / 2.0
-        #     e2_0_e_i = - (oe.contract("ij,ji->", gl_a_i[:nocc_a,:nocc_a], gl_a_i[:nocc_a,:nocc_a], backend="jax")
-        #                 + oe.contract("ij,ji->", gl_b_i[:nocc_b,:nocc_b], gl_b_i[:nocc_b,:nocc_b], backend="jax")) / 2.0
-        #     carry[0] += e2_0_c_i + e2_0_e_i
-
-        #     # double excitations
-        #     lt2g_a_i = oe.contract("pq,pq->", chol_a_i, 2*t2_green_baa,backend="jax")
-        #     lt2g_b_i = oe.contract("pq,pq->", chol_b_i, 2*t2_green_bbb + 2*t2_green_bab, backend="jax")
-        #     carry[1] += - (lt2g_a_i + lt2g_b_i) * gl_c_i / 2.0
-
-        #     lt2_green_a_i = oe.contract("pi,ji->pj", rot_chol_a_i, 2*t2_green_baa, backend="jax")
-        #     lt2_green_b_i = oe.contract("pi,ji->pj", rot_chol_b_i, 2*t2_green_bbb + 2*t2_green_bab, backend="jax")
-        #     carry[2] += (oe.contract("ip,ip->", gl_a_i, lt2_green_a_i, backend="jax")
-        #                 + oe.contract("ip,ip->", gl_b_i, lt2_green_b_i, backend="jax")) / 2
-            
-        #     glgp_a_i = oe.contract("ip,pa->ia", gl_a_i, greenp_a, backend="jax")
-        #     glgp_b_i = oe.contract("ip,pa->ia", gl_b_i, greenp_b, backend="jax")
-        #     # l2t2_ba_b = oe.contract("gia,iajb->gjb", glgp_b, t2ba, backend="jax")
-        #     # l2t2_bb_b = oe.contract("gia,iajb->gjb", glgp_b, t2bb, backend="jax")
-        #     l2t2_ba = 0.5 * oe.contract("ia,iajb,jb->", glgp_b_i, t2ba, glgp_a_i, backend="jax")
-        #     l2t2_bb = 0.5 * oe.contract("ia,iajb,jb->", glgp_b_i, t2bb, glgp_b_i, backend="jax")
-        #     carry[3] += l2t2_ba + l2t2_bb
-            
-        #     return carry, 0.0
-
-        # [e2_0, e2_2_2_1, e2_2_2_2, e2_2_3], _ \
-        #     = lax.scan(scan_chol, [0.0,0.0,0.0,0.0], (chol_a, rot_chol_a, chol_b, rot_chol_b))
-
         # explicity tensor contraction faster high memory
         gl_a = oe.contract("ir,gpr->gip", green_a, chol_a, backend="jax")
         gl_b = oe.contract("ir,gpr->gip", green_b, chol_b, backend="jax")

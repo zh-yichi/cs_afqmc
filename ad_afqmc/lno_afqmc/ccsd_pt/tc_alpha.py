@@ -4,9 +4,10 @@ options = {'n_eql': 4,
         'n_sr_blocks': 5,
         'n_blocks': 50,
         'n_walkers': 50,
+        'n_batch': 33,
         'seed': 24,
         'walker_type': 'uhf',
-        'trial': 'uccsd_pt2_alpha',
+        'trial': 'uccsd_pt2_alpha_fast',
         'dt':0.005,
         'free_projection':False,
         'ad_mode':None,
@@ -16,4 +17,3 @@ options = {'n_eql': 4,
 
 from ad_afqmc.lno_afqmc import ulno_afqmc
 ulno_afqmc.run_lnoafqmc(options,nproc=1)
-

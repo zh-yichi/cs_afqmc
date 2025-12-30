@@ -65,7 +65,7 @@ def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
     imp_eris = None
     t1_0 = t2_0 = None
 
-    return (elcorr_pt2, elcorr_cc, elcorr_cc_t ,ecct1_0, ecct2_0), t1, t2
+    return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2
 
 def get_veff(mf, dm):
     mol = mf.mol
