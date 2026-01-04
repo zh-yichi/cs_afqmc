@@ -1,25 +1,25 @@
-# Hostname: yichi-thinkpad
+# Hostname: sharmagroup-rn
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Hostname: yichi-thinkpad
+# Hostname: sharmagroup-rn
 # System Type: Linux
 # Machine Type: x86_64
 # Processor: x86_64
-# Number of MPI ranks: 8
+# Number of MPI ranks: 1
 #
 # norb: 8
-# nelec: (4, 4)
+# nelec: (6, 6)
 #
 # n_eql: 3
 # n_prop_steps: 50
-# n_ene_blocks: 5
+# n_ene_blocks: 1
 # n_sr_blocks: 5
 # n_blocks: 10
-# n_walkers: 10
+# n_walkers: 5
 # seed: 2
-# walker_type: rhf
-# trial: cisd_hf
+# walker_type: uhf
+# trial: uccsd_pt2
 # dt: 0.005
 # free_projection: False
 # use_gpu: False
@@ -34,32 +34,33 @@
 # orbE: 0
 # maxError: 0.001
 #
-# Propagating with 80 walkers
+# Propagating with 5 walkers
 # Equilibration sweeps:
-#   Iter 	 <olp> 	 	     <e0> 	 <eci> 	 	     Walltime
-      0 	 1.000000 	  -4.030817 	 -4.225228 	   11.59
-      1 	 1.217235 	  -4.191139 	 -4.222456 	  23.98
-      2 	 1.218009 	  -4.192004 	 -4.223414 	  33.99
-      3 	 1.242974 	  -4.206190 	 -4.223543 	  35.13
+#   Iter  	    <exp(t1)> 	 <t2> 	 	 <e0> 	 	 <e1> 	 	    energy 	 Walltime
+      0 	   0.991126 	 0.000000 	-48.300993 	 -0.104233 	   -148.987793 	 1.05
+      1 	   0.999709 	 0.497775 	 -48.901509 	 -24.255573 	   -148.971413 	 2.11
+      2 	   1.007989 	 0.592959 	 -49.256822 	 -28.946622 	   -148.986656 	 2.95
+      3 	   1.007654 	 0.164748 	 -49.245695 	 -8.014213 	   -148.983751 	 3.14
 #
 # Sampling sweeps:
-#  Iter 	 <e0> 	 	   <eci> 	 error 	 	 Walltime
-     1 	 	 -4.199788 	  -4.224464 	 0.001472 	  45.65
-     2 	 	 -4.199408 	  -4.224324 	 0.001161 	  46.23
-     3 	 	 -4.199866 	  -4.223801 	 0.000954 	  46.81
-     4 	 	 -4.197159 	  -4.223462 	 0.000798 	  47.38
-     5 	 	 -4.198462 	  -4.222970 	 0.000706 	  47.96
-     6 	 	 -4.199031 	  -4.222648 	 0.000628 	  48.54
-     7 	 	 -4.198971 	  -4.222551 	 0.000576 	  49.12
-     8 	 	 -4.200971 	  -4.222484 	 0.000538 	  49.70
-     9 	 	 -4.200626 	  -4.222503 	 0.000491 	  50.36
+#  Iter 	 energy 	 error 	 	 Walltime
+     1 	 	 -148.991923 	 0.001657 	  3.84
+     2 	 	 -148.995491 	 0.004647 	  3.86
+     3 	 	 -148.995611 	 0.003568 	  3.88
+     4 	 	 -148.992103 	 0.004912 	  3.90
+     5 	 	 -148.985007 	 0.008043 	  3.92
+     6 	 	 -148.987676 	 0.007234 	  3.94
+     7 	 	 -148.990145 	 0.006147 	  3.96
+     8 	 	 -148.994080 	 0.005777 	  3.98
+     9 	 	 -148.994941 	 0.004801 	  4.00
 # Number of outliers in post: 0 
-# Final Results:
-# h0 = 6.03133833
-# <olp> = 1.231582 +/- 0.000696
-# <e0> = -4.200626 +/- 0.000507
-# <e1> = -12.628450 +/- 0.007163
-# AFQMC/CISD_HF energy (covariance): -4.222503 +/- 0.000491
+# Final Results1:
+# h0 = -100.14915656
+# <exp(t1)> = 1.010353 +/- 0.000767
+# <t2> = 0.240727 +/- 0.028412
+# <e0> = -49.338397 +/- 0.040337
+# <e1> = -11.768467 +/- 1.384464
+# AFQMC/UCCSD_PT2 energy (covariance): -148.994941 +/- 0.004801
 # remove outliers in direct sampling:  0
-# AFQMC/CISD_HF energy (direct obs): -4.222508 +/- 0.000454
-# total run time: 50.36
+# AFQMC/UCCSD_PT2 energy (direct obs): -148.985693 +/- 0.004020
+# total run time: 4.00
