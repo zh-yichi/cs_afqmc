@@ -56,6 +56,7 @@ ept_sp = e0 + e1- t*(e0-h0)
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
 prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+print('walkers type', type(prop_data['walkers']))
 
 comm.Barrier()
 if rank == 0:
@@ -70,7 +71,7 @@ sampler_eq = sampling.sampler_pt(
     n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10, n_chol = sampler.n_chol)
 for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_t, blk_e0, blk_e1) =\
-        sampler_eq.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
+        sampler_eq.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data) 
 
     blk_wt = np.array([blk_wt], dtype="float64") 
     blk_t = np.array([blk_t], dtype="float64")
