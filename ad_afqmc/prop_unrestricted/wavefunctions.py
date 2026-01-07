@@ -12,6 +12,373 @@ import opt_einsum as oe
 
 from ad_afqmc import linalg_utils
 
+class wave_function_restricted(ABC):
+    """Base class for wave functions. Contains methods for wave function measurements.
+
+    The measurement methods support two types of walker batches:
+
+    1) unrestricted: walkers is a list ([up, down]). up and down are jax.Arrays of shapes
+    (nwalkers, norb, nelec[sigma]). In this case the _calc_<property> method is mapped over.
+
+    2) restricted (up and down dets are assumed to be the same): walkers is a jax.Array of shape
+    (nwalkers, max(nelec[0], nelec[1])). In this case the _calc_<property>_restricted method is mapped over. By default
+    this method is defined to call _calc_<property>. For certain trial states, one can override
+    it for computational efficiency.
+
+    A minimal implementation of a wave function should define the _calc_<property> methods for
+    property = overlap, force_bias, energy.
+
+    The wave function data is stored in a separate wave_data dictionary. Its structure depends on the
+    wave function type and is described in the corresponding class. It may contain "rdm1" which is a
+    one-body spin RDM (2, norb, norb). If it is not provided, wave function specific methods are called.
+
+    Attributes:
+        norb: Number of orbitals.
+        nelec: Number of electrons of each spin.
+        n_batch: Number of batches used in scan.
+    """
+
+    walker_type: str
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    # @singledispatchmethod
+    # def calc_overlap(self, walkers, wave_data: dict) -> jax.Array:
+    #     """Calculate the overlap < psi_t | walker > for a batch of walkers.
+
+    #     Args:
+    #         walkers : list or jax.Array
+    #             The batched walkers.
+    #         wave_data : dict
+    #             The trial wave function data.
+
+    #     Returns:
+    #         jax.Array: The overlap of the walkers with the trial wave function.
+    #     """
+    #     print('walkers type', type(walkers))
+    #     if
+    #     raise NotImplementedError("Walker type not supported")
+
+    # @calc_overlap.register
+    # def calc_overlap(self, walkers: list, wave_data: dict) -> jax.Array:
+    #     n_walkers = walkers[0].shape[0]
+    #     batch_size = n_walkers // self.n_batch
+
+    #     def scanned_fun(carry, walker_batch):
+    #         walker_batch_0, walker_batch_1 = walker_batch
+    #         overlap_batch = vmap(self._calc_overlap, in_axes=(0, 0, None))(
+    #             walker_batch_0, walker_batch_1, wave_data
+    #         )
+    #         return carry, overlap_batch
+
+    #     _, overlaps = lax.scan(
+    #         scanned_fun,
+    #         None,
+    #         (
+    #             walkers[0].reshape(self.n_batch, batch_size, self.norb, self.nelec[0]),
+    #             walkers[1].reshape(self.n_batch, batch_size, self.norb, self.nelec[1]),
+    #         ),
+    #     )
+    #     return overlaps.reshape(n_walkers)
+
+    # @calc_overlap.register
+    def calc_overlap(self, walkers: jax.Array, wave_data: dict) -> jax.Array:
+        n_walkers = walkers.shape[0]
+        batch_size = n_walkers // self.n_batch
+
+        def scanned_fun(carry, walker_batch):
+            overlap_batch = vmap(self._calc_overlap_restricted, in_axes=(0, None))(
+                walker_batch, wave_data
+            )
+            return carry, overlap_batch
+
+        _, overlaps = lax.scan(
+            scanned_fun, None, walkers.reshape(self.n_batch, batch_size, self.norb, -1)
+        )
+        return overlaps.reshape(n_walkers)
+
+    # @partial(jit, static_argnums=0)
+    # def _calc_overlap_restricted(self, walker: jax.Array, wave_data: dict) -> jax.Array:
+    #     """Overlap for a single restricted walker."""
+    #     return self._calc_overlap(
+    #         walker[:, : self.nelec[0]], walker[:, : self.nelec[1]], wave_data
+    #     )
+
+    # def _calc_overlap(
+    #     self, walker_up: jax.Array, walker_dn: jax.Array, wave_data: dict
+    # ) -> jax.Array:
+    #     """Overlap for a single walker."""
+    #     raise NotImplementedError("Overlap not defined")
+
+    # # @singledispatchmethod
+    # def calc_force_bias(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
+    #     """Calculate the force bias < psi_T | chol | walker > / < psi_T | walker > for a batch of walkers.
+
+    #     Args:
+    #         walkers : list or jax.Array
+    #             The batched walkers.
+    #         ham_data : dict
+    #             The hamiltonian data.
+    #         wave_data : dict
+    #             The trial wave function data.
+
+    #     Returns:
+    #         jax.Array: The force bias.
+    #     """
+    #     raise NotImplementedError("Walker type not supported")
+
+    # @calc_force_bias.register
+    # def _(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
+    #     n_walkers = walkers[0].shape[0]
+    #     batch_size = n_walkers // self.n_batch
+
+    #     def scanned_fun(carry, walker_batch):
+    #         walker_batch_0, walker_batch_1 = walker_batch
+    #         fb_batch = vmap(self._calc_force_bias, in_axes=(0, 0, None, None))(
+    #             walker_batch_0, walker_batch_1, ham_data, wave_data
+    #         )
+    #         return carry, fb_batch
+
+    #     _, fbs = lax.scan(
+    #         scanned_fun,
+    #         None,
+    #         (
+    #             walkers[0].reshape(self.n_batch, batch_size, self.norb, self.nelec[0]),
+    #             walkers[1].reshape(self.n_batch, batch_size, self.norb, self.nelec[1]),
+    #         ),
+    #     )
+    #     fbs = jnp.concatenate(fbs, axis=0)
+    #     return fbs.reshape(n_walkers, -1)
+
+    # @calc_force_bias.register
+    def calc_force_bias(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
+        n_walkers = walkers.shape[0]
+        batch_size = n_walkers // self.n_batch
+
+        def scanned_fun(carry, walker_batch):
+            fb_batch = vmap(self._calc_force_bias_restricted, in_axes=(0, None, None))(
+                walker_batch, ham_data, wave_data
+            )
+            return carry, fb_batch
+
+        _, fbs = lax.scan(
+            scanned_fun, None, walkers.reshape(self.n_batch, batch_size, self.norb, -1)
+        )
+        return fbs.reshape(n_walkers, -1)
+
+    # @partial(jit, static_argnums=0)
+    # def _calc_force_bias_restricted(
+    #     self, walker: jax.Array, ham_data: dict, wave_data: dict
+    # ) -> jax.Array:
+    #     """Force bias for a single restricted walker."""
+    #     return self._calc_force_bias(
+    #         walker[:, : self.nelec[0]], walker[:, : self.nelec[1]], ham_data, wave_data
+    #     )
+
+    # def _calc_force_bias(
+    #     self,
+    #     walker_up: jax.Array,
+    #     walker_dn: jax.Array,
+    #     ham_data: dict,
+    #     wave_data: dict,
+    # ) -> jax.Array:
+    #     """Force bias for a single walker."""
+    #     raise NotImplementedError("Force bias not definedr")
+
+    # @singledispatchmethod
+    # def calc_energy(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
+    #     """Calculate the energy < psi_T | H | walker > / < psi_T | walker > for a batch of walkers.
+
+    #     Args:
+    #         walkers : list or jax.Array
+    #             The batched walkers.
+    #         ham_data : dict
+    #             The hamiltonian data.
+    #         wave_data : dict
+    #             The trial wave function data.
+
+    #     Returns:
+    #         jax.Array: The energy.
+    #     """
+    #     raise NotImplementedError("Walker type not supported")
+
+    # @calc_energy.register
+    # def _(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
+    #     n_walkers = walkers[0].shape[0]
+    #     batch_size = n_walkers // self.n_batch
+
+    #     def scanned_fun(carry, walker_batch):
+    #         walker_batch_0, walker_batch_1 = walker_batch
+    #         energy_batch = vmap(self._calc_energy, in_axes=(0, 0, None, None))(
+    #             walker_batch_0, walker_batch_1, ham_data, wave_data
+    #         )
+    #         return carry, energy_batch
+
+    #     _, energies = lax.scan(
+    #         scanned_fun,
+    #         None,
+    #         (
+    #             walkers[0].reshape(self.n_batch, batch_size, self.norb, self.nelec[0]),
+    #             walkers[1].reshape(self.n_batch, batch_size, self.norb, self.nelec[1]),
+    #         ),
+    #     )
+    #     return energies.reshape(n_walkers)
+
+    # @calc_energy.register
+    def calc_energy(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
+        n_walkers = walkers.shape[0]
+        batch_size = n_walkers // self.n_batch
+
+        def scanned_fun(carry, walker_batch):
+            energy_batch = vmap(self._calc_energy_restricted, in_axes=(0, None, None))(
+                walker_batch, ham_data, wave_data
+            )
+            return carry, energy_batch
+
+        _, energies = lax.scan(
+            scanned_fun,
+            None,
+            walkers.reshape(self.n_batch, batch_size, self.norb, -1),
+        )
+        return energies.reshape(n_walkers)
+
+    # @partial(jit, static_argnums=0)
+    # def _calc_energy_restricted(
+    #     self, walker: jax.Array, ham_data: dict, wave_data: dict
+    # ) -> jax.Array:
+    #     """Energy for a single restricted walker."""
+    #     return self._calc_energy(
+    #         walker[:, : self.nelec[0]], walker[:, : self.nelec[1]], ham_data, wave_data
+    #     )
+
+    # def _calc_energy(
+    #     self,
+    #     walker_up: jax.Array,
+    #     walker_dn: jax.Array,
+    #     ham_data: dict,
+    #     wave_data: dict,
+    # ) -> jax.Array:
+    #     """Energy for a single walker."""
+    #     raise NotImplementedError("Energy not defined")
+
+    def get_rdm1(self, wave_data: dict) -> jax.Array:
+        """Returns the one-body spin reduced density matrix of the trial.
+        Used for calculating mean-field shift and as a default value in cases of large
+        deviations in observable samples. If wave_data contains "rdm1" this value is used,
+        calls otherwise _calc_rdm1.
+
+        Args:
+            wave_data : The trial wave function data.
+
+        Returns:
+            rdm1: The one-body spin reduced density matrix (2, norb, norb).
+        """
+        if "rdm1" in wave_data:
+            return jnp.array(wave_data["rdm1"])
+        else:
+            return self._calc_rdm1(wave_data)
+
+    def _calc_rdm1(self, wave_data: dict) -> jax.Array:
+        """Calculate the one-body spin reduced density matrix. Exact or approximate rdm1
+        of the trial state.
+
+        Args:
+            wave_data : The trial wave function data.
+
+        Returns:
+            rdm1: The one-body spin reduced density matrix (2, norb, norb).
+        """
+        raise NotImplementedError(
+            "One-body spin RDM not found in wave_data and not implemented for this trial."
+        )
+
+    def get_init_walkers(
+        self, wave_data: dict, n_walkers: int, restricted: bool = False
+    ) -> Union[Sequence, jax.Array]:
+        """Get the initial walkers. Uses the rdm1 natural orbitals.
+
+        Args:
+            wave_data: The trial wave function data.
+            n_walkers: The number of walkers.
+            restricted: Whether the walkers should be restricted.
+
+        Returns:
+            walkers: The initial walkers.
+                If restricted, a single jax.Array of shape (nwalkers, norb, nelec[0]).
+                If unrestricted, a list of two jax.Arrays each of shape (nwalkers, norb, nelec[sigma]).
+        """
+        rdm1 = self.get_rdm1(wave_data)
+        natorbs_up = jnp.linalg.eigh(rdm1[0])[1][:, ::-1][:, : self.nelec[0]]
+        natorbs_dn = jnp.linalg.eigh(rdm1[1])[1][:, ::-1][:, : self.nelec[1]]
+        if restricted:
+            if self.nelec[0] == self.nelec[1]:
+                det_overlap = np.linalg.det(
+                    natorbs_up[:, : self.nelec[0]].T @ natorbs_dn[:, : self.nelec[1]]
+                )
+                if (
+                    np.abs(det_overlap) > 1e-3
+                ):  # probably should scale this threshold with number of electrons
+                    return jnp.array([natorbs_up + 0.0j] * n_walkers)
+                else:
+                    overlaps = np.array(
+                        [
+                            natorbs_up[:, i].T @ natorbs_dn[:, i]
+                            for i in range(self.nelec[0])
+                        ]
+                    )
+                    new_vecs = natorbs_up[:, : self.nelec[0]] + np.einsum(
+                        "ij,j->ij", natorbs_dn[:, : self.nelec[1]], np.sign(overlaps)
+                    )
+                    new_vecs = np.linalg.qr(new_vecs)[0]
+                    det_overlap = np.linalg.det(
+                        new_vecs.T @ natorbs_up[:, : self.nelec[0]]
+                    ) * np.linalg.det(new_vecs.T @ natorbs_dn[:, : self.nelec[1]])
+                    if np.abs(det_overlap) > 1e-3:
+                        return jnp.array([new_vecs + 0.0j] * n_walkers)
+                    else:
+                        raise ValueError(
+                            "Cannot find a set of RHF orbitals with good trial overlap."
+                        )
+            else:
+                # bring the dn orbital projection onto up space to the front
+                dn_proj = natorbs_up.T.conj() @ natorbs_dn
+                proj_orbs = jnp.linalg.qr(dn_proj, mode="complete")[0]
+                orbs = natorbs_up @ proj_orbs
+                return jnp.array([orbs + 0.0j] * n_walkers)
+        else:
+            return [
+                jnp.array([natorbs_up + 0.0j] * n_walkers),
+                jnp.array([natorbs_dn + 0.0j] * n_walkers),
+            ]
+
+    # def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
+    #     """Build intermediates for measurements in ham_data. This method is called by the hamiltonian class.
+
+    #     Args:
+    #         ham_data: The hamiltonian data.
+    #         wave_data: The trial wave function data.
+
+    #     Returns:
+    #         ham_data: The updated Hamiltonian data.
+    #     """
+    #     return ham_data
+
+    # def optimize(self, ham_data: dict, wave_data: dict) -> dict:
+    #     """Optimize the wave function parameters.
+
+    #     Args:
+    #         ham_data: The hamiltonian data.
+    #         wave_data: The trial wave function data.
+
+    #     Returns:
+    #         wave_data: The updated trial wave function data.
+    #     """
+    #     return wave_data
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.__dict__.values()))
+
 
 class wave_function(ABC):
     """Base class for wave functions. Contains methods for wave function measurements.
@@ -56,7 +423,6 @@ class wave_function(ABC):
         Returns:
             jax.Array: The overlap of the walkers with the trial wave function.
         """
-        print('walkers type', type(walkers))
         raise NotImplementedError("Walker type not supported")
 
     @calc_overlap.register
@@ -241,6 +607,11 @@ class wave_function(ABC):
             walkers.reshape(self.n_batch, batch_size, self.norb, -1),
         )
         return energies.reshape(n_walkers)
+    
+    @singledispatchmethod
+    def calc_orbenergy(self, walkers,ham_data:dict , wave_data:dict, orbE:int) -> jnp.ndarray:
+        return vmap(self._calc_orbenergy, in_axes=(None, None, None, 0, None,None))(
+            ham_data['h0'], ham_data['rot_h1'], ham_data['rot_chol'], walkers, wave_data,orbE)
 
     @partial(jit, static_argnums=0)
     def _calc_energy_restricted(
@@ -448,7 +819,7 @@ class wave_function_cpmc(wave_function):
 
 # we assume afqmc is performed in the rhf orbital basis
 @dataclass
-class rhf(wave_function):
+class rhf(wave_function_restricted):
     """Class for the restricted Hartree-Fock wave function.
 
     The corresponding wave_data should contain "mo_coeff", a jax.Array of shape (norb, nelec).

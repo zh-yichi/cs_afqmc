@@ -1,135 +1,5 @@
 from jax import numpy as jnp
 from functools import partial
-# @partial(jit, static_argnums=(0, 2))
-# def _build_propagation_intermediates(self, ham_data, trial, wave_data):
-#     rdm1 = wave_data["rdm1"]
-#     mf_shift_a = 1.0j * vmap(
-#         lambda x: jnp.sum(x.reshape(trial.norb, trial.norb)
-#                           * rdm1[0]))(ham_data["chol"][0])
-#     mf_shift_b = 1.0j * vmap(
-#         lambda x: jnp.sum(x.reshape(trial.norb, trial.norb) 
-#                           * rdm1[1]))(ham_data["chol"][1])
-#     ham_data["mf_shifts"] = mf_shift_a + mf_shift_b
-#     ham_data["h0_prop"] = (
-#         - ham_data["h0"] - jnp.sum(ham_data["mf_shifts"]**2) / 2.0
-#                                    )
-#     # alpha
-#     v0_a = 0.5 * jnp.einsum(
-#         "gik,gjk->ij",
-#         ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
-#         ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
-#         optimize="optimal",
-#     )
-#     # beta
-#     v0_b = 0.5 * jnp.einsum(
-#         "gik,gjk->ij",
-#         ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
-#         ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
-#         optimize="optimal",
-#     )
-#     # alpha
-#     v1_a = jnp.real(
-#         1.0j
-#         * jnp.einsum(
-#             "g,gik->ik",ham_data["mf_shifts"],
-#             ham_data["chol"][0].reshape(-1, trial.norb, trial.norb),
-#         )
-#     )
-#     # beta
-#     v1_b = jnp.real(
-#         1.0j
-#         * jnp.einsum(
-#             "g,gik->ik",ham_data["mf_shifts"],
-#             ham_data["chol"][1].reshape(-1, trial.norb, trial.norb),
-#         )
-#     )
-#     h1_mod = ham_data["h1"] - jnp.array([v0_a + v1_a, v0_b + v1_b])
-#     ham_data["exp_h1"] = jnp.array(
-#         [
-#             jsp.linalg.expm(-self.dt * h1_mod[0] / 2.0),
-#             jsp.linalg.expm(-self.dt * h1_mod[1] / 2.0),
-#         ]
-#     )
-#     return ham_data
-
-# @partial(jit, static_argnums=(0,))
-# def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-#     ham_data["h1"] = (
-#         ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
-#     )
-#     ham_data["h1"] = (
-#         ham_data["h1"].at[1].set((ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0)
-#     )
-#     ham_data["rot_h1"] = [
-#         wave_data["mo_coeff"][0].T.conj() @ ham_data["h1"][0],
-#         wave_data["mo_coeff"][1].T.conj() @ ham_data["h1"][1],
-#     ]
-#     ham_data["rot_chol"] = [
-#         jnp.einsum(
-#             "pi,gij->gpj",
-#             wave_data["mo_coeff"][0].T.conj(),
-#             ham_data["chol"][0].reshape(-1, self.norb, self.norb),
-#         ),
-#         jnp.einsum(
-#             "pi,gij->gpj",
-#             wave_data["mo_coeff"][1].T.conj(),
-#             ham_data["chol"][1].reshape(-1, self.norb, self.norb),
-#         ),
-#     ]
-#     return ham_data
-
-# @partial(jit, static_argnums=(0,))
-# def _apply_trotprop(
-#     self, ham_data, walkers, fields
-# ):
-#     n_walkers = walkers[0].shape[0]
-#     batch_size = n_walkers // self.n_batch
-#     # print('### running this trot ###')
-
-#     def scanned_fun(carry, batch):
-#         field_batch, walker_batch_0, walker_batch_1 = batch
-#         # alpha
-#         vhs_a = (
-#             1.0j
-#             * jnp.sqrt(self.dt)
-#             * field_batch.dot(ham_data["chol"][0]).reshape(
-#                 batch_size, walkers[0].shape[1], walkers[0].shape[1]
-#             )
-#         )
-#         # beta
-#         vhs_b = (
-#             1.0j
-#             * jnp.sqrt(self.dt)
-#             * field_batch.dot(ham_data["chol"][1]).reshape(
-#                 batch_size, walkers[1].shape[1], walkers[1].shape[1]
-#             )
-#         )
-#         walkers_new_0 = vmap(self._apply_trotprop_det, in_axes=(None, 0, 0))(
-#             ham_data["exp_h1"][0], vhs_a, walker_batch_0
-#         )
-#         walkers_new_1 = vmap(self._apply_trotprop_det, in_axes=(None, 0, 0))(
-#             ham_data["exp_h1"][1], vhs_b, walker_batch_1
-#         )
-#         return carry, [walkers_new_0, walkers_new_1]
-
-#     _, walkers_new = lax.scan(
-#         scanned_fun,
-#         None,
-#         (
-#             fields.reshape(self.n_batch, batch_size, -1),
-#             walkers[0].reshape(
-#                 self.n_batch, batch_size, walkers[0].shape[1], walkers[0].shape[2]
-#             ),
-#             walkers[1].reshape(
-#                 self.n_batch, batch_size, walkers[1].shape[1], walkers[1].shape[2]
-#             ),
-#         ),
-#     )
-#     walkers = [
-#         walkers_new[0].reshape(n_walkers, walkers[0].shape[1], walkers[0].shape[2]),
-#         walkers_new[1].reshape(n_walkers, walkers[1].shape[1], walkers[1].shape[2]),
-#     ]
-#     return walkers
 
 from functools import partial
 from typing import Optional, Union
@@ -333,7 +203,9 @@ import numpy as np
 from ad_afqmc import config
 from functools import partial
 from ad_afqmc import hamiltonian
-from ad_afqmc.prop_unrestricted import wavefunctions, propagation, sampling
+from ad_afqmc.prop_unrestricted import propagation, sampling
+from ad_afqmc.prop_unrestricted import wavefunctions, wavefunctions_restricted
+
 print = partial(print, flush=True)
 
 def _prep_afqmc(options=None,
@@ -439,26 +311,18 @@ def _prep_afqmc(options=None,
 
     wave_data = {}
     mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
+
     if options["trial"] == "rhf":
-        trial = wavefunctions.rhf(norb, nelec_sp, n_batch=options["n_batch"])
+        trial = wavefunctions_restricted.rhf(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = mo_coeff[0][:, : nelec_sp[0]]
+
     elif options["trial"] == "uhf":
         trial = wavefunctions.uhf(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = [
             mo_coeff[0][:, : nelec_sp[0]],
             mo_coeff[1][:, : nelec_sp[1]],
         ]
-    elif options["trial"] == "noci":
-        with open("dets.pkl", "rb") as f:
-            ci_coeffs_dets = pickle.load(f)
-        ci_coeffs_dets = [
-            jnp.array(ci_coeffs_dets[0]),
-            [jnp.array(ci_coeffs_dets[1][0]), jnp.array(ci_coeffs_dets[1][1])],
-        ]
-        wave_data["ci_coeffs_dets"] = ci_coeffs_dets
-        trial = wavefunctions.noci(
-            norb, nelec_sp, ci_coeffs_dets[0].size, n_batch=options["n_batch"]
-        )
+
     elif options["trial"] == "cisd":
         try:
             amplitudes = np.load(amp_file)
@@ -467,34 +331,16 @@ def _prep_afqmc(options=None,
             trial_wave_data = {"ci1": ci1, "ci2": ci2, 
                                "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
             wave_data.update(trial_wave_data)
-            trial = wavefunctions.cisd(norb, nelec_sp, n_batch=options["n_batch"])
+            trial = wavefunctions_restricted.cisd(norb, nelec_sp, n_batch=options["n_batch"])
+            if "pt" in options["trial"]:
+                trial = wavefunctions_restricted.cisd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+            if "hf1" in options["trial"]:
+                trial = wavefunctions_restricted.cisd_hf1(norb, nelec_sp, n_batch=options["n_batch"])
+            if "hf2" in options["trial"]:
+                trial = wavefunctions_restricted.cisd_hf2(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
-    elif options["trial"] == "cisd_pt":
-        try:
-            amplitudes = np.load(amp_file)
-            ci1 = jnp.array(amplitudes["ci1"])
-            ci2 = jnp.array(amplitudes["ci2"])
-            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
-                               "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
-            wave_data.update(trial_wave_data)
-            trial = wavefunctions.cisd_pt(norb, nelec_sp, n_batch=options["n_batch"])
-        except:
-            raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
-    elif "cisd_hf" in options["trial"]:
-        try:
-            amplitudes = np.load(amp_file)
-            ci1 = jnp.array(amplitudes["ci1"])
-            ci2 = jnp.array(amplitudes["ci2"])
-            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
-                               "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
-            wave_data.update(trial_wave_data)
-            if '1' in options["trial"]:
-                trial = wavefunctions.cisd_hf1(norb, nelec_sp, n_batch=options["n_batch"])
-            elif '2' in options["trial"]:
-                trial = wavefunctions.cisd_hf2(norb, nelec_sp, n_batch=options["n_batch"])
-        except:
-            raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
+        
     elif options["trial"] == "ucisd":
         try:
             amplitudes = np.load(amp_file)
@@ -515,16 +361,18 @@ def _prep_afqmc(options=None,
             trial = wavefunctions.ucisd(norb, nelec_sp, n_batch=options["n_batch"])
         except:
             raise ValueError("Trial specified as ucisd, but amplitudes.npz not found.")
+        
     elif options["trial"] == "ccsd_pt":
-        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
+        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+        if "ad" in options["trial"]:
+            trial = wavefunctions_restricted.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
     elif options["trial"] == "ccsd_pt2":
-        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
         nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
@@ -534,15 +382,8 @@ def _prep_afqmc(options=None,
         mo_t = trial.thouless_trans(t1)[:,:nocc]
         wave_data['mo_t'] = mo_t
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
-    elif options["trial"] == "ccsd_pt_ad":
-        trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
-        ham_data['h1_mod'] = h1_mod
-        amplitudes = np.load(amp_file)
-        t1 = jnp.array(amplitudes["t1"])
-        t2 = jnp.array(amplitudes["t2"])
-        trial_wave_data = {"t1": t1, "t2": t2}
-        wave_data.update(trial_wave_data)
-        wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
+        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
+
     elif options["trial"] == "ccsd_pt2_ad":
         trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
         ham_data['h1_mod'] = h1_mod
@@ -558,6 +399,7 @@ def _prep_afqmc(options=None,
         rot_t2 = jnp.einsum('il,jk,lakb->iajb',
                             mo_t[:nocc,:nocc].T,mo_t[:nocc,:nocc].T,t2)
         wave_data['rot_t2'] = rot_t2
+
     elif options["trial"] == "uccsd_pt_ad":
         trial = wavefunctions.uccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = [
@@ -601,6 +443,7 @@ def _prep_afqmc(options=None,
         wave_data["t2aa"] = t2aa
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
+
     elif options["trial"] == "uccsd_pt2":
         trial = wavefunctions.uccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
@@ -622,6 +465,7 @@ def _prep_afqmc(options=None,
         wave_data["t2aa"] = t2aa
         wave_data["t2bb"] = t2bb
         wave_data["t2ab"] = t2ab
+
     elif options["trial"] == "uccsd_pt2_ad":
         trial = wavefunctions.uccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
@@ -646,6 +490,7 @@ def _prep_afqmc(options=None,
             mo_tb[:noccB,:noccB].T,mo_tb[:noccB,:noccB].T,t2bb)
         wave_data["rot_t2AB"] = jnp.einsum('ik,jl,kalb->iajb',
             mo_ta[:noccA,:noccA].T,mo_tb[:noccB,:noccB].T,t2ab)
+
     elif options["trial"] == "uccsd_pt2_true_ad":
         trial = wavefunctions.uccsd_pt2_true_ad(norb, nelec_sp, n_batch=options["n_batch"])
         noccA, noccB = trial.nelec[0], trial.nelec[1]
