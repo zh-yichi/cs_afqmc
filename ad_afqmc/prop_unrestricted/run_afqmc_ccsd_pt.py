@@ -56,7 +56,7 @@ ept_sp = e0 + e1- t*(e0-h0)
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
 prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-print('walkers type', type(prop_data['walkers']))
+# print('walkers type', type(prop_data['walkers']))
 
 comm.Barrier()
 if rank == 0:

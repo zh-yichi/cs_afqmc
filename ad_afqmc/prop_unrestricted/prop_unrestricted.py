@@ -44,58 +44,58 @@ def prep_afqmc(
         if cc.frozen is not None:
             norb_frozen = cc.frozen
         
-        if 'ci' in trial.lower():
-        # build ci from cc #
-            if isinstance(cc, UCCSD):
-                ci2aa = cc.t2[0] + 2 * np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[0])
-                ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
-                ci2aa = ci2aa.transpose(0, 2, 1, 3)
-                ci2bb = cc.t2[2] + 2 * np.einsum("ia,jb->ijab", cc.t1[1], cc.t1[1])
-                ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
-                ci2bb = ci2bb.transpose(0, 2, 1, 3)
-                ci2ab = cc.t2[1] + np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[1])
-                ci2ab = ci2ab.transpose(0, 2, 1, 3)
-                ci1a = np.array(cc.t1[0])
-                ci1b = np.array(cc.t1[1])
+        # if 'ci' in trial.lower():
+        # # build ci from cc #
+        #     if isinstance(cc, UCCSD):
+        #         ci2aa = cc.t2[0] + 2 * np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[0])
+        #         ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
+        #         ci2aa = ci2aa.transpose(0, 2, 1, 3)
+        #         ci2bb = cc.t2[2] + 2 * np.einsum("ia,jb->ijab", cc.t1[1], cc.t1[1])
+        #         ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
+        #         ci2bb = ci2bb.transpose(0, 2, 1, 3)
+        #         ci2ab = cc.t2[1] + np.einsum("ia,jb->ijab", cc.t1[0], cc.t1[1])
+        #         ci2ab = ci2ab.transpose(0, 2, 1, 3)
+        #         ci1a = np.array(cc.t1[0])
+        #         ci1b = np.array(cc.t1[1])
                 
-                np.savez(
-                    amp_file,
-                    ci1a=ci1a,
-                    ci1b=ci1b,
-                    ci2aa=ci2aa,
-                    ci2ab=ci2ab,
-                    ci2bb=ci2bb,
-                )
-            else:
-                ci2 = cc.t2 + np.einsum("ia,jb->ijab", np.array(cc.t1), np.array(cc.t1))
-                ci2 = ci2.transpose(0, 2, 1, 3)
-                ci1 = np.array(cc.t1)
-                np.savez(amp_file, ci1=ci1, ci2=ci2)
+        #         np.savez(
+        #             amp_file,
+        #             ci1a=ci1a,
+        #             ci1b=ci1b,
+        #             ci2aa=ci2aa,
+        #             ci2ab=ci2ab,
+        #             ci2bb=ci2bb,
+        #         )
+            # else:
+            #     ci2 = cc.t2 + np.einsum("ia,jb->ijab", np.array(cc.t1), np.array(cc.t1))
+            #     ci2 = ci2.transpose(0, 2, 1, 3)
+            #     ci1 = np.array(cc.t1)
+            #     np.savez(amp_file, ci1=ci1, ci2=ci2)
         
-        elif 'cc' in trial.lower():
+        # elif 'cc' in trial.lower():
         # ccsd trial #
-            if isinstance(cc, UCCSD):
-                t1a = np.array(cc.t1[0])
-                t1b = np.array(cc.t1[1])
-                t2aa, t2ab, t2bb = cc.t2
-                t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
-                t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
-                t2aa = t2aa.transpose(0, 2, 1, 3)
-                t2bb = t2bb.transpose(0, 2, 1, 3)
-                t2ab = t2ab.transpose(0, 2, 1, 3)
-                np.savez(
-                    amp_file,
-                    t1a=t1a,
-                    t1b=t1b,
-                    t2aa=t2aa,
-                    t2ab=t2ab,
-                    t2bb=t2bb,
-                )
-            elif isinstance(cc, CCSD):
-                t2 = cc.t2
-                t2 = t2.transpose(0, 2, 1, 3)
-                t1 = np.array(cc.t1)
-                np.savez(amp_file, t1=t1, t2=t2)
+        if isinstance(cc, UCCSD):
+            t1a = np.array(cc.t1[0])
+            t1b = np.array(cc.t1[1])
+            t2aa, t2ab, t2bb = cc.t2
+            t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
+            t2bb = (t2bb - t2bb.transpose(0, 1, 3, 2)) / 2
+            t2aa = t2aa.transpose(0, 2, 1, 3)
+            t2bb = t2bb.transpose(0, 2, 1, 3)
+            t2ab = t2ab.transpose(0, 2, 1, 3)
+            np.savez(
+                amp_file,
+                t1a=t1a,
+                t1b=t1b,
+                t2aa=t2aa,
+                t2ab=t2ab,
+                t2bb=t2bb,
+            )
+        elif isinstance(cc, CCSD):
+            t2 = cc.t2
+            t2 = t2.transpose(0, 2, 1, 3)
+            t1 = np.array(cc.t1)
+            np.savez(amp_file, t1=t1, t2=t2)
     else:
         mf = mf_or_cc
 
@@ -326,9 +326,10 @@ def _prep_afqmc(options=None,
     elif options["trial"] == "cisd":
         try:
             amplitudes = np.load(amp_file)
-            ci1 = jnp.array(amplitudes["ci1"])
-            ci2 = jnp.array(amplitudes["ci2"])
-            trial_wave_data = {"ci1": ci1, "ci2": ci2, 
+            t1 = jnp.array(amplitudes["t1"])
+            t2 = jnp.array(amplitudes["t2"])
+            ci2 = t2 + jnp.einsum("ia,jb->iajb", t1, t1)
+            trial_wave_data = {"ci1": t1, "ci2": ci2, 
                                "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
             wave_data.update(trial_wave_data)
             trial = wavefunctions_restricted.cisd(norb, nelec_sp, n_batch=options["n_batch"])
