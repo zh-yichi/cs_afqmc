@@ -49,22 +49,21 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
 prop_data["key"] = random.PRNGKey(seed + rank)
 
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-prop_data["n_killed_walkers"] = 0
+prop_data["n_killed_walkers"] = 0 
 t, e0, e1 = trial.calc_energy_pt(
     prop_data['walkers'], ham_data, wave_data)
+
 ept_sp = e0 + e1- t*(e0-h0)
 ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
 prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-# print('walkers type', type(prop_data['walkers']))
 
 comm.Barrier()
 if rank == 0:
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
-    print("#   Iter \t <t> \t \t <e0> \t \t <e1> \t \t   energy \t Walltime")
-    print(f"  {0:5d} \t {t[0]:.6f} \t {e0[0]:.6f} \t {e1[0]:.6f} \t "
-          f"  {ept:.6f} \t {time.time() - init_time:.2f}")
+    print("#   Iter \t Energy_HF \t Energy_PT \t Walltime")
+    print(f"  {0:5d} \t {e0[0]:.6f} \t {ept:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
 sampler_eq = sampling.sampler_pt(
@@ -117,16 +116,13 @@ for n in range(1,options["n_eql"]+1):
 
     comm.Barrier()
     if rank == 0:
-        print(f"  {n:5d} \t {blk_t:.6f} \t"
-              f"  {blk_e0:.6f} \t {blk_e1:.6f} \t "
-              f"  {blk_ept:.6f} \t {time.time() - init_time:.2f}")
+        print(f"  {n:5d} \t {blk_e0:.6f} \t {blk_ept:.6f} \t {time.time() - init_time:.2f}")
     comm.Barrier()
 
 comm.Barrier()
 if rank == 0:
     print("#\n# Sampling sweeps:")
-    print("#  Iter \t "
-          "   energy \t error \t \t Walltime")
+    print("#  Iter \t Energy_HF \t Energy_PT \t error \t \t Walltime")
 comm.Barrier()
 
 glb_blk_wt = None
@@ -216,10 +212,6 @@ for n in range(sampler.n_blocks):
             e0 = np.sum(rho_e0)
             e1 = np.sum(rho_e1)
 
-            t_err = np.std(rho_t)
-            e0_err = np.std(rho_e0)
-            e1_err = np.std(rho_e1)
-
             ept = e0 + e1 - t * (e0 - h0)
             dE = np.array([-e0+h0,1-t,1])
             cov_te0e1 = np.cov([glb_blk_t[:(n+1)*size],
@@ -227,9 +219,7 @@ for n in range(sampler.n_blocks):
                                 glb_blk_e1[:(n+1)*size]])
             ept_err = np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1)*size)
 
-            print(f"  {n:4d} \t \t"
-                  f"  {ept:.6f} \t {ept_err:.6f} \t"
-                  f"  {time.time() - init_time:.2f}")
+            print(f"  {n:4d} \t \t {e0:.6f} \t {ept:.6f} \t {ept_err:.6f} \t {time.time() - init_time:.2f}")
         comm.Barrier()
 
 
@@ -246,7 +236,7 @@ if rank == 0:
                     glb_blk_e1,
                 )
             ).T,
-            1,
+            2,
         )
 
     print(
@@ -267,10 +257,6 @@ if rank == 0:
     e0 = np.sum(rho_e0)
     e1 = np.sum(rho_e1)
 
-    t_err = np.std(rho_t)
-    e0_err = np.std(rho_e0)
-    e1_err = np.std(rho_e1)
-
     ept = e0 + e1 - t*(e0-h0)
 
     dE = np.array([-e0+h0,1-t,1])
@@ -281,11 +267,6 @@ if rank == 0:
     ept_err = f"{ept_err:.6f}"
 
     print(f"# Final Results:")
-    print(f"# <e0> = <ehf> in PT theory")
-    print(f'# h0 = {h0:.8f}')
-    print(f"# <t> = {t:.6f} +/- {t_err:.6f}")
-    print(f"# <e0> = {e0:.6f} +/- {e0_err:.6f}")
-    print(f"# <e1> = {e1:.6f} +/- {e1_err:.6f}")
     print(f"# AFQMC/CCSD_PT energy (covariance): {ept} +/- {ept_err}")
 
     d = np.abs(ept_samples-np.median(ept_samples))

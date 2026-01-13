@@ -43,45 +43,6 @@ class wave_function_restricted(ABC):
     nelec: Tuple[int, int]
     n_batch: int = 1
 
-    # @singledispatchmethod
-    # def calc_overlap(self, walkers, wave_data: dict) -> jax.Array:
-    #     """Calculate the overlap < psi_t | walker > for a batch of walkers.
-
-    #     Args:
-    #         walkers : list or jax.Array
-    #             The batched walkers.
-    #         wave_data : dict
-    #             The trial wave function data.
-
-    #     Returns:
-    #         jax.Array: The overlap of the walkers with the trial wave function.
-    #     """
-    #     print('walkers type', type(walkers))
-    #     if
-    #     raise NotImplementedError("Walker type not supported")
-
-    # @calc_overlap.register
-    # def calc_overlap(self, walkers: list, wave_data: dict) -> jax.Array:
-    #     n_walkers = walkers[0].shape[0]
-    #     batch_size = n_walkers // self.n_batch
-
-    #     def scanned_fun(carry, walker_batch):
-    #         walker_batch_0, walker_batch_1 = walker_batch
-    #         overlap_batch = vmap(self._calc_overlap, in_axes=(0, 0, None))(
-    #             walker_batch_0, walker_batch_1, wave_data
-    #         )
-    #         return carry, overlap_batch
-
-    #     _, overlaps = lax.scan(
-    #         scanned_fun,
-    #         None,
-    #         (
-    #             walkers[0].reshape(self.n_batch, batch_size, self.norb, self.nelec[0]),
-    #             walkers[1].reshape(self.n_batch, batch_size, self.norb, self.nelec[1]),
-    #         ),
-    #     )
-    #     return overlaps.reshape(n_walkers)
-
     # @calc_overlap.register
     def calc_overlap(self, walkers: jax.Array, wave_data: dict) -> jax.Array:
         n_walkers = walkers.shape[0]
@@ -98,60 +59,6 @@ class wave_function_restricted(ABC):
         )
         return overlaps.reshape(n_walkers)
 
-    # @partial(jit, static_argnums=0)
-    # def _calc_overlap_restricted(self, walker: jax.Array, wave_data: dict) -> jax.Array:
-    #     """Overlap for a single restricted walker."""
-    #     return self._calc_overlap(
-    #         walker[:, : self.nelec[0]], walker[:, : self.nelec[1]], wave_data
-    #     )
-
-    # def _calc_overlap(
-    #     self, walker_up: jax.Array, walker_dn: jax.Array, wave_data: dict
-    # ) -> jax.Array:
-    #     """Overlap for a single walker."""
-    #     raise NotImplementedError("Overlap not defined")
-
-    # # @singledispatchmethod
-    # def calc_force_bias(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
-    #     """Calculate the force bias < psi_T | chol | walker > / < psi_T | walker > for a batch of walkers.
-
-    #     Args:
-    #         walkers : list or jax.Array
-    #             The batched walkers.
-    #         ham_data : dict
-    #             The hamiltonian data.
-    #         wave_data : dict
-    #             The trial wave function data.
-
-    #     Returns:
-    #         jax.Array: The force bias.
-    #     """
-    #     raise NotImplementedError("Walker type not supported")
-
-    # @calc_force_bias.register
-    # def _(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
-    #     n_walkers = walkers[0].shape[0]
-    #     batch_size = n_walkers // self.n_batch
-
-    #     def scanned_fun(carry, walker_batch):
-    #         walker_batch_0, walker_batch_1 = walker_batch
-    #         fb_batch = vmap(self._calc_force_bias, in_axes=(0, 0, None, None))(
-    #             walker_batch_0, walker_batch_1, ham_data, wave_data
-    #         )
-    #         return carry, fb_batch
-
-    #     _, fbs = lax.scan(
-    #         scanned_fun,
-    #         None,
-    #         (
-    #             walkers[0].reshape(self.n_batch, batch_size, self.norb, self.nelec[0]),
-    #             walkers[1].reshape(self.n_batch, batch_size, self.norb, self.nelec[1]),
-    #         ),
-    #     )
-    #     fbs = jnp.concatenate(fbs, axis=0)
-    #     return fbs.reshape(n_walkers, -1)
-
-    # @calc_force_bias.register
     def calc_force_bias(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
         n_walkers = walkers.shape[0]
         batch_size = n_walkers // self.n_batch
@@ -167,65 +74,6 @@ class wave_function_restricted(ABC):
         )
         return fbs.reshape(n_walkers, -1)
 
-    # @partial(jit, static_argnums=0)
-    # def _calc_force_bias_restricted(
-    #     self, walker: jax.Array, ham_data: dict, wave_data: dict
-    # ) -> jax.Array:
-    #     """Force bias for a single restricted walker."""
-    #     return self._calc_force_bias(
-    #         walker[:, : self.nelec[0]], walker[:, : self.nelec[1]], ham_data, wave_data
-    #     )
-
-    # def _calc_force_bias(
-    #     self,
-    #     walker_up: jax.Array,
-    #     walker_dn: jax.Array,
-    #     ham_data: dict,
-    #     wave_data: dict,
-    # ) -> jax.Array:
-    #     """Force bias for a single walker."""
-    #     raise NotImplementedError("Force bias not definedr")
-
-    # @singledispatchmethod
-    # def calc_energy(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
-    #     """Calculate the energy < psi_T | H | walker > / < psi_T | walker > for a batch of walkers.
-
-    #     Args:
-    #         walkers : list or jax.Array
-    #             The batched walkers.
-    #         ham_data : dict
-    #             The hamiltonian data.
-    #         wave_data : dict
-    #             The trial wave function data.
-
-    #     Returns:
-    #         jax.Array: The energy.
-    #     """
-    #     raise NotImplementedError("Walker type not supported")
-
-    # @calc_energy.register
-    # def _(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
-    #     n_walkers = walkers[0].shape[0]
-    #     batch_size = n_walkers // self.n_batch
-
-    #     def scanned_fun(carry, walker_batch):
-    #         walker_batch_0, walker_batch_1 = walker_batch
-    #         energy_batch = vmap(self._calc_energy, in_axes=(0, 0, None, None))(
-    #             walker_batch_0, walker_batch_1, ham_data, wave_data
-    #         )
-    #         return carry, energy_batch
-
-    #     _, energies = lax.scan(
-    #         scanned_fun,
-    #         None,
-    #         (
-    #             walkers[0].reshape(self.n_batch, batch_size, self.norb, self.nelec[0]),
-    #             walkers[1].reshape(self.n_batch, batch_size, self.norb, self.nelec[1]),
-    #         ),
-    #     )
-    #     return energies.reshape(n_walkers)
-
-    # @calc_energy.register
     def calc_energy(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
         n_walkers = walkers.shape[0]
         batch_size = n_walkers // self.n_batch
@@ -242,25 +90,6 @@ class wave_function_restricted(ABC):
             walkers.reshape(self.n_batch, batch_size, self.norb, -1),
         )
         return energies.reshape(n_walkers)
-
-    # @partial(jit, static_argnums=0)
-    # def _calc_energy_restricted(
-    #     self, walker: jax.Array, ham_data: dict, wave_data: dict
-    # ) -> jax.Array:
-    #     """Energy for a single restricted walker."""
-    #     return self._calc_energy(
-    #         walker[:, : self.nelec[0]], walker[:, : self.nelec[1]], ham_data, wave_data
-    #     )
-
-    # def _calc_energy(
-    #     self,
-    #     walker_up: jax.Array,
-    #     walker_dn: jax.Array,
-    #     ham_data: dict,
-    #     wave_data: dict,
-    # ) -> jax.Array:
-    #     """Energy for a single walker."""
-    #     raise NotImplementedError("Energy not defined")
 
     def get_rdm1(self, wave_data: dict) -> jax.Array:
         """Returns the one-body spin reduced density matrix of the trial.
@@ -1242,7 +1071,165 @@ class cisd(wave_function_restricted):
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
-   
+    
+@dataclass
+class cid(wave_function_restricted):
+    """A manual implementation of the CISD wave function."""
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    def _calc_rdm1(self, wave_data: dict) -> jax.Array:
+        rdm1 = jnp.array([wave_data["mo_coeff"] @ wave_data["mo_coeff"].T] * 2)
+        return rdm1
+
+    @partial(jit, static_argnums=0)
+    def _calc_overlap_restricted(self, walker: jax.Array, wave_data: dict) -> complex:
+        nocc, ci2 = walker.shape[1], wave_data["ci2"]
+        GF = (walker.dot(jnp.linalg.inv(walker[: walker.shape[1], :]))).T
+        o0 = jnp.linalg.det(walker[: walker.shape[1], :]) ** 2
+        o2 = 2 * oe.contract(
+            "iajb, ia, jb", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax"
+        ) - oe.contract("iajb, ib, ja", ci2, GF[:, nocc:], GF[:, nocc:], backend="jax")
+        return (1.0 + o2) * o0
+
+
+    @partial(jit, static_argnums=0)
+    def _calc_force_bias_restricted(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> jax.Array:
+        """Calculates force bias < psi_T | chol_gamma | walker > / < psi_T | walker >"""
+        ci2 = wave_data["ci2"]
+        nocc = self.nelec[0]
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:].copy()
+        greenp = jnp.vstack((green_occ, -jnp.eye(self.norb - nocc)))
+
+        chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
+        rot_chol = chol[:, : self.nelec[0], :]
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
+
+        # ref
+        fb_0 = 2 * lg
+
+        # double excitations
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
+        cisd_green_c = (greenp @ ci2g_c.T) @ green
+        cisd_green_e = (greenp @ ci2g_e.T) @ green
+        cisd_green = -4 * cisd_green_c + 2 * cisd_green_e
+        ci2g = 4 * ci2g_c - 2 * ci2g_e
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
+        fb_2_1 = lg * gci2g
+        fb_2_2 = oe.contract("gij,ij->g", chol, cisd_green, backend="jax")
+        fb_2 = fb_2_1 + fb_2_2
+
+        # overlap
+        overlap_2 = gci2g / 2.0
+        overlap = 1.0 + overlap_2
+
+        return (fb_0 + fb_2) / overlap
+    
+    @partial(jit, static_argnums=0)
+    def _calc_energy_restricted(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> complex:
+        ci2 = wave_data["ci2"]
+        nocc = self.nelec[0]
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:].copy()
+        greenp = jnp.vstack((green_occ, -jnp.eye(self.norb - nocc)))
+
+        chol = ham_data["chol"].reshape(-1, self.norb, self.norb)
+        # rot_chol = ham_data["rot_chol"]
+        rot_chol = chol[:, : self.nelec[0], :]
+        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+        hg = oe.contract("pj,pj->", h1[:nocc, :], green, backend="jax")
+
+        # 0 body energy
+        e0 = ham_data["h0"]
+
+        # 1 body energy
+        # ref
+        e1_0 = 2 * hg
+
+        # double excitations
+        ci2g_c = oe.contract("ptqu,pt->qu", ci2, green_occ, backend="jax")
+        ci2g_e = oe.contract("ptqu,pu->qt", ci2, green_occ, backend="jax")
+        ci2_green_c = (greenp @ ci2g_c.T) @ green
+        ci2_green_e = (greenp @ ci2g_e.T) @ green
+        ci2_green = 2 * ci2_green_c - ci2_green_e
+        ci2g = 2 * ci2g_c - ci2g_e
+        gci2g = oe.contract("qu,qu->", ci2g, green_occ, backend="jax")
+        e1_2_1 = 2 * hg * gci2g
+        e1_2_2 = -2 * oe.contract("ij,ij->", h1, ci2_green, backend="jax")
+        e1_2 = e1_2_1 + e1_2_2
+        e1 = e1_0 + e1_2
+
+        # two body energy
+        # ref
+        lg = oe.contract("gpj,pj->g", rot_chol, green, backend="jax")
+        # lg1 = jnp.einsum("gpj,pk->gjk", rot_chol, green, optimize="optimal")
+        lg1 = oe.contract("gpj,qj->gpq", rot_chol, green, backend="jax")
+        e2_0_1 = 2 * lg @ lg
+        e2_0_2 = -jnp.sum(vmap(lambda x: x * x.T)(lg1))
+        e2_0 = e2_0_1 + e2_0_2
+
+        # double excitations
+        e2_2_1 = e2_0 * gci2g
+        lci2g = oe.contract("gij,ij->g", chol, ci2_green, backend="jax")
+        e2_2_2_1 = -lci2g @ lg
+
+        # lci2g1 = jnp.einsum("gij,jk->gik", chol, ci2_green, optimize="optimal")
+        # lci2_green = jnp.einsum("gpi,ji->gpj", rot_chol, ci2_green, optimize="optimal")
+        # e2_2_2_2 = 0.5 * jnp.einsum("gpi,gpi->", gl, lci2_green, optimize="optimal")
+        def scanned_fun(carry, x):
+            chol_i, rot_chol_i = x
+            gl_i = oe.contract("pj,ji->pi", green, chol_i, backend="jax")
+            lci2_green_i = oe.contract(
+                "pi,ji->pj", rot_chol_i, ci2_green, backend="jax"
+            )
+            carry[0] += 0.5 * oe.contract(
+                "pi,pi->", gl_i, lci2_green_i, backend="jax"
+            )
+            glgp_i = oe.contract("pi,it->pt", gl_i, greenp, backend="jax")
+            l2ci2_1 = oe.contract(
+                "pt,qu,ptqu->",
+                glgp_i,
+                glgp_i,
+                ci2,
+                backend="jax"
+            )
+            l2ci2_2 = oe.contract(
+                "pu,qt,ptqu->",
+                glgp_i,
+                glgp_i,
+                ci2,
+                backend="jax"
+            )
+            carry[1] += 2 * l2ci2_1 - l2ci2_2
+            return carry, 0.0
+
+        [e2_2_2_2, e2_2_3], _ = lax.scan(scanned_fun, [0.0, 0.0], (chol, rot_chol))
+        e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
+
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        e2 = e2_0 + e2_2
+
+        # overlap
+        overlap_2 = gci2g
+        overlap = 1.0 + overlap_2
+        return (e1 + e2) / overlap + e0
+    
+    @partial(jit, static_argnums=0)
+    def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
+
+        return ham_data
+    
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
 
 @dataclass
 class cisd_faster(cisd):
@@ -1516,6 +1503,110 @@ class ccsd_pt(rhf):
             optimize="optimal", backend="jax"
         )
         return ham_data
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+    
+@dataclass
+class ccd_pt(rhf):
+
+    @partial(jit, static_argnums=0)
+    def _calc_green(self, walker: jax.Array, wave_data: dict) -> jax.Array:
+        nocc = self.nelec[0]
+        gf = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        return gf
+
+    @partial(jit, static_argnums=0)
+    def _calc_energy_pt(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> complex:
+        nocc, norb = self.nelec[0], self.norb
+        t2 = wave_data["t2"]
+        chol = ham_data["chol"].reshape(-1, norb, norb)
+
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:]
+        greenp = jnp.vstack((green_occ, -jnp.eye(norb - nocc)))
+
+        rot_chol = chol[:, :nocc, :]
+        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+        hg = oe.contract("pj,pj->", h1[:nocc, :], green, backend="jax")
+
+        # 0 body energy
+        h0 = ham_data["h0"]
+
+        # 1 body energy
+        # ref
+        e1_0 = 2 * hg
+
+        # double excitations
+        t2g_c = oe.contract("iajb,ia->jb", t2, green_occ, backend="jax")
+        t2g_e = oe.contract("iajb,ib->ja", t2, green_occ, backend="jax")
+        t2_green_c = (greenp @ t2g_c.T) @ green
+        t2_green_e = (greenp @ t2g_e.T) @ green
+        t2_green = 2 * t2_green_c - t2_green_e
+        t2g = 2 * t2g_c - t2g_e
+        gt2g = oe.contract("ia,ia->", t2g, green_occ, backend="jax")
+        e1_2_1 = 2 * hg * gt2g
+        e1_2_2 = -2 * oe.contract("ij,ij->", h1, t2_green, backend="jax")
+        e1_2 = e1_2_1 + e1_2_2
+
+        # <HF|h2|walker>/<HF|walker>
+        gl = oe.contract("ir,gpr->gip", green, chol, backend="jax")
+        tr_gl = oe.contract("gii->g", gl[:,:nocc,:nocc], backend="jax")
+        e2_0_1 = oe.contract('g,g->', tr_gl, tr_gl) * 2
+        e2_0_2 = -oe.contract("gij,gji->", gl[:,:nocc,:nocc], gl[:,:nocc,:nocc], backend="jax")
+        e2_0 = e2_0_1 + e2_0_2
+
+        e2_2_1 = e2_0 * gt2g
+        lt2g = oe.contract("gij,ij->g", chol, t2_green, backend="jax")
+        e2_2_2_1 = -oe.contract('g,g->', lt2g, tr_gl, backend="jax")
+        # e2_2_2_1 = -lt2g @ lg
+
+        lt2_green = oe.contract("gir,pr->gip", rot_chol, t2_green, backend="jax")
+        e2_2_2_2 = 0.5 * oe.contract("gip,gip->", gl, lt2_green, backend="jax")
+        
+        glgp = oe.contract("gip,pa->gia", gl, greenp, backend="jax")
+        glgp_t_1 = oe.contract("gia,iajb->gjb", glgp, t2, backend="jax")
+        glgp_t_2 = oe.contract("gib,iajb->gja", glgp, t2, backend="jax")
+        l2t2_1 = oe.contract("gjb,gjb->", glgp_t_1, glgp, backend="jax")
+        l2t2_2 = oe.contract("gja,gja->", glgp_t_2, glgp, backend="jax")
+
+        e2_2_3 = 2 * l2t2_1 - l2t2_2
+
+        e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
+
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        e0 = h0 + e1_0 + e2_0 # h0 + <psi|(h1+h2)|phi>/<psi|phi>
+        e1 = e1_2 + e2_2 # <psi|t2(h1+h2)|phi>/<psi|phi>
+
+        t = gt2g # <psi|(t1+t2)|phi>/<psi|phi>
+
+        return jnp.real(t), jnp.real(e0), jnp.real(e1)
+    
+    @partial(jit, static_argnums=(0)) 
+    def calc_energy_pt(self, walkers:jax.Array, ham_data: dict, wave_data: dict):
+        
+        n_walkers = walkers.shape[0]
+        batch_size = n_walkers // self.n_batch
+        
+        def scan_batch(carry, walker_batch):
+            t, e0, e1 \
+                = vmap(self._calc_energy_pt, in_axes=(0, None, None))(
+                    walker_batch, ham_data, wave_data)
+            return carry, (t, e0, e1)
+        
+        _, (t, e0, e1) \
+            = lax.scan(scan_batch, None, 
+                walkers.reshape(self.n_batch, batch_size, self.norb, self.nelec[0]))
+        
+        t = t.reshape(n_walkers)
+        e0 = e0.reshape(n_walkers)
+        e1 = e1.reshape(n_walkers)
+        
+        return t, e0, e1
+
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))

@@ -342,6 +342,16 @@ def _prep_afqmc(options=None,
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
         
+    elif options["trial"] == "cid":
+        try:
+            amplitudes = np.load(amp_file)
+            t2 = jnp.array(amplitudes["t2"])
+            trial_wave_data = {"ci2": t2, "mo_coeff": mo_coeff[0][:, : nelec_sp[0]]}
+            wave_data.update(trial_wave_data)
+            trial = wavefunctions_restricted.cid(norb, nelec_sp, n_batch=options["n_batch"])
+        except:
+            raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
+        
     elif options["trial"] == "ucisd":
         try:
             amplitudes = np.load(amp_file)
@@ -370,9 +380,18 @@ def _prep_afqmc(options=None,
         trial_wave_data = {"t1": t1, "t2": t2}
         wave_data.update(trial_wave_data)
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
-        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+        trial = wavefunctions_restricted.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         if "ad" in options["trial"]:
             trial = wavefunctions_restricted.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
+    
+    elif options["trial"] == "ccd_pt":
+        amplitudes = np.load(amp_file)
+        t2 = jnp.array(amplitudes["t2"])
+        trial_wave_data = {"t2": t2}
+        wave_data.update(trial_wave_data)
+        wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
+        trial = wavefunctions_restricted.ccd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+
     elif options["trial"] == "ccsd_pt2":
         nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
@@ -548,7 +567,7 @@ def _prep_afqmc(options=None,
                 n_batch=options["n_batch"],
             )
     if  'pt' in options['trial'] and 'cc' in options['trial']:
-        if '2' in options['trial']:
+        if 'pt2' in options['trial']:
             sampler = sampling.sampler_pt2(
                 options["n_prop_steps"],
                 options["n_ene_blocks"],
@@ -616,7 +635,7 @@ def run_afqmc(options,nproc=None,dbg=False,
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
     if  'pt' in options['trial'] and 'cc' in options['trial']:
-        if '2' in options['trial']:
+        if 'pt2' in options['trial']:
             if dbg:
                 script='run_afqmc_ccsd_pt2_dbg.py'
             else:

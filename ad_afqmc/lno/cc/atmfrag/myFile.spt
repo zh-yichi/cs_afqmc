@@ -1,7 +1,0 @@
-
-for (var i = 1;i<37;i++){
-load @{"frag_"+ i + ".molden"}
-rotate BEST; mo nomesh; mo fill; mo 1
-write frames {*} @{"frag_"+i+"-.jpg"}
-}
-
