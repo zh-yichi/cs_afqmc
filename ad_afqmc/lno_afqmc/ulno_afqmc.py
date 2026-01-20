@@ -469,10 +469,14 @@ def _prep_afqmc(option_file="options.bin",
             trial = wavefunctions.uccsd_pt2_alpha(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
             wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+            if "fast" in options["trial"]:
+                trial = wavefunctions.uccsd_pt2_alpha_fast(norb, nelec, n_batch = options["n_batch"])
         elif "beta" in options["trial"]:
             trial = wavefunctions.uccsd_pt2_beta(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
             wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+            if "fast" in options["trial"]:
+                trial = wavefunctions.uccsd_pt2_beta_fast(norb, nelec, n_batch = options["n_batch"])
         else:
             trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
@@ -558,7 +562,7 @@ def run_lnoafqmc(options,nproc=None,
             mpi_prefix += f"-np {nproc} "
     # if  'cc' in options['trial'] and 'pt' in options['trial']:
     if 'pt2' in options['trial']:
-        script='ccsd_pt2/run_uafqmc_new.py'
+        script='ccsd_pt2/run_uafqmc.py'
     elif 'pt' in options['trial']:
         script='ccsd_pt/run_uafqmc.py'
     else:

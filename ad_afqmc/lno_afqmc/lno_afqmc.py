@@ -2,8 +2,9 @@ import os, h5py, pickle
 import numpy as np
 from jax import numpy as jnp
 from jax import random
+import opt_einsum as oe
 from pyscf.cc.ccsd import CCSD
-from pyscf import lib, ao2mo, df, mp
+from pyscf import lib, df, mp
 from pyscf.lno import lnoccsd
 from ad_afqmc import config, pyscf_interface
 from functools import partial
@@ -12,12 +13,12 @@ from collections.abc import Iterable
 print = partial(print, flush=True)
 from functools import reduce
 
-def solve_lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
+def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
 
     maskocc = mo_occ>1e-10
     nmo = mo_occ.size
 
-    orbfrzocc = mo_coeff[:,~maskact &  maskocc]
+    orbfrzocc = mo_coeff[:,~maskact &  maskocc] 
     orbactocc = mo_coeff[:, maskact &  maskocc]
     orbactvir = mo_coeff[:, maskact & ~maskocc]
     orbfrzvir = mo_coeff[:,~maskact & ~maskocc]
@@ -69,68 +70,30 @@ def solve_lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
 def get_veff(mf, dm):
     mol = mf.mol
     vj, vk = mf.get_jk(mol, dm, hermi=1)
-    return vj[0]+vj[1] - vk
+    return 2*vj - vk
 
-def h1e_uas(mf, mo_coeff, ncas, ncore):
+def h1e_ras(mf, mo_coeff, ncas, ncore):
     '''
-    effective one-electron integral for unrestricted active space
-    ncas = (ncas_a, ncas_b) size of active space
-    ncore = (ncore_a, ncore_b) number of core electrons
+    effective one-electron integral for restricted active space
+    ncas = nact_electron/2
+    ncore = ncore_electrons/2
     '''
-    # mf = mf.undo_df() ucasci undo DF
+    # note casci undo DF
 
-    mo_core =(mo_coeff[0][:,:ncore[0]], mo_coeff[1][:,:ncore[1]])
-    mo_cas = (mo_coeff[0][:,ncore[0]:ncore[0]+ncas[0]],
-              mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]])
+    mo_core = mo_coeff[:,:ncore]
+    mo_cas = mo_coeff[:,ncore:ncore+ncas]
 
     hcore = mf.get_hcore()
-    hcore = [hcore, hcore]
     energy_core = mf.energy_nuc()
-    if mo_core[0].size == 0 and mo_core[1].size == 0:
-        corevhf = (0,0)
+    if mo_core.size == 0:
+        corevhf = 0.
     else:
-        core_dm = (np.dot(mo_core[0], mo_core[0].T),
-                   np.dot(mo_core[1], mo_core[1].T))
+        core_dm = np.dot(mo_core, mo_core.T)
         corevhf = get_veff(mf, core_dm)
-        energy_core += np.einsum('ij,ji', core_dm[0], hcore[0])
-        energy_core += np.einsum('ij,ji', core_dm[1], hcore[1])
-        energy_core += np.einsum('ij,ji', core_dm[0], corevhf[0]) * .5
-        energy_core += np.einsum('ij,ji', core_dm[1], corevhf[1]) * .5
-    h1eff = (reduce(np.dot, (mo_cas[0].T, hcore[0]+corevhf[0], mo_cas[0])),
-             reduce(np.dot, (mo_cas[1].T, hcore[1]+corevhf[1], mo_cas[1])))
+        energy_core += 2 * lib.einsum('ij,ji', core_dm, hcore)
+        energy_core += lib.einsum('ij,ji', core_dm, corevhf)
+    h1eff = mo_cas.T @ (hcore+corevhf) @ mo_cas
     return h1eff, energy_core
-
-def prjmo(prj,s1e,mo):
-    # prj and reconstruct mo
-    # e.g. |B_p> = |A_q><A_q|B_p>
-    #            = C^A_mq C^A(T)_qn|m><n|s> C^B_sp
-    mo_rec = prj @ prj.T @ s1e @ mo
-    return mo_rec
-
-def common_las(mf, lno_coeff, ncas, ncore, torr=1e-5):
-    print("# Constracting common LAS that span both Alpha and Beta active space")
-    s1e = mf.get_ovlp()
-    lno_acta = lno_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
-    lno_actb = lno_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
-    lno_actaa = lno_coeff[0].T @ s1e @ lno_acta
-    lno_actba = lno_coeff[0].T @ s1e @ lno_actb
-    m = np.hstack([lno_actaa,lno_actba])
-    u,s,v = np.linalg.svd(m)
-    for idx in range(m.shape[1]):
-        prj = lno_coeff[0] @ u[:,:idx]
-        prj_acta = prjmo(prj,s1e,lno_actb)
-        prj_actb = prjmo(prj,s1e,lno_acta)
-        losa = abs(prj_acta-lno_actb).max()
-        losb = abs(prj_actb-lno_acta).max()
-        print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
-        if losa < torr and losb < torr:
-            break
-    print(f"# Minimum number of SVD orbitals to span both Alpha and Beta active space: {idx+1}")
-    # print(f"# Active space loss: ({losa:.2e}, {losb:.2e})")
-    clas_coeff = lno_coeff[0] @ u[:,:idx]
-    a2c = clas_coeff.T @ s1e @ lno_acta
-    b2c = clas_coeff.T @ s1e @ lno_actb
-    return clas_coeff, a2c, b2c
 
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                options,chol_cut=1e-5,
@@ -167,41 +130,38 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     ncas = nactorb
     ncore = nfrzocc
     nelec = nactocc*2
-    # h1e, enuc = h1e_uas(mf, mo_coeff, ncas, ncore)
-    from pyscf import mcscf
-    mc = mcscf.CASSCF(mf, ncas, nelec)
-    mc.mo_coeff = mo_coeff
-    mc.frozen = frozen
-    nelec = mc.nelecas
-    h1e, enuc = mc.get_h1eff()
+    h1e, enuc = h1e_ras(mf, mo_coeff, ncas, ncore)
+    mo_act = mo_coeff[:,actfrag]
+    # from pyscf import mcscf
+    # mc = mcscf.CASSCF(mf, ncas, nelec)
+    # mc.mo_coeff = mo_coeff
+    # mc.frozen = frozen
+    # nelec = mc.nelecas
+    # h1e, enuc = mc.get_h1eff()
 
     print('# Generating Cholesky Integrals')
 
     if getattr(mf, "with_df", None) is not None:
-        # decompose eri in MO to achieve linear scale
+        # decompose eri in MO to achieve linear scale over the Auxiliary-field
         print("# Composing AO ERIs from DF basis")
         chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
         chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
-        eri_ao_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df, optimize='optimal')
+        chol_df = lib.einsum('pr,grs,sq->gpq',mo_act.T,chol_df,mo_act)
+        eri_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df, optimize='optimal')
         print("# Composing active space MO ERIs from AO ERIs")
-        eri_mo = ao2mo.kernel(eri_ao_df,mo_coeff[:,actfrag],compact=False)
-        eri_mo = eri_mo.reshape(ncas**2,ncas**2)
+        # eri_mo = ao2mo.kernel(eri_ao_df,mo_coeff[:,actfrag],compact=False)
+        eri_df = eri_df.reshape(ncas**2,ncas**2)
         print("# Decomposing MO ERIs to Cholesky vectors")
         print(f"# Cholesky cutoff is: {chol_cut}")
-        chol = pyscf_interface.modified_cholesky(eri_mo,max_error=chol_cut)
+        chol = pyscf_interface.modified_cholesky(eri_df,max_error=chol_cut)
         chol = chol.reshape(-1,ncas,ncas)
     else:
         raise  NotImplementedError('Use DF Only!')
-        # eri_clas = ao2mo.kernel(mf.mol,clas_coeff,compact=False)
-        # chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-        # chol_clas = chol_clas.reshape((-1, nclas, nclas))
-        # chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
-        # chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
 
     print("# Finished calculating Cholesky integrals")
     print('# Size of the correlation space')
-    print(f'# Number of electrons: {nelec}')
+    print(f'# Number of electrons: ({nactocc},{nactocc})')
     print(f'# Number of basis functions: {ncas}')
     print(f'# Cholesky shape: {chol.shape}')
 
@@ -214,7 +174,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         h1e,
         h1e_mod,
         chol,
-        sum(nelec),
+        nelec,
         ncas,
         enuc,
         mf.e_tot,
@@ -272,14 +232,14 @@ def _prep_afqmc(option_file="options.bin",
     if options['use_gpu']:
         config.afqmc_config["use_gpu"] = True
 
-    config.setup_jax()
-    MPI = config.setup_comm()
-    comm = MPI.COMM_WORLD
-    size = comm.Get_size()
-    rank = comm.Get_rank()
+    # config.setup_jax()
+    # MPI = config.setup_comm()
+    # comm = MPI.COMM_WORLD
+    # size = comm.Get_size()
+    # rank = comm.Get_rank()
 
-    if rank == 0:
-        print(f"# Number of MPI ranks: {size}\n#")
+    # if rank == 0:
+    #     print(f"# Number of MPI ranks: {size}\n#")
 
     with h5py.File(chol_file, "r") as fh5:
         [nelec, nmo, nchol] = fh5["header"]
@@ -330,8 +290,7 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
         wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
         wave_data["mo_coeff"] = mo_coeff[:, :nocc]
-    elif options["trial"] == "ccsd_pt2_ad":
-        trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch = options["n_batch"])
+    elif "ccsd_pt2" in options["trial"]:
         from jax import scipy as jsp
         nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
@@ -341,31 +300,17 @@ def _prep_afqmc(option_file="options.bin",
         t1_full[:nocc, nocc:] = t1
         wave_data['exp_t1'] = jsp.linalg.expm(t1_full)
         wave_data['exp_mt1'] = jsp.linalg.expm(-t1_full)
-        # wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
-        wave_data["t2"] =  jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
-        wave_data["mo_coeff"] = mo_coeff[:, :nocc]
-        lt1 = jnp.einsum('ia,gja->gij', t1, chol[:, :nocc, nocc:])
-        e0t1orb = 2 * jnp.einsum('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1) \
-                    - jnp.einsum('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'])
-        ham_data['e0t1orb'] = e0t1orb
-    elif options["trial"] == "ccsd_pt2":
-        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
-        from jax import scipy as jsp
-        nocc = nelec_sp[0]
-        amplitudes = np.load(amp_file)
-        t1 = jnp.array(amplitudes["t1"])
-        t2 = jnp.array(amplitudes["t2"])
-        t1_full = np.zeros((norb, norb))
-        t1_full[:nocc, nocc:] = t1
-        wave_data['exp_t1'] = jsp.linalg.expm(t1_full)
-        wave_data['exp_mt1'] = jsp.linalg.expm(-t1_full)
-        # wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
         wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
         wave_data["mo_coeff"] = mo_coeff[:, :nocc]
         lt1 = jnp.einsum('ia,gja->gij', t1, chol[:, :nocc, nocc:])
         e0t1orb = 2 * jnp.einsum('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1) \
                     - jnp.einsum('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'])
         ham_data['e0t1orb'] = e0t1orb
+        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
+        if "fast" in options["trial"]:
+            trial = wavefunctions.ccsd_pt2_fast(norb, nelec_sp, n_batch = options["n_batch"])
+        if "ad" in options["trial"]:
+            trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch = options["n_batch"])
         
     if options["walker_type"] == "rhf":
         prop = propagation.propagator_restricted(
@@ -412,16 +357,16 @@ def _prep_afqmc(option_file="options.bin",
                 options["n_blocks"],
                 nchol,)
 
-    if rank == 0:
-        print(f"# norb: {norb}")
-        print(f"# nelec: {nelec}")
-        print("#")
-        for op in options:
-            if options[op] is not None:
-                print(f"# {op}: {options[op]}")
-        print("#")
+    # if rank == 0:
+    #     print(f"# norb: {norb}")
+    #     print(f"# nelec: {nelec}")
+    #     print("#")
+    #     for op in options:
+    #         if options[op] is not None:
+    #             print(f"# {op}: {options[op]}")
+    #     print("#")
 
-    return ham_data, prop, trial, wave_data, sampler, options, MPI
+    return ham_data, prop, trial, wave_data, sampler, options
 
 import os
 def run_lnoafqmc(options,nproc=None,
@@ -446,8 +391,7 @@ def run_lnoafqmc(options,nproc=None,
     # if  'cc' in options['trial'] and 'pt' in options['trial']:
     if 'pt2' in options['trial']:
         script='ccsd_pt2/run_afqmc.py'
-    elif 'pt' in options['trial']:
-        script='ccsd_pt/run_afqmc.py'
+
     else:
         raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
     
@@ -463,7 +407,7 @@ def run_lnoafqmc(options,nproc=None,
 
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
               nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
-              lno_type = ['1h']*2, run_frg_list = None, nproc = None):
+              lno_type = ['1h']*2, run_frg_list = None, nproc = None, ccsd_t = False):
     
     mlno = lnoccsd.LNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
@@ -499,7 +443,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     eorb_mp2_cc = [None] * nfrag
     # Loop over fragment
     for ifrag,loidx in enumerate(frag_lolist):
-        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1} ###########')
+        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag} ###########')
         if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
             orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
             lno_param = [
@@ -537,7 +481,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
         eorb_mp2_cc[ifrag], t1, t2, elcorr_t1 =\
-            solve_lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=True)
+            lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
         
         prjlo = uocc_loc @ uocc_loc.T.conj()
         # print(prjlo)
@@ -562,19 +506,13 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     mmp = mp.MP2(mf, frozen=nfrozen)
     emp2_tot = mmp.kernel()[0]
 
-    # if 'cc' in options['trial']:
-    # eorb_hf = np.empty(nfrag,dtype='float64')
-    # eorb_hf_err = np.empty(nfrag,dtype='float64')
     eorb_pt = np.empty(nfrag,dtype='float64')
     eorb_pt_err = np.empty(nfrag,dtype='float64')
     run_time = np.empty(nfrag,dtype='float64')
     for n, i in enumerate(run_frg_list):
         with open(f"lnoafqmc.out{i+1}", "r") as readfile:
             for line in readfile:
-                # if "AFQMC/HF Orbital <H-E0>" in line:
-                #     eorb_hf[n] = float(line.split()[-3])
-                #     eorb_hf_err[n] = float(line.split()[-1])
-                if "AFQMC/CCSD_PT2 Orbital Ept (direct observation):" in line:
+                if "Ept (direct observation):" in line:
                     eorb_pt[n] = float(line.split()[-3])
                     eorb_pt_err[n] = float(line.split()[-1])
                 if "total run time" in line:
@@ -583,13 +521,11 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     nelec_list = np.array(nelec_list)
     norb_list = np.array(norb_list)
     eorb_mp2_cc = np.array(eorb_mp2_cc)
-    nelec = (np.mean(nelec_list[:,0]),np.mean(nelec_list[:,1]))
+    nelec = np.mean(nelec_list)
     norb = np.mean(norb_list)
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
     e_ccsd_pt = sum(eorb_mp2_cc[:,2])
-    # e_afqmc_hf = sum(eorb_hf)
-    # e_afqmc_hf_err = np.sqrt(sum(eorb_hf_err**2))
     e_afqmc_pt = sum(eorb_pt)
     e_afqmc_pt_err = np.sqrt(sum(eorb_pt_err**2))
     tot_time = sum(run_time)
@@ -601,16 +537,14 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         for n, i in enumerate(run_frg_list):
             print(f'{i+1:3d}  '
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
-                    # f'{eorb_hf[n]:.6f} +/- {eorb_hf_err[n]:.6f}  '
                     f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
         print(f'# LNO Thresh: {lno_thresh}',file=out_file)
-        print(f'# LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)
+        print(f'# LNO Average Number of Electrons: {nelec:.1f}',file=out_file)
         print(f'# LNO Average Number of Basis: {norb:.1f}',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
         print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
         print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
-        # print(f'# LNO-AFQMC/HF Energy: {e_afqmc_hf:.6f} +/- {e_afqmc_hf_err:.6f}',file=out_file)
         print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
         print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
         print(f"# total run time: {tot_time:.2f}",file=out_file)

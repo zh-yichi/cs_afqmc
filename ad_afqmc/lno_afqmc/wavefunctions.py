@@ -1682,7 +1682,7 @@ class ccsd_pt2(rhf):
 
 
     @partial(jit, static_argnums=0)
-    def _t2eorb_tc_new(self, walker, ham_data, wave_data):
+    def _t2eorb_tc(self, walker, ham_data, wave_data):
         nocc, norb = self.nelec[0], self.norb
         t2 = wave_data["t2"]
         green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
@@ -1763,9 +1763,7 @@ class ccsd_pt2(rhf):
         o_bar = jnp.linalg.det(walker_bar[:walker_bar.shape[1], :]) ** 2
         t1olp = o_bar/o0 # <exp(T1)HF|walker>/<HF|walker>
         eorb = self._calc_eorb_bar(walker_bar, ham_data, wave_data)
-        t2eorb, t2orb, e12bar = self._t2eorb_tc_new(walker_bar, ham_data, wave_data)
-        # t2eorb, t2orb = self._t2e_orb(walker_bar, ham_data, wave_data)
-        # e12bar = self._calc_energy_bar(walker_bar, ham_data, wave_data)
+        t2eorb, t2orb, e12bar = self._t2eorb_tc(walker_bar, ham_data, wave_data)
 
         return e0, t1olp, eorb, t2eorb, t2orb, e12bar
 
@@ -1810,6 +1808,84 @@ class ccsd_pt2(rhf):
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
 
+
+@dataclass
+class ccsd_pt2_fast(ccsd_pt2):
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+
+    @partial(jit, static_argnums=0)
+    def _t2eorb_tc(self, walker, ham_data, wave_data):
+        nocc, norb = self.nelec[0], self.norb
+        t2 = wave_data["t2"]
+        green = (walker.dot(jnp.linalg.inv(walker[:nocc, :]))).T
+        green_occ = green[:, nocc:]
+        greenp = jnp.vstack((green_occ, -jnp.eye(norb - nocc)))
+
+        chol = ham_data["chol_bar"]
+        rot_chol = chol[:, :nocc, :]
+        h1 = ham_data["h1_bar"]
+
+        # 1 body energy
+        hg = oe.contract("pi,pi->", h1[:nocc, :], green, backend="jax")
+        e1_0 = 2 * hg
+
+        # double excitations
+        # t_iajb =! t_jbia since the i axis is projected onto LNO !!!
+        t2g_c_1 = oe.contract("iajb,ia->jb", t2, green_occ, backend="jax")
+        t2g_c_2 = oe.contract("iajb,jb->ia", t2, green_occ, backend="jax")
+        t2g_e_1 = oe.contract("iajb,ib->ja", t2, green_occ, backend="jax")
+        t2g_e_2 = oe.contract("iajb,ja->ib", t2, green_occ, backend="jax")
+        t2_green_c_1 = oe.contract("pb,jb,jq->pq", greenp, t2g_c_1, green, backend="jax") # t_iajb G_ia G_jq Gp_pb (-)
+        t2_green_c_2 = oe.contract("pa,ia,iq->pq", greenp, t2g_c_2, green, backend="jax") # t_iajb G_jb G_iq Gp_pa (-)
+        t2_green_e_1 = oe.contract("pa,ja,jq->pq", greenp, t2g_e_1, green, backend="jax") # t_iajb G_ib G_jq Gp_pa (+)
+        t2_green_e_2 = oe.contract("pb,ib,iq->pq", greenp, t2g_e_2, green, backend="jax") # t_iajb G_ja G_iq Gp_pb (+)
+        t2g_c = t2g_c_1 + t2g_c_2
+        t2g_e = t2g_e_1 + t2g_e_2
+        t2_green_c = t2_green_c_1 + t2_green_c_2
+        t2_green_e = t2_green_e_1 + t2_green_e_2
+        t2_green = t2_green_c - t2_green_e * 0.5
+        t2g = t2g_c - t2g_e * 0.5
+        gt2g = oe.contract("ia,ia->", t2g, green_occ, backend="jax")
+        e1_2_1 = 2 * hg * gt2g
+        e1_2_2 = -2 * oe.contract("pq,pq->", h1, t2_green, backend="jax")
+        e1_2 = e1_2_1 + e1_2_2
+        
+        gl = oe.contract("ir,gqr->giq", green, chol, backend="jax")
+        gl_c = oe.contract("gii->g", gl[:,:,:nocc], backend="jax")
+        e2_0_c = oe.contract("g,g->", gl_c, gl_c, backend="jax") * 2
+        e2_0_e = -oe.contract("gij,gji->",gl[:,:,:nocc], gl[:,:,:nocc], backend="jax")
+        e2_0 = e2_0_c + e2_0_e
+
+        lt2g = oe.contract("gpr,pr->g", chol, t2_green, backend="jax")
+        e2_2_2_1 = -oe.contract("g,g->", lt2g, gl_c, backend="jax")
+
+        lt2_green = oe.contract("gir,qr->giq", rot_chol, t2_green, backend="jax")
+        # t_iajb |G_ia G_js Gp_pb| G_qr L_pr L_qs
+        e2_2_2_2 = 0.5 * oe.contract("giq,giq->", gl, lt2_green, backend="jax")
+        # t_iajb G_ir G_js Gp_pa Gp_qb L_pr L_qs type
+        glgp = oe.contract("gir,rb->gib", gl, greenp, backend="jax")
+        # glgp_t2_c = oe.contract("iajb,gia->gjb", glgp, t2, backend="jax")
+        l2t2_c = oe.contract("gia,iajb,gjb->", glgp, t2, glgp, backend="jax")
+        l2t2_e = oe.contract("gib,iajb,gja->", glgp, t2, glgp, backend="jax")
+        e2_2_3 = 2*l2t2_c - l2t2_e
+
+        e2_2_1 = e2_0 * gt2g
+        e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        t2orb = gt2g # <psi|t2|phi>/<psi|phi>
+        e12orb = e1_0 + e2_0 # <psi|(h1+h2)|phi>/<psi|phi>
+        t2eorb = e1_2 + e2_2 # <psi|t2(h1+h2)|phi>/<psi|phi>
+
+        return t2eorb, t2orb, e12orb
+
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+    
 
 @dataclass
 class uccsd_pt_ad(uhf):

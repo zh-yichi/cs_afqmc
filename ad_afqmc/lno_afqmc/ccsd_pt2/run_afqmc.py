@@ -6,7 +6,7 @@ from jax import random
 from functools import partial
 from ad_afqmc import config, stat_utils
 from ad_afqmc.lno_afqmc import sampling
-from ad_afqmc.lno_afqmc.ccsd_pt2 import lno_afqmc
+from ad_afqmc.lno_afqmc import lno_afqmc
 
 from ad_afqmc import config
 
@@ -23,16 +23,20 @@ MPI = config.setup_comm()
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
+init_time = time.time()
 
 print = partial(print, flush=True)
 
-ham_data, prop, trial, wave_data, sampler, options, _ = (
+ham_data, prop, trial, wave_data, sampler, options = (
     lno_afqmc._prep_afqmc())
 
-init_time = time.time()
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
+if rank == 0:
+    print(f"# norb: {trial.norb}")
+    print(f"# nelec: {trial.nelec}")
+    print("#")
+    for op in options:
+        if options[op] is not None:
+            print(f"# {op}: {options[op]}")
 
 ### initialize propagation
 seed = options["seed"]
@@ -54,10 +58,7 @@ prop_data["n_killed_walkers"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 e_init = prop_data["e_estimate"]
 h0 = ham_data['h0']
-# e0_bar = trial._calc_energy_bar(prop_data['walkers'][0], ham_data, wave_data)
-# ham_data['e0_bar'] = jnp.real(h0 + e0_bar)
-# if rank == 0:
-#     print(f"# <Hbar> = {ham_data['e0_bar']:.6f}, <H> = {e_init:.6f}")
+
 e0, t1olp, eorb, t2eorb, t2orb, e0bar \
     = trial._calc_eorb_pt2(prop_data['walkers'][0], ham_data, wave_data)
 e0 = jnp.real(e0)
@@ -72,56 +73,33 @@ comm.Barrier()
 if rank == 0:
     print('# \n')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
-    print(f"# Initial energy {e_init:.6f}")
-    print("# All brakets are measured with HF Trial")
+    print(f"# Initial orbital_pt energy: {eorb_pt:.6f}")
+    print("# Orbital energis are not calculated in equilibration sweeps!")
     print("# Equilibration sweeps:")
-    print("#   Iter \t Energy_hf \t <T1> \t <Hbar>_orb \t "
-          "   <T2Hbar>_orb \t <T2>_orb \t <Hbar> \t Ept_orb \t time")
-    print(f"  {0:5d} \t {e0:.6f} \t {t1olp:.6f} \t {eorb:.6f} \t {t2eorb:.6f} \t" 
-          f"  {t2orb:.6f} \t {h0+e0bar:.6f} \t {eorb_pt:.6f} \t "
-          f"  {time.time() - init_time:.2f}")
+    print("#   Iter \t Energy_hf  \t time")
+    print(f"  {0:5d} \t {e0:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
-sampler_eq = sampling.sampler_pt2(
+sampler_eq = sampling.sampler_eq(
     n_prop_steps=50, n_ene_blocks=5, n_sr_blocks=10, n_chol = sampler.n_chol)
 for n in range(1,options["n_eql"]+1):
-    prop_data, (wt, e0, eorb, t2eorb, t2orb, e0bar, t1olp) = \
+    prop_data, (wt, e0) = \
         sampler_eq.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
 
     wt = np.array([wt], dtype="float64")
     e0 = np.array([e0], dtype="float64")
-    eorb = np.array([eorb], dtype="float64")
-    t2eorb = np.array([t2eorb], dtype="float64")
-    t2orb = np.array([t2orb], dtype="float64")
-    e0bar = np.array([e0bar], dtype="float64")
-    t1olp = np.array([t1olp], dtype="float64")
 
     gather_wt = None
     gather_e0 = None
-    gather_eorb = None
-    gather_t2eorb = None
-    gather_t2orb = None
-    gather_e0bar = None
-    gather_t1olp = None
 
     comm.Barrier()
     if rank == 0:
         gather_wt = np.zeros(size, dtype="float64")
         gather_e0 = np.zeros(size, dtype="float64")
-        gather_eorb = np.zeros(size, dtype="float64")
-        gather_t2eorb = np.zeros(size, dtype="float64")
-        gather_t2orb = np.zeros(size, dtype="float64")
-        gather_e0bar = np.zeros(size, dtype="float64")
-        gather_t1olp = np.zeros(size, dtype="float64")
     comm.Barrier()
 
     comm.Gather(wt, gather_wt, root=0)
     comm.Gather(e0, gather_e0, root=0)
-    comm.Gather(eorb, gather_eorb, root=0)
-    comm.Gather(t2eorb, gather_t2eorb, root=0)
-    comm.Gather(t2orb, gather_t2orb, root=0)
-    comm.Gather(e0bar, gather_e0bar, root=0)
-    comm.Gather(t1olp, gather_t1olp, root=0)
 
     comm.Barrier()
     if rank == 0:
@@ -129,11 +107,6 @@ for n in range(1,options["n_eql"]+1):
 
         wt= np.sum(gather_wt)
         e0 = np.sum(gather_wt * gather_e0) / wt
-        eorb = np.sum(gather_wt * gather_eorb) / wt
-        t2eorb = np.sum(gather_wt * gather_t2eorb) / wt
-        t2orb = np.sum(gather_wt * gather_t2orb) / wt
-        e0bar = np.sum(gather_wt * gather_e0bar) / wt
-        t1olp = np.sum(gather_wt * gather_t1olp) / wt
     comm.Barrier()
 
     comm.Bcast(wt, root=0)
@@ -153,17 +126,13 @@ for n in range(1,options["n_eql"]+1):
 
     comm.Barrier()
     if rank == 0:
-        print(f"  {n:5d} \t {e0:.6f} \t {t1olp:.6f} \t {eorb:.6f} \t"
-              f"  {t2eorb:.6f} \t {t2orb:.6f} \t {h0+e0bar:.6f} \t {eorb_pt:.6f} \t"
-              f"  {time.time() - init_time:.2f} ")
+        print(f"  {n:5d} \t {e0:.6f} \t {time.time() - init_time:.2f} ")
     comm.Barrier()
 
 comm.Barrier()
 if rank == 0:
     print("#\n Sampling sweeps:")
-    print("#  Iter   Energy_hf   error   <T1>   error"
-          "   <Hbar>_orb    error   <THbar>_orb   error   <T>_orb   error "
-          "   <Hbar> Ept_orb   error   time ")
+    print("#  Iter \t Energy_hf \t error \t Ept_orb \t error \t \t time ")
 comm.Barrier()
 
 glb_wt = None
@@ -257,8 +226,7 @@ for n in range(sampler.n_blocks):
 
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
-    prop_data["e_estimate"] = \
-        0.9 * prop_data["e_estimate"] + 0.1 * e0
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * e0
     
     comm.Barrier()
     if rank == 0:
@@ -279,16 +247,6 @@ for n in range(sampler.n_blocks):
             
             e0_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
                          (glb_e0[:(n+1)*size] - e0)**2) / wt / (n+1)*size)
-            eorb_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
-                        (glb_eorb[:(n+1)*size] - eorb)**2) / wt / (n+1)*size)
-            t2eorb_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
-                         (glb_t2eorb[:(n+1)*size] - t2eorb)**2) / wt / (n+1)*size)
-            t2orb_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
-                        (glb_t2orb[:(n+1)*size] - t2orb)**2) / wt / (n+1)*size)
-            e0bar_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
-                        (glb_e0bar[:(n+1)*size] - e0bar)**2) / wt / (n+1)*size)
-            t1olp_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
-                        (glb_t1olp[:(n+1)*size] - t1olp)**2) / wt / (n+1)*size)
             
             eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
             # (p_eorb,p_t2eorb,p_t2orb,p_t2orb,p_t1olp)
@@ -302,11 +260,6 @@ for n in range(sampler.n_blocks):
             eorb_pt_err[0] = np.sqrt(dE @ cov @ dE)/np.sqrt((n+1)*size)
             
             print(f"  {n:4d}  {e0:.6f}  {e0_err:.6f}"
-                  f"  {t1olp:.6f}  {t1olp_err:.6f}"
-                  f"  {eorb:.6f}  {eorb_err:.6f}"
-                  f"  {t2eorb:.6f}  {t2eorb_err:.6f}"
-                  f"  {t2orb:.6f}  {t2orb_err:.6f}"
-                  f"  {h0+e0bar:.6f}  {e0bar_err:.6f}"
                   f"  {eorb_pt:.6f}  {eorb_pt_err[0]:.6f}"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
@@ -352,11 +305,6 @@ if rank == 0:
     t1olp = np.sum(glb_wt * glb_t1olp) / wt
 
     e0_err = np.sqrt(np.sum(glb_wt * (glb_e0 - e0)**2) / wt / nsamples)
-    eorb_err = np.sqrt(np.sum(glb_wt * (glb_eorb - eorb)**2) / wt / nsamples)
-    t2eorb_err = np.sqrt(np.sum(glb_wt * (glb_t2eorb - t2eorb)**2) / wt / nsamples)
-    t2orb_err = np.sqrt(np.sum(glb_wt * (glb_t2orb - t2orb)**2) / wt / nsamples)
-    e0bar_err = np.sqrt(np.sum(glb_wt * (glb_e0bar - e0bar)**2) / wt / nsamples)
-    t1olp_err = np.sqrt(np.sum(glb_wt * (glb_t1olp - t1olp)**2) / wt / nsamples)
 
     eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
     # (p_eorb,p_t2eorb,p_t2orb,p_t2orb,p_t1olp)
@@ -377,12 +325,7 @@ if rank == 0:
 
     print(f"# Final Results")
     print(f"# AFQMC/HF Energy: {e0:.6f} +/- {e0_err:.6f}")
-    print(f"# AFQMC/CCSD_PT2 <T1>: {t1olp:.6f} +/- {t1olp_err:.6f}")
-    print(f"# AFQMC/CCSD_PT2 Orbital <Hbar>: {eorb:.6f} +/- {eorb_err:.6f}")
-    print(f"# AFQMC/CCSD_PT2 Orbital <T2H>: {t2eorb:.6f} +/- {t2eorb_err:.6f}")
-    print(f"# AFQMC/CCSD_PT2 Orbital <T2>: {t2orb:.6f} +/- {t2orb_err:.6f}")
-    print(f"# AFQMC/CCSD_PT2 Orbital <Hbar>: {h0+e0bar:.6f} +/- {e0bar_err:.6f}")
-    print(f"# AFQMC/CCSD_PT2 Orbital Ept: {eorb_pt:.6f} +/- {eorb_pt_err:.6f}")
+    print(f"# AFQMC/CCSD_PT2 Orbital Ept (covariance): {eorb_pt:.6f} +/- {eorb_pt_err:.6f}")
     print(f"# AFQMC/CCSD_PT2 Orbital Ept (direct observation): {eorb_pt_do:.6f} +/- {eorb_pt_do_err:.6f}")
     print(f"# total run time: {time.time() - init_time:.2f}")
 

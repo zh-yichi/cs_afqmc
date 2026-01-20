@@ -1,3 +1,0 @@
-# lno-thresh(occ,vir)   mp2_corr  ccsd_corr  afqmc_corr   err   mp2_cr nelec_avg   nelec_max    norb_avg   norb_max    run_time
- (1.00e-07,1.00e-08) 	 -0.062486 	 0.000000 	 -0.086022 	 0.005755 	 0.00000001  6.00 	 6 	 6.00  	 6 	 42.23
-# use norhf trial wavefunction

@@ -393,6 +393,7 @@ def _prep_afqmc(options=None,
         trial = wavefunctions_restricted.ccd_pt(norb, nelec_sp, n_batch=options["n_batch"])
 
     elif options["trial"] == "ccsd_pt2":
+        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
         nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
@@ -402,7 +403,6 @@ def _prep_afqmc(options=None,
         mo_t = trial.thouless_trans(t1)[:,:nocc]
         wave_data['mo_t'] = mo_t
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
-        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch=options["n_batch"])
 
     elif options["trial"] == "ccsd_pt2_ad":
         trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch=options["n_batch"])

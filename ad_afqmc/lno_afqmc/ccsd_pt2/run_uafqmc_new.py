@@ -22,16 +22,12 @@ MPI = config.setup_comm()
 comm = MPI.COMM_WORLD
 size = comm.Get_size()
 rank = comm.Get_rank()
+init_time = time.time()
 
 print = partial(print, flush=True)
 
 ham_data, prop, trial, wave_data, sampler, options, _ = (
     ulno_afqmc._prep_afqmc())
-
-init_time = time.time()
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-size = comm.Get_size()
 
 ### initialize propagation
 seed = options["seed"]
