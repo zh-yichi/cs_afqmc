@@ -4,11 +4,12 @@ from jax import numpy as jnp
 from jax import random
 from pyscf.cc.ccsd import CCSD
 from pyscf.cc.uccsd import UCCSD
-from pyscf import lib, ao2mo, df, mp
+from pyscf import lib, df, mp
 from pyscf.lno import ulnoccsd
 from ad_afqmc import config, pyscf_interface
 from functools import partial
-from ad_afqmc.lno_afqmc import wavefunctions, propagation, sampling
+from ad_afqmc.lno_afqmc import propagation, sampling
+from ad_afqmc.lno_afqmc import wavefunctions_unrestreicted as ulno_wavefunctions
 from collections.abc import Iterable
 print = partial(print, flush=True)
 from functools import reduce
@@ -347,17 +348,17 @@ def _prep_afqmc(option_file="options.bin",
     options["n_batch"] = options.get("n_batch", 1)
     options['use_gpu'] = options.get("use_gpu", True)
 
-    if options['use_gpu']:
-        config.afqmc_config["use_gpu"] = True
+    # if options['use_gpu']:
+    #     config.afqmc_config["use_gpu"] = True
 
-    config.setup_jax()
-    MPI = config.setup_comm()
-    comm = MPI.COMM_WORLD
-    size = comm.Get_size()
-    rank = comm.Get_rank()
+    # config.setup_jax()
+    # MPI = config.setup_comm()
+    # comm = MPI.COMM_WORLD
+    # size = comm.Get_size()
+    # rank = comm.Get_rank()
 
-    if rank == 0:
-        print(f"# Number of MPI ranks: {size}\n#")
+    # if rank == 0:
+    #     print(f"# Number of MPI ranks: {size}\n#")
 
     with h5py.File(chol_file, "r") as fh5:
         [nelec_a,nelec_b,nmo_a,nmo_b,nchol] = fh5["header"]
@@ -400,9 +401,9 @@ def _prep_afqmc(option_file="options.bin",
         ]
 
     if options["trial"] == "uhf":
-        trial = wavefunctions.uhf(norb, nelec, n_batch=options["n_batch"])
+        trial = ulno_wavefunctions.uhf(norb, nelec, n_batch=options["n_batch"])
     elif options["trial"] == "uccsd_pt_ad":
-        trial = wavefunctions.uccsd_pt_ad(norb, nelec, n_batch = options["n_batch"])
+        trial = ulno_wavefunctions.uccsd_pt_ad(norb, nelec, n_batch = options["n_batch"])
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
         t1b = jnp.array(amplitudes["t1b"])
@@ -417,7 +418,7 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
         wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
     elif options["trial"] == "uccsd_pt":
-        trial = wavefunctions.uccsd_pt(norb, nelec, n_batch = options["n_batch"])
+        trial = ulno_wavefunctions.uccsd_pt(norb, nelec, n_batch = options["n_batch"])
         amplitudes = np.load(amp_file)
         t1a = jnp.array(amplitudes["t1a"])
         t1b = jnp.array(amplitudes["t1b"])
@@ -460,48 +461,32 @@ def _prep_afqmc(option_file="options.bin",
                     - jnp.einsum('gij,gjk,ik->',lt1b, lt1b, prjb)) * 0.5
         ham_data['e0t1orb'] = e0t1orb_aa + e0t1orb_ab + e0t1orb_ba + e0t1orb_bb
         if "ad" in options["trial"]:
-            trial = wavefunctions.uccsd_pt2_ad(norb, nelec, n_batch = options["n_batch"])
+            trial = ulno_wavefunctions.uccsd_pt2_ad(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
             wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
             wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
             wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
         elif "alpha" in options["trial"]:
-            trial = wavefunctions.uccsd_pt2_alpha(norb, nelec, n_batch = options["n_batch"])
+            trial = ulno_wavefunctions.uccsd_pt2_alpha(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
             wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
             if "fast" in options["trial"]:
-                trial = wavefunctions.uccsd_pt2_alpha_fast(norb, nelec, n_batch = options["n_batch"])
+                trial = ulno_wavefunctions.uccsd_pt2_alpha_fast(norb, nelec, n_batch = options["n_batch"])
         elif "beta" in options["trial"]:
-            trial = wavefunctions.uccsd_pt2_beta(norb, nelec, n_batch = options["n_batch"])
+            trial = ulno_wavefunctions.uccsd_pt2_beta(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
             wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
             if "fast" in options["trial"]:
-                trial = wavefunctions.uccsd_pt2_beta_fast(norb, nelec, n_batch = options["n_batch"])
+                trial = ulno_wavefunctions.uccsd_pt2_beta_fast(norb, nelec, n_batch = options["n_batch"])
         else:
-            trial = wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
+            trial = ulno_wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
             wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
             wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
             wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
 
-    if options["walker_type"] == "rhf":
-        prop = propagation.propagator_restricted(
-            options["dt"], 
-            options["n_walkers"], 
-            options["n_exp_terms"],
-            options["n_batch"]
-        )
-
-    elif options["walker_type"] == "uhf":
-        if options["free_projection"]:
-            prop = propagation.propagator_unrestricted(
-                options["dt"],
-                options["n_walkers"],
-                10,
-                n_batch=options["n_batch"],
-            )
-        else:
-            prop = propagation.propagator_unrestricted(
+    if options["walker_type"] == "uhf":
+        prop = propagation.propagator_unrestricted(
                 options["dt"],
                 options["n_walkers"],
                 n_batch=options["n_batch"],
@@ -529,16 +514,7 @@ def _prep_afqmc(option_file="options.bin",
                 options["n_blocks"],
                 nchol,)
 
-    if rank == 0:
-        print(f"# norb: {norb}")
-        print(f"# nelec: {nelec}")
-        print("#")
-        for op in options:
-            if options[op] is not None:
-                print(f"# {op}: {options[op]}")
-        print("#")
-
-    return ham_data, prop, trial, wave_data, sampler, options, MPI
+    return ham_data, prop, trial, wave_data, sampler, options
 
 import os
 def run_lnoafqmc(options,nproc=None,
@@ -720,7 +696,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     norb = (np.mean(norb_list[:,0]),np.mean(norb_list[:,1]))
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
-    e_ccsd_pt = e_ccsd + sum(eorb_mp2_cc[:,2])
+    e_ccsd_pt = sum(eorb_mp2_cc[:,2])
     e_afqmc_pt2 = sum(eorb_pt2)
     e_afqmc_pt2_err = np.sqrt(sum(eorb_pt2_err**2))
     tot_time = sum(run_time)
@@ -734,7 +710,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
                     f'{eorb_pt2[n]:.6f} +/- {eorb_pt2_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
-        print(f'# LNO Thresh: {lno_thresh}',file=out_file)
+        print(f'# LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)
         print(f'# LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)
         print(f'# LNO Average Number of Basis: ({norb[0]:.1f},{norb[1]:.1f})',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)

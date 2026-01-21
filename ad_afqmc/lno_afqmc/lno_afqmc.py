@@ -8,7 +8,8 @@ from pyscf import lib, df, mp
 from pyscf.lno import lnoccsd
 from ad_afqmc import config, pyscf_interface
 from functools import partial
-from ad_afqmc.lno_afqmc import wavefunctions, propagation, sampling
+from ad_afqmc.lno_afqmc import propagation, sampling
+from ad_afqmc.lno_afqmc import wavefunctions_restricted as lno_wavefunctions
 from collections.abc import Iterable
 print = partial(print, flush=True)
 from functools import reduce
@@ -229,18 +230,6 @@ def _prep_afqmc(option_file="options.bin",
     options["ene0"] = options.get("ene0", 0.0)
     options["n_batch"] = options.get("n_batch", 1)
 
-    if options['use_gpu']:
-        config.afqmc_config["use_gpu"] = True
-
-    # config.setup_jax()
-    # MPI = config.setup_comm()
-    # comm = MPI.COMM_WORLD
-    # size = comm.Get_size()
-    # rank = comm.Get_rank()
-
-    # if rank == 0:
-    #     print(f"# Number of MPI ranks: {size}\n#")
-
     with h5py.File(chol_file, "r") as fh5:
         [nelec, nmo, nchol] = fh5["header"]
         h0 = jnp.array(fh5.get("energy_core"))
@@ -272,10 +261,10 @@ def _prep_afqmc(option_file="options.bin",
     mo_coeff = jnp.array(np.eye(nmo))
 
     if options["trial"] == "rhf":
-        trial = wavefunctions.rhf(norb, nelec_sp, n_batch=options["n_batch"])
+        trial = lno_wavefunctions.rhf(norb, nelec_sp, n_batch=options["n_batch"])
         wave_data["mo_coeff"] = mo_coeff[:, : nelec_sp[0]]
     elif options["trial"] == "ccsd_pt_ad":
-        trial = wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
+        trial = lno_wavefunctions.ccsd_pt_ad(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
@@ -283,7 +272,7 @@ def _prep_afqmc(option_file="options.bin",
         wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,prj)
         wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,prj)
     elif options["trial"] == "ccsd_pt":
-        trial = wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
+        trial = lno_wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
@@ -306,11 +295,11 @@ def _prep_afqmc(option_file="options.bin",
         e0t1orb = 2 * jnp.einsum('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1) \
                     - jnp.einsum('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'])
         ham_data['e0t1orb'] = e0t1orb
-        trial = wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
+        trial = lno_wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
         if "fast" in options["trial"]:
-            trial = wavefunctions.ccsd_pt2_fast(norb, nelec_sp, n_batch = options["n_batch"])
+            trial = lno_wavefunctions.ccsd_pt2_fast(norb, nelec_sp, n_batch = options["n_batch"])
         if "ad" in options["trial"]:
-            trial = wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch = options["n_batch"])
+            trial = lno_wavefunctions.ccsd_pt2_ad(norb, nelec_sp, n_batch = options["n_batch"])
         
     if options["walker_type"] == "rhf":
         prop = propagation.propagator_restricted(
@@ -320,20 +309,6 @@ def _prep_afqmc(option_file="options.bin",
             options["n_batch"]
         )
 
-    elif options["walker_type"] == "uhf":
-        if options["free_projection"]:
-            prop = propagation.propagator_unrestricted(
-                options["dt"],
-                options["n_walkers"],
-                10,
-                n_batch=options["n_batch"],
-            )
-        else:
-            prop = propagation.propagator_unrestricted(
-                options["dt"],
-                options["n_walkers"],
-                n_batch=options["n_batch"],
-            )
     if  'pt' in options['trial']:
         if '2' in options['trial']:
             sampler = sampling.sampler_pt2(
@@ -356,15 +331,6 @@ def _prep_afqmc(option_file="options.bin",
                 options["n_sr_blocks"],
                 options["n_blocks"],
                 nchol,)
-
-    # if rank == 0:
-    #     print(f"# norb: {norb}")
-    #     print(f"# nelec: {nelec}")
-    #     print("#")
-    #     for op in options:
-    #         if options[op] is not None:
-    #             print(f"# {op}: {options[op]}")
-    #     print("#")
 
     return ham_data, prop, trial, wave_data, sampler, options
 
@@ -539,7 +505,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
                     f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
-        print(f'# LNO Thresh: {lno_thresh}',file=out_file)
+        print(f'# LNO Thresh: ({lno_thresh[0]:.2e,},{lno_thresh[1]:.2e})',file=out_file)
         print(f'# LNO Average Number of Electrons: {nelec:.1f}',file=out_file)
         print(f'# LNO Average Number of Basis: {norb:.1f}',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)

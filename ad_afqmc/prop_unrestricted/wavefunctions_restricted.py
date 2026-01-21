@@ -1,16 +1,13 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
-from functools import partial, singledispatchmethod
-from typing import Any, List, Sequence, Tuple, Union
+from functools import partial
+from typing import Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
-import jax.scipy as jsp
 import numpy as np
 from jax import jit, jvp, lax, vmap
 import opt_einsum as oe
-
-from ad_afqmc import linalg_utils
 
 
 class wave_function_restricted(ABC):
@@ -298,41 +295,6 @@ class rhf(wave_function_restricted):
     def _calc_rdm1(self, wave_data: dict) -> jax.Array:
         rdm1 = jnp.array([wave_data["mo_coeff"] @ wave_data["mo_coeff"].T] * 2)
         return rdm1
-
-    @partial(jit, static_argnums=0)
-    def optimize(self, ham_data: dict, wave_data: dict) -> dict:
-        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        h2 = ham_data["chol"]
-        h2 = h2.reshape((h2.shape[0], h1.shape[0], h1.shape[0]))
-        nelec = self.nelec[0]
-        h1 = (h1 + h1.T) / 2.0
-
-        def scanned_fun(carry, x):
-            dm = carry
-            f = oe.contract("gij,ik->gjk", h2, dm, backend="jax")
-            c = vmap(jnp.trace)(f)
-            vj = oe.contract("g,gij->ij", c, h2, backend="jax")
-            vk = oe.contract("glj,gjk->lk", f, h2, backend="jax")
-            vhf = vj - 0.5 * vk
-            fock = h1 + vhf
-            mo_energy, mo_coeff = linalg_utils._eigh(fock)
-            idx = jnp.argmax(abs(mo_coeff.real), axis=0)
-            mo_coeff = jnp.where(
-                mo_coeff[idx, jnp.arange(len(mo_energy))].real < 0, -mo_coeff, mo_coeff
-            )
-            e_idx = jnp.argsort(mo_energy)
-            nmo = mo_energy.size
-            mo_occ = jnp.zeros(nmo)
-            nocc = nelec
-            mo_occ = mo_occ.at[e_idx[:nocc]].set(2)
-            mocc = mo_coeff[:, jnp.nonzero(mo_occ, size=nocc)[0]]
-            dm = (mocc * mo_occ[jnp.nonzero(mo_occ, size=nocc)[0]]).dot(mocc.T)
-            return dm, mo_coeff
-
-        dm0 = 2 * wave_data["mo_coeff"] @ wave_data["mo_coeff"].T.conj()
-        _, mo_coeff = lax.scan(scanned_fun, dm0, None, length=self.n_opt_iter)
-        wave_data["mo_coeff"] = mo_coeff[-1][:, :nelec]
-        return wave_data
 
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:

@@ -259,8 +259,8 @@ for n in range(sampler.n_blocks):
                           glb_t1olp[:(n+1)*size]])
             eorb_pt_err[0] = np.sqrt(dE @ cov @ dE)/np.sqrt((n+1)*size)
             
-            print(f"  {n:4d}  {e0:.6f}  {e0_err:.6f}"
-                  f"  {eorb_pt:.6f}  {eorb_pt_err[0]:.6f}"
+            print(f"  {n:4d} \t \t {e0:.6f} \t {e0_err:.6f} \t"
+                  f"  {eorb_pt:.6f} \t {eorb_pt_err[0]:.6f} \t"
                   f"  {time.time() - init_time:.2f}")
         comm.Barrier()
         
