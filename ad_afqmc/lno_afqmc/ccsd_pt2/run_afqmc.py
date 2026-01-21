@@ -132,7 +132,7 @@ for n in range(1,options["n_eql"]+1):
 comm.Barrier()
 if rank == 0:
     print("#\n Sampling sweeps:")
-    print("#  Iter \t Energy_hf \t error \t Ept_orb \t error \t \t time ")
+    print("#  Iter \t Energy_hf \t error \t \t Ept_orb \t error \t \t time ")
 comm.Barrier()
 
 glb_wt = None

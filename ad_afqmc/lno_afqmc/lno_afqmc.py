@@ -505,7 +505,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
                     f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
                     f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
-        print(f'# LNO Thresh: ({lno_thresh[0]:.2e,},{lno_thresh[1]:.2e})',file=out_file)
+        print(f'# LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)
         print(f'# LNO Average Number of Electrons: {nelec:.1f}',file=out_file)
         print(f'# LNO Average Number of Basis: {norb:.1f}',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
