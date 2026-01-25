@@ -323,7 +323,7 @@ def _prep_afqmc(options=None,
             mo_coeff[1][:, : nelec_sp[1]],
         ]
 
-    elif options["trial"] == "cisd":
+    elif "cisd" in options["trial"] and "u" not in options["trial"]:
         try:
             amplitudes = np.load(amp_file)
             t1 = jnp.array(amplitudes["t1"])
@@ -339,6 +339,10 @@ def _prep_afqmc(options=None,
                 trial = wavefunctions_restricted.cisd_hf1(norb, nelec_sp, n_batch=options["n_batch"])
             if "hf2" in options["trial"]:
                 trial = wavefunctions_restricted.cisd_hf2(norb, nelec_sp, n_batch=options["n_batch"])
+            if "/" in options["trial"]:
+                guide_wave = wavefunctions_restricted.cisd(norb, nelec_sp, n_batch=options["n_batch"])
+                trial_wave = wavefunctions_restricted.rhf(norb, nelec_sp, n_batch=options["n_batch"])
+                trial = wavefunctions_restricted.mixed(guide_wave, trial_wave)
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
         

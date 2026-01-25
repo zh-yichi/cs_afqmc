@@ -233,7 +233,7 @@ for n in range(sampler.n_blocks):
         eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
         ept_samples[n] = eorb_pt
     comm.Barrier()
-    
+
     if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         comm.Barrier()
         if rank == 0:                        
@@ -247,11 +247,11 @@ for n in range(sampler.n_blocks):
             
             e0_err = np.sqrt(np.sum(glb_wt[:(n+1)*size] * 
                          (glb_e0[:(n+1)*size] - e0)**2) / wt / (n+1)*size)
-            
+
             eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
             # (p_eorb,p_t2eorb,p_t2orb,p_t2orb,p_t1olp)
             dE = np.array([1/t1olp,1/t1olp,-e0bar/t1olp**2,-t2orb/t1olp**2,
-                           -eorb/t1olp**2-t2eorb/t1olp**2+t2orb*e0bar/t1olp**3])
+                           -eorb/t1olp**2-t2eorb/t1olp**2+2*t2orb*e0bar/t1olp**3])
             cov = np.cov([glb_eorb[:(n+1)*size],
                           glb_t2eorb[:(n+1)*size],
                           glb_t2orb[:(n+1)*size],
@@ -309,7 +309,7 @@ if rank == 0:
     eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
     # (p_eorb,p_t2eorb,p_t2orb,p_t2orb,p_t1olp)
     dE = np.array([1/t1olp,1/t1olp,-e0bar/t1olp**2,-t2orb/t1olp**2,
-                   -eorb/t1olp**2-t2eorb/t1olp**2+t2orb*e0bar/t1olp**3])
+                   -eorb/t1olp**2-t2eorb/t1olp**2+2*t2orb*e0bar/t1olp**3])
     cov = np.cov([glb_eorb,glb_t2eorb,glb_t2orb,glb_e0bar,glb_t1olp])
     eorb_pt_err = np.sqrt(dE @ cov @ dE)/np.sqrt(nsamples)
 

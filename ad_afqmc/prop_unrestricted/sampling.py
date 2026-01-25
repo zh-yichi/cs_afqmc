@@ -238,7 +238,7 @@ class sampler_cisd_hf1(sampler):
         return hash(tuple(self.__dict__.values()))
     
 @dataclass
-class sampler_cisd_hf2(sampler):
+class sampler_mixed(sampler):
     n_prop_steps: int = 50
     n_ene_blocks: int = 50
     n_sr_blocks: int = 1
@@ -274,28 +274,27 @@ class sampler_cisd_hf2(sampler):
 
         prop_data = prop.orthonormalize_walkers(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        olp, ehf, eci = trial.calc_energy_cisd_hf(
-            prop_data["walkers"],ham_data,wave_data)
+        otg, eg, et = trial.calc_energy_mixed(prop_data["walkers"],ham_data,wave_data)
         
-        ehf = jnp.where(
-            jnp.abs(ehf - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        eg = jnp.where(
+            jnp.abs(eg - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
             prop_data["e_estimate"],
-            ehf,
+            eg,
         )
         
         wt = prop_data["weights"]
-        wp = wt * olp
+        wp = wt * otg
 
         blk_wt = jnp.sum(wt)
         blk_wp = jnp.sum(wp)
-        blk_ehf = jnp.sum(ehf*wt)/blk_wt
-        blk_eci = jnp.sum(eci*wp)/blk_wp
+        blk_eg = jnp.sum(eg*wt) / blk_wt
+        blk_et = jnp.sum(et*wp) / blk_wp
 
         prop_data["pop_control_ene_shift"] = (
-                0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ehf
+                0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_eg
             )
 
-        return prop_data, (blk_wt, blk_wp, blk_ehf, blk_eci)
+        return prop_data, (blk_wt, blk_wp, blk_eg, blk_et)
 
     @partial(jit, static_argnums=(0,3,4))
     def _sr_block_scan(
@@ -310,12 +309,12 @@ class sampler_cisd_hf2(sampler):
         def _block_scan_wrapper(x,_):
             return self._block_scan(x,ham_data,prop,trial,wave_data)
         
-        prop_data, (blk_wt, blk_wp, blk_ehf, blk_eci)= lax.scan(
+        prop_data, (blk_wt, blk_wp, blk_eg, blk_et)= lax.scan(
             _block_scan_wrapper, prop_data, None, length = self.n_ene_blocks
         )
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        return prop_data, (blk_wt, blk_wp, blk_ehf, blk_eci)
+        return prop_data, (blk_wt, blk_wp, blk_eg, blk_et)
 
     @partial(jit, static_argnums=(0,3,4))
     def propagate_phaseless(
@@ -332,7 +331,7 @@ class sampler_cisd_hf2(sampler):
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         prop_data["n_killed_walkers"] = 0
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_wt, blk_wp, blk_ehf, blk_eci) = lax.scan(
+        prop_data, (blk_wt, blk_wp, blk_eg, blk_et) = lax.scan(
             _sr_block_scan_wrapper, prop_data, None, length = self.n_sr_blocks
         )
         prop_data["n_killed_walkers"] /= (
@@ -341,10 +340,10 @@ class sampler_cisd_hf2(sampler):
 
         wt = jnp.sum(blk_wt)
         wp = jnp.sum(blk_wp)
-        ehf = jnp.sum(blk_ehf * blk_wt) / wt
-        eci = jnp.sum(blk_eci * blk_wt) / wt
+        eg = jnp.sum(blk_eg * blk_wt) / wt
+        et = jnp.sum(blk_et * blk_wp) / wp
 
-        return prop_data, (wt, wp, ehf, eci)
+        return prop_data, (wt, wp, eg, et)
     
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

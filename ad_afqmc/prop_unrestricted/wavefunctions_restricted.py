@@ -623,6 +623,50 @@ class cisd_hf2(cisd_hf1):
             walkers, ham_data, wave_data)
         return olp, ehf, eci
 
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+
+
+class mixed(wave_function_restricted):
+
+    def __init__(self, guide, trial):
+        self._guide = guide
+        self._trial = trial
+
+    def _calc_rdm1(self, wave_data):
+        return self._guide._calc_rdm1(wave_data)
+
+    def _calc_force_bias_restricted(self, walker, ham_data, wave_data):
+        return self._guide._calc_force_bias_restricted(walker, ham_data, wave_data)
+
+    def _calc_overlap_restricted(self, walker, wave_data):
+        return self._guide._calc_overlap_restricted(walker, wave_data)
+    
+    def _calc_energy_restricted(self, walker, ham_data, wave_data):
+        return self._guide._calc_energy_restricted(walker, ham_data, wave_data)
+    
+    # def _calc_energy_restricted_trial(self, walker, ham_data, wave_data):
+    #     return self._trial._calc_energy_restricted(walker, ham_data, wave_data)
+    
+    def _calc_energy_mixed(self, walker, ham_data, wave_data):
+        eg = self._guide._calc_energy_restricted(walker, ham_data, wave_data)
+        et = self._trial._calc_energy_restricted(walker, ham_data, wave_data)
+        og = self._guide._calc_overlap_restricted(walker, wave_data)
+        ot = self._trial._calc_overlap_restricted(walker, wave_data)
+        otg = ot/og
+        return jnp.real(otg), jnp.real(eg), jnp.real(et)
+    
+    @partial(jit, static_argnums=(0))
+    def calc_energy_mixed(self,walkers,ham_data,wave_data):
+        otg, eg, et = vmap(
+            self._calc_energy_mixed,in_axes=(0, None, None))(
+                walkers, ham_data, wave_data)
+        return otg, eg, et
+    
+    def _build_measurement_intermediates(self, ham_data, wave_data):
+        ham_data = self._guide._build_measurement_intermediates(ham_data, wave_data)
+        ham_data = self._trial._build_measurement_intermediates(ham_data, wave_data)
+        return ham_data
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
