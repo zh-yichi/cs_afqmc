@@ -373,7 +373,8 @@ def run_lnoafqmc(options,nproc=None,
 
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
               nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
-              lno_type = ['1h']*2, run_frg_list = None, nproc = None, ccsd_t = False):
+              lno_type = ['1h']*2, run_frg_list = None, 
+              nproc = None, ccsd_t = False, emp2_tot = None):
     
     mlno = lnoccsd.LNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
@@ -469,8 +470,9 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
     # finish lno loop
-    mmp = mp.MP2(mf, frozen=nfrozen)
-    emp2_tot = mmp.kernel()[0]
+    if emp2_tot is None:
+        mmp = mp.MP2(mf, frozen=nfrozen)
+        emp2_tot = mmp.kernel()[0]
 
     eorb_pt = np.empty(nfrag,dtype='float64')
     eorb_pt_err = np.empty(nfrag,dtype='float64')
