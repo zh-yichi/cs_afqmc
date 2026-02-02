@@ -3,7 +3,7 @@ from jax import random
 from jax import numpy as jnp
 from functools import partial
 from ad_afqmc import config, stat_utils
-from ad_afqmc.prop_unrestricted import prop_unrestricted, sampling
+from ad_afqmc.prop_unrestricted import prep, sampling
 import time
 import argparse
 
@@ -25,8 +25,7 @@ rank = comm.Get_rank()
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
-    prop_unrestricted._prep_afqmc())
+ham_data, ham, prop, trial, wave_data, sampler, observable, options = (prep._prep_afqmc())
 
 init_time = time.time()
 ### initialize propagation

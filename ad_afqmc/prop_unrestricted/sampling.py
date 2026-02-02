@@ -6,7 +6,8 @@ import jax.numpy as jnp
 from jax import jit, lax, random
 from ad_afqmc.hamiltonian import hamiltonian
 from ad_afqmc.prop_unrestricted.propagation import propagator
-from ad_afqmc.prop_unrestricted.wavefunctions import wave_function
+# from ad_afqmc.prop_unrestricted.wavefunctions import wave_function
+from ad_afqmc import sr, linalg_utils
 
 @dataclass
 class sampler:
@@ -23,11 +24,39 @@ class sampler:
         fields: jax.Array,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, jax.Array]:
         """Phaseless propagation scan function over steps."""
         prop_data = prop.propagate(trial, ham_data, prop_data, fields, wave_data)
+        return prop_data, fields
+    
+    @partial(jit, static_argnums=(0, 4, 5))
+    def _step_scan_abs(
+        self,
+        prop_data: dict,
+        fields: jax.Array,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[dict, jax.Array]:
+        """Phaseless propagation scan function over steps."""
+        prop_data = prop.propagate_free(trial, ham_data, prop_data, fields, wave_data)
+        prop_data["walkers"], norms = linalg_utils.qr_vmap_uhf(prop_data["walkers"])
+        weights = jnp.abs(jnp.real(norms[0] * norms[1]))
+        weights = jnp.real(norms[0] * norms[1])
+        nwalker = int(prop_data["weights"].shape[0])
+        prop_data["weights"] *= weights
+        prop_data["weights"] = nwalker * prop_data["weights"] / jnp.sum(prop_data["weights"])
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["weights"] *= jnp.abs(prop_data["overlaps"])
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        zeta = random.uniform(subkey)
+        prop_data["walkers"], prop_data["weights"] \
+            = sr.c_stochastic_reconfiguration_uhf(prop_data["walkers"], prop_data["weights"], zeta)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["weights"] /= prop_data["overlaps"]
         return prop_data, fields
 
     @partial(jit, static_argnums=(0, 3, 4))
@@ -36,7 +65,7 @@ class sampler:
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -80,7 +109,7 @@ class sampler:
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
 
@@ -102,7 +131,7 @@ class sampler:
         ham_data: dict,
         prop: propagator,
         prop_data: dict,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):
@@ -124,26 +153,52 @@ class sampler:
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
-    
 
 @dataclass
-class sampler_cisd_hf1(sampler):
-    n_prop_steps: int = 50
-    n_ene_blocks: int = 50
-    n_sr_blocks: int = 1
+class sampler_abs:
+    n_prop_steps: int = 10
+    n_sr_blocks: int = 10 
+    n_ene_blocks: int = 10
     n_blocks: int = 50
     n_chol: int = 0
-
-    @partial(jit, static_argnums=(0,3,4))
-    def _block_scan(
+    
+    @partial(jit, static_argnums=(0, 4, 5))
+    def _step_scan(
+        self,
+        prop_data: dict,
+        fields: jax.Array,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[dict, jax.Array]:
+        """Phaseless propagation scan function over steps."""
+        prop_data = prop.propagate_free(trial, ham_data, prop_data, fields, wave_data)
+        # prop_data["walkers"], norms = linalg_utils.qr_vmap_uhf(prop_data["walkers"])
+        # # weights = jnp.abs(jnp.real(norms[0] * norms[1]))
+        # weights = jnp.real(norms[0] * norms[1])
+        # nwalker = int(prop_data["weights"].shape[0])
+        # prop_data["weights"] *= weights
+        # prop_data["weights"] = nwalker * prop_data["weights"] / jnp.sum(prop_data["weights"])
+        # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        # prop_data["weights"] *= jnp.abs(prop_data["overlaps"])
+        # prop_data["key"], subkey = random.split(prop_data["key"])
+        # zeta = random.uniform(subkey)
+        # prop_data["walkers"], prop_data["weights"] \
+        #     = sr.c_stochastic_reconfiguration_uhf(prop_data["walkers"], prop_data["weights"], zeta)
+        # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        # prop_data["weights"] /= prop_data["overlaps"]
+        return prop_data, fields
+    
+    @partial(jit, static_argnums=(0, 3, 4))
+    def _sr_scan(
         self,
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
-        wave_data: dict,
-    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-        """Block scan function. Propagation and energy calculation."""
+        trial,
+        wave_data: dict,):
+        """free propagation for a block of (n_prop_steps, n_walkers)."""
         prop_data["key"], subkey = random.split(prop_data["key"])
         fields = random.normal(
             subkey,
@@ -155,85 +210,165 @@ class sampler_cisd_hf1(sampler):
         )
         _step_scan_wrapper = lambda x, y: self._step_scan(
             x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-
-        prop_data = prop.orthonormalize_walkers(prop_data)
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        o, e0, e1 = trial.calc_energy_cisd_hf(
-            prop_data["walkers"],ham_data,wave_data)
-        
-        e0 = jnp.where(
-            jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-            prop_data["e_estimate"],
-            e0,
-        )
-        
-        wt = prop_data["weights"]
-
-        blk_wt = jnp.sum(wt)
-        blk_o = jnp.sum(o*wt)/blk_wt
-        blk_e0 = jnp.sum(e0*wt)/blk_wt
-        blk_e1 = jnp.sum(e1*wt)/blk_wt
-
-        prop_data["pop_control_ene_shift"] = (
-                0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_e0
             )
+        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
 
-        return prop_data, (blk_wt, blk_o, blk_e0, blk_e1)
-
-    @partial(jit, static_argnums=(0,3,4))
-    def _sr_block_scan(
-        self,
-        prop_data: dict,
-        ham_data: dict,
-        prop: propagator,
-        trial: wave_function,
-        wave_data: dict,
-    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-            
-        def _block_scan_wrapper(x,_):
-            return self._block_scan(x,ham_data,prop,trial,wave_data)
-        
-        prop_data, (blk_wt, blk_o, blk_e0, blk_e1)= lax.scan(
-            _block_scan_wrapper, prop_data, None, length = self.n_ene_blocks
-        )
-        prop_data = prop.stochastic_reconfiguration_local(prop_data)
+        prop_data["walkers"], norms = linalg_utils.qr_vmap_uhf(prop_data["walkers"])
+        # weights = norms[0] * norms[1]
+        # weights = jnp.real(norms[0] * norms[1])
+        weights = jnp.abs(jnp.real(norms[0] * norms[1]))
+        nwalker = int(prop_data["weights"].shape[0])
+        prop_data["weights"] *= weights
+        prop_data["weights"] = nwalker * prop_data["weights"] / jnp.sum(prop_data["weights"])
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        return prop_data, (blk_wt, blk_o, blk_e0, blk_e1)
+        # prop_data["weights"] *= jnp.abs(prop_data["overlaps"])
+        prop_data["weights"] *= prop_data["overlaps"]
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        zeta = random.uniform(subkey)
+        prop_data["walkers"], prop_data["weights"] \
+            = sr.c_stochastic_reconfiguration_uhf(prop_data["walkers"], prop_data["weights"], zeta)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["weights"] /= prop_data["overlaps"]
 
-    @partial(jit, static_argnums=(0,3,4))
-    def propagate_phaseless(
+        # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+        # energy_samples = trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+        # energy_samples = jnp.where(
+        #     jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        #     prop_data["e_estimate"],
+        #     energy_samples,
+        # )
+
+        # block_energy = jnp.real(
+        #     jnp.sum(
+        #         energy_samples * jnp.abs(prop_data["overlaps"]) * jnp.abs(prop_data["weights"])
+        #         ) / jnp.sum(jnp.abs(prop_data["overlaps"]) * jnp.abs(prop_data["weights"])
+        #                     )
+        #     )
+        
+        # block_weight = jnp.sum(jnp.abs(prop_data["overlaps"]) 
+        #                        * jnp.abs(prop_data["weights"]))
+
+        # prop_data["e_estimate"] = (
+        #     0.9 * prop_data["e_estimate"] + 0.1 * block_energy
+        # )
+
+        return prop_data, None
+
+    @partial(jit, static_argnums=(0, 3, 4))
+    def _ene_block(
         self,
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
-        def _sr_block_scan_wrapper(x,_):
-            return self._sr_block_scan(x, ham_data, prop, trial, wave_data)
+        def _sr_scan_wrapper(x,_):
+            return self._sr_scan(x, ham_data, prop, trial, wave_data)
+
+        prop_data, _ = lax.scan(
+            _sr_scan_wrapper, prop_data, None, length=self.n_sr_blocks
+        )
 
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        prop_data["n_killed_walkers"] = 0
-        prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_wt, blk_o, blk_e0, blk_e1) = lax.scan(
-            _sr_block_scan_wrapper, prop_data, None, length = self.n_sr_blocks
-        )
-        prop_data["n_killed_walkers"] /= (
-            self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
+        energy_samples = trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+        energy_samples = jnp.where(
+            jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+            prop_data["e_estimate"],
+            energy_samples,
         )
 
-        wt = jnp.sum(blk_wt)
-        o = jnp.sum(blk_o * blk_wt) / wt
-        e0 = jnp.sum(blk_e0 * blk_wt) / wt
-        e1 = jnp.sum(blk_e1 * blk_wt) / wt
+        block_energy = jnp.real(
+            jnp.sum(
+                energy_samples * jnp.abs(prop_data["overlaps"]) * jnp.abs(prop_data["weights"])
+                ) / jnp.sum(jnp.abs(prop_data["overlaps"]) * jnp.abs(prop_data["weights"])
+                            )
+            )
+        
+        block_weight = jnp.sum(
+            jnp.abs(prop_data["overlaps"])
+            * jnp.abs(prop_data["weights"])
+            )
 
-        return prop_data, (wt, o, e0, e1)
+        prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * block_energy
+
+        return prop_data, (block_weight, block_energy)
+
+    # @partial(jit, static_argnums=(0, 3, 4))
+    # def _block_scan(
+    #     self,
+    #     prop_data: dict,
+    #     ham_data: dict,
+    #     prop: propagator,
+    #     trial,
+    #     wave_data: dict,):
+    #     """free propagation for a block of (n_prop_steps, n_walkers)."""
+    #     # prop_data["key"], subkey = random.split(prop_data["key"])
+    #     # fields = random.normal(
+    #     #     subkey,
+    #     #     shape=(
+    #     #         self.n_prop_steps,
+    #     #         prop.n_walkers,
+    #     #         self.n_chol,
+    #     #     ),
+    #     # )
+    #     _sr_scan_wrapper = lambda x, y: self._sr_scan(
+    #         x, y, ham_data, prop, trial, wave_data
+    #         )
+    #     prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+
+    #     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+    #     energy_samples = trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+    #     energy_samples = jnp.where(
+    #         jnp.abs(energy_samples - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+    #         prop_data["e_estimate"],
+    #         energy_samples,
+    #     )
+
+    #     block_energy = jnp.real(
+    #         jnp.sum(
+    #             energy_samples * jnp.abs(prop_data["overlaps"]) * jnp.abs(prop_data["weights"])
+    #             ) / jnp.sum(jnp.abs(prop_data["overlaps"]) * jnp.abs(prop_data["weights"])
+    #                         )
+    #         )
+        
+    #     block_weight = jnp.sum(jnp.abs(prop_data["overlaps"]) 
+    #                            * jnp.abs(prop_data["weights"]))
+
+    #     prop_data["e_estimate"] = (
+    #         0.9 * prop_data["e_estimate"] + 0.1 * block_energy
+    #     )
+
+    #     return prop_data, (block_weight, block_energy)
     
+    @partial(jit, static_argnums=(0, 3, 4))
+    def propagate_abs(
+        self,
+        prop_data: dict,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[jax.Array, dict]:
+        def _ene_block_wrapper(x,_):
+            return self._ene_block(x, ham_data, prop, trial, wave_data)
+
+        # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        # prop_data["n_killed_walkers"] = 0
+        # prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+        prop_data, (block_weight, block_energy) = lax.scan(
+            _ene_block_wrapper, prop_data, None, length=self.n_ene_blocks
+        )
+        # prop_data["n_killed_walkers"] /= (
+        #     self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
+        # )
+        # return jnp.sum(block_energy * block_weight) / jnp.sum(block_weight), prop_data
+        weight = jnp.sum(block_weight)
+        energy = jnp.sum(block_energy * block_weight) / weight
+        return prop_data, (weight, energy)
+
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
     
@@ -251,7 +386,7 @@ class sampler_mixed(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -302,7 +437,7 @@ class sampler_mixed(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
             
@@ -322,7 +457,7 @@ class sampler_mixed(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):
@@ -363,7 +498,7 @@ class sampler_pt(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -417,7 +552,7 @@ class sampler_pt(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
             
@@ -437,7 +572,7 @@ class sampler_pt(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):
@@ -477,7 +612,7 @@ class sampler_pt2(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -530,7 +665,7 @@ class sampler_pt2(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
             
@@ -550,7 +685,7 @@ class sampler_pt2(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):

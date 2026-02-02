@@ -47,6 +47,20 @@ def stochastic_reconfiguration_uhf(walkers, weights, zeta):
     walkers[1] = walkers[1][indices]
     return walkers, weights
 
+@jit
+def c_stochastic_reconfiguration_uhf(walkers, weights, zeta):
+    '''complex weights sr'''
+    nwalkers = walkers[0].shape[0]
+    cumulative_weights = jnp.cumsum(jnp.abs(weights))
+    total_weight = cumulative_weights[-1]
+    average_weight = total_weight / nwalkers
+    weights = jnp.ones(nwalkers, dtype=jnp.complex128) * average_weight
+    z = total_weight * (jnp.arange(nwalkers) + zeta) / nwalkers
+    indices = vmap(jnp.searchsorted, in_axes=(None, 0))(cumulative_weights, z)
+    walkers[0] = walkers[0][indices]
+    walkers[1] = walkers[1][indices]
+    return walkers, weights
+
 
 # this uses numpy but is only called once after each block
 def stochastic_reconfiguration_mpi(walkers, weights, zeta, comm):

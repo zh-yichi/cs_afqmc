@@ -4,7 +4,7 @@ from jax import random
 import numpy as np
 from jax import numpy as jnp
 from ad_afqmc import config, stat_utils
-from ad_afqmc.prop_unrestricted import prop_unrestricted, sampling
+from ad_afqmc.prop_unrestricted import prep, sampling
 import time
 import argparse
 
@@ -26,8 +26,7 @@ rank = comm.Get_rank()
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options, _ = (
-    prop_unrestricted._prep_afqmc())
+ham_data, ham, prop, trial, wave_data, sampler, observable, options = (prep._prep_afqmc())
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
@@ -93,33 +92,6 @@ for n in range(1,options["n_eql"]+1):
         blk_wt= np.sum(gather_wt)
         blk_e = np.sum(gather_wt * gather_e) / blk_wt
     comm.Barrier()
-
-    # blk_wt = np.array([blk_wt], dtype="float64")
-    # blk_e = np.array([blk_e], dtype="float64")
-    
-    # blk_wt_e = np.array([blk_e * blk_wt], dtype="float64")
-
-    # tot_blk_wt = np.zeros(1, dtype="float64")
-    # tot_blk_e = np.zeros(1, dtype="float64")
-
-    # comm.Reduce(
-    #     [blk_wt, MPI.FLOAT],
-    #     [tot_blk_wt, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-    # comm.Reduce(
-    #     [blk_wt_e, MPI.FLOAT],
-    #     [tot_blk_e, MPI.FLOAT],
-    #     op=MPI.SUM,
-    #     root=0,
-    # )
-
-    # comm.Barrier()
-    # if rank == 0:
-    #     blk_wt = tot_blk_wt
-    #     blk_e = tot_blk_e / tot_blk_wt
-    # comm.Barrier()
 
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_e, root=0)
