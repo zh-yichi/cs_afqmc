@@ -59,6 +59,7 @@ def qr_vmap(walkers):
 def qr_vmap_uhf(walkers):
     walkers[0], r_0 = vmap(jnp.linalg.qr)(walkers[0])
     walkers[1], r_1 = vmap(jnp.linalg.qr)(walkers[1])
+    # print(r_0.shape)
     norm_factors_0 = vmap(lambda x: jnp.prod(jnp.diag(x)))(r_0)
     norm_factors_1 = vmap(lambda x: jnp.prod(jnp.diag(x)))(r_1)
     return walkers, jnp.array([norm_factors_0, norm_factors_1])

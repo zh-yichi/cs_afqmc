@@ -444,56 +444,20 @@ class propagator_unrestricted(propagator_restricted):
         walkers[1] = constants[1].reshape(-1, 1, 1) * walkers[1]
         return walkers
 
-    # @partial(jit, static_argnums=(0, 1))
-    # def propagate_free(
-    #     self,
-    #     trial: wave_function,
-    #     ham_data,
-    #     prop_data: dict,
-    #     fields: jax.Array,
-    #     wave_data: Sequence,
-    # ) -> dict:
-    #     shift_term = jnp.einsum("wg,sg->sw", fields, ham_data["mf_shifts_fp"])
-    #     constants = jnp.einsum(
-    #         "sw,s->sw",
-    #         jnp.exp(-jnp.sqrt(self.dt) * shift_term),
-    #         jnp.exp(self.dt * ham_data["h0_prop_fp"]),
-    #     )
-    #     prop_data["walkers"] = self._apply_trotprop(
-    #         ham_data, prop_data["walkers"], fields
-    #     )
-    #     prop_data["walkers"] = self._multiply_constant(prop_data["walkers"], constants)
-    #     prop_data, norms = self._orthogonalize_walkers(prop_data)
-    #     prop_data["norms"] *= norms[0] * norms[1]
-    #     prop_data["overlaps"] = (
-    #         trial.calc_overlap(prop_data["walkers"], wave_data) * prop_data["norms"]
-    #     )
-    #     normed_walkers, _ = linalg_utils.qr_vmap_uhf(prop_data["walkers"])
-    #     prop_data["normed_overlaps"] = trial.calc_overlap(normed_walkers, wave_data)
-    #     return prop_data
-    
-    @partial(jit, static_argnums=(0, 1))
-    def propagate_free(
-        self,
-        trial: wave_function,
-        ham_data,
-        prop_data: dict,
-        fields: jax.Array,
-        wave_data: Sequence,
-        ):
-        shift_term = jnp.einsum("wg,sg->sw", fields, ham_data["mf_shifts_fp"])
-        constants = jnp.einsum(
-            "sw,s->sw",
-            jnp.exp(-jnp.sqrt(self.dt) * shift_term),
-            jnp.exp(self.dt * ham_data["h0_prop_fp"]),
-        )
-        prop_data["walkers"] = self._apply_trotprop(
-            ham_data, prop_data["walkers"], fields
-        )
-        prop_data["walkers"] = self._multiply_constant(prop_data["walkers"], constants)
-
+    @partial(jit, static_argnums=(0,1))
+    def propagate_free(self, trial, ham_data, prop_data, fields):
+        nocca, noccb = trial.nelec
+        shift_term = jnp.einsum("wg,g->w", fields, ham_data["mf_shifts"])
+        constants = jnp.exp(-jnp.sqrt(self.dt) * shift_term # exp(-sqrt(t) x_g mf_g)
+                    ) * jnp.exp(self.dt * (ham_data["h0_prop"]) + prop_data["e_estimate"])
+        constants_abs = jnp.abs(constants)
+        phase = constants / constants_abs
+        prop_data["weights"] *= constants_abs # keep the weight (norm of the walker) real
+        prop_data["walkers"] = self._apply_trotprop(ham_data, prop_data["walkers"], fields)
+        phase_mo = jnp.stack((phase**(1/(2.0*nocca)), phase**(1/(2.0*noccb)))) # multiply the phase into the mo_coeff
+        prop_data["walkers"] = self._multiply_constant(prop_data["walkers"], phase_mo)
         return prop_data
-
+    
     @partial(jit, static_argnums=(0, 2))
     def _build_propagation_intermediates(self, ham_data, trial, wave_data):
         rdm1 = wave_data["rdm1"]
@@ -504,21 +468,9 @@ class propagator_unrestricted(propagator_restricted):
             lambda x: jnp.sum(x.reshape(trial.norb, trial.norb) 
                             * rdm1[1]))(ham_data["chol"][1])
         ham_data["mf_shifts"] = mf_shift_a + mf_shift_b
-        ham_data["mf_shifts_fp"] = jnp.stack(
-            (
-                ham_data["mf_shifts"] / trial.nelec[0] / 2.0,
-                ham_data["mf_shifts"] / trial.nelec[1] / 2.0,
-            )
-        )
-        ham_data["h0_prop"] = (
-            - ham_data["h0"] - jnp.sum(ham_data["mf_shifts"]**2) / 2.0
-                                    )
-        ham_data["h0_prop_fp"] = jnp.stack(
-            (
-                (ham_data["h0_prop"] + ham_data["ene0"]) / trial.nelec[0] / 2.0,
-                (ham_data["h0_prop"] + ham_data["ene0"]) / trial.nelec[1] / 2.0,
-            )
-        )
+
+        ham_data["h0_prop"] = (- ham_data["h0"] - jnp.sum(ham_data["mf_shifts"]**2) / 2.0)
+
         # alpha
         v0_a = 0.5 * jnp.einsum(
             "gik,gjk->ij",

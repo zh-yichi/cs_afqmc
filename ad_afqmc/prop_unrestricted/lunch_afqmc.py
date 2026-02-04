@@ -34,10 +34,9 @@ def run_afqmc(options,nproc=None,dbg=False,
         script='run_afqmc_sampling.py'
 
     if options["free_projection"]:
-        script='run_fp_afqmc_sampling.py'
-
-    if options['fp_abs']:
-        script='run_unrestricted_abs.py'
+        script = 'run_fp_afqmc_sampling.py'
+        if options['fp_abs']:
+            script = 'run_fpabs_afqmc_sampling.py'
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)

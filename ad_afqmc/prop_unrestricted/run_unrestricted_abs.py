@@ -44,7 +44,7 @@ ham_data = ham.build_propagation_intermediates(ham_data, prop, trial, wave_data)
 h0 = ham_data['h0']
 
 prop_data = prop.init_prop_data(trial, wave_data, ham_data, init_walkers)
-prop_data["weights"] = jnp.ones(prop.n_walkers,dtype=jnp.complex128)
+# prop_data["weights"] = jnp.ones(prop.n_walkers,dtype=jnp.complex128)
 
 if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
     raise ValueError(

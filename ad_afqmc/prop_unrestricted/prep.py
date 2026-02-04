@@ -556,14 +556,30 @@ def _prep_afqmc(options=None,
                 options["n_sr_blocks"],
                 options["n_blocks"],
                 nchol,)
-            
-    elif options["fp_abs"]:
-        sampler = sampling.sampler_abs(
+    
+    elif options["free_projection"]:
+        sampler = sampling.sampler_fp(
                 options["n_prop_steps"],
-                options["n_sr_blocks"],
-                options["n_ene_blocks"],
-                options["n_blocks"],
-                nchol,)
+                options["n_eql_blocks"],
+                options["n_trj"],
+                nchol,
+                )
+        if options["fp_abs"]:
+            sampler = sampling.sampler_fpabs(
+                options["n_prop_steps"],
+                options["n_eql_blocks"],
+                options["n_trj"],
+                nchol,
+                )
+
+    # elif options["fp_abs"]:
+    #     sampler = sampling.sampler_abs(
+    #             options["n_prop_steps"],
+    #             options["n_sr_blocks"],
+    #             options["n_ene_blocks"],
+    #             options["n_blocks"],
+    #             nchol,)
+    
     else:
         sampler = sampling.sampler(
                 options["n_prop_steps"],
