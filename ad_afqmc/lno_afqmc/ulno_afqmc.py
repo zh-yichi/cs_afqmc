@@ -120,7 +120,7 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     print('# Naive Common LAS Shape: ', clno_act.shape)
     u, s, _ = np.linalg.svd(clno_act)
     print(f'# Common Active Space SVD Singular values:')
-    print(s)
+    # print(s)
     print(f"# cLAS projection torr: {torr}")
     for idx in range(lno_acta.shape[1],u.shape[1]+1):
         prj = lno_coeff[0] @ u[:,:idx]
@@ -128,10 +128,11 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
         prj_actb = prjmo(prj,s1e,lno_acta)
         losa = abs(prj_acta-lno_actb).max()
         losb = abs(prj_actb-lno_acta).max()
-        print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
+        # print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
         if losa < torr and losb < torr:
             break
     print(f"# Minimum size of cLAS to span both Alpha and Beta LAS: {idx}")
+    print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
     # span{|C>} = span{|A>} U span{|B>}
     clas_coeff = lno_coeff[0] @ u[:,:idx] # in ao
     print('# True Common LAS Shape: ', clas_coeff.shape)
@@ -555,9 +556,9 @@ def run_lnoafqmc(options,nproc=None,
     )
 
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
-              nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5, use_df = False,
-              lno_type = ['1h']*2, run_frg_list = None, 
-              nproc = None, fast = True, ccsd_t=False, emp2_tot = None):
+              nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5, emp2_tot = None,
+              use_df = False, lno_type = ['1h']*2, run_frg_list = None, 
+              nproc = None, fast = True, ccsd_t=False):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]

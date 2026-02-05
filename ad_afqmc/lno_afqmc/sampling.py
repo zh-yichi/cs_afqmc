@@ -4,9 +4,9 @@ from typing import Tuple
 import jax
 import jax.numpy as jnp
 from jax import jit, lax, random
-from ad_afqmc.hamiltonian import hamiltonian
+# from ad_afqmc.hamiltonian import hamiltonian
 from ad_afqmc.prop_unrestricted.propagation import propagator
-from ad_afqmc.prop_unrestricted.wavefunctions import wave_function
+# from ad_afqmc.prop_unrestricted.wavefunctions import wave_function
 
 @dataclass
 class sampler:
@@ -23,7 +23,7 @@ class sampler:
         fields: jax.Array,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, jax.Array]:
         """Phaseless propagation scan function over steps."""
@@ -36,7 +36,7 @@ class sampler:
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -87,7 +87,7 @@ class sampler:
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
 
@@ -107,7 +107,7 @@ class sampler:
         ham_data: dict,
         prop: propagator,
         prop_data: dict,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):
@@ -161,7 +161,7 @@ class sampler_pt(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -209,7 +209,7 @@ class sampler_pt(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
 
@@ -229,7 +229,7 @@ class sampler_pt(sampler):
         ham_data: dict,
         prop: propagator,
         prop_data: dict,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):
@@ -271,7 +271,7 @@ class sampler_pt2(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -332,7 +332,7 @@ class sampler_pt2(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
             
@@ -357,7 +357,7 @@ class sampler_pt2(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):
@@ -405,7 +405,7 @@ class sampler_eq(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
         """Block scan function. Propagation and energy calculation."""
@@ -452,7 +452,7 @@ class sampler_eq(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
             
@@ -475,7 +475,7 @@ class sampler_eq(sampler):
         prop_data: dict,
         ham_data: dict,
         prop: propagator,
-        trial: wave_function,
+        trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
         def _sr_block_scan_wrapper(x,_):

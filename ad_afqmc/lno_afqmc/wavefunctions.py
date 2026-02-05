@@ -1,16 +1,16 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 from functools import partial, singledispatchmethod
-from typing import Any, List, Sequence, Tuple, Union
+from typing import Sequence, Tuple, Union
 
 import jax
 import jax.numpy as jnp
-import jax.scipy as jsp
+# import jax.scipy as jsp
 import numpy as np
-from jax import jit, jvp, lax, vjp, vmap
+from jax import jit, jvp, lax, vmap
 import opt_einsum as oe
 
-from ad_afqmc import linalg_utils
+# from ad_afqmc import linalg_utils
 
 
 class wave_function(ABC):

@@ -150,3 +150,11 @@ for n in range(sampler.n_trj):
     comm.Barrier()
 
 comm.Barrier()
+if rank == 0:
+    np.savez('./traject.npz', 
+             time = blk_time*np.arange(1,sampler.n_eql_blocks+1), 
+             weights = glb_blk_w, 
+             energies = glb_blk_e)
+comm.Barrier()
+
+comm.Barrier()
