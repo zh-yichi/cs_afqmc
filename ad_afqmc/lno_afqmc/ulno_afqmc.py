@@ -222,37 +222,56 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     nao = mf.mol.nao
 
     if getattr(mf, "with_df", None) is not None:
-        chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
-        chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
-        chol_df = chol_df.reshape((-1, nao, nao))
-        print(f'# DF Tensor shape: {chol_df.shape}')
+        # chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
+        # chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
+        # chol_df = chol_df.reshape((-1, nao, nao))
+        # print(f'# DF Tensor shape: {chol_df.shape}')
         if not use_df:
+            from pyscf.ao2mo import _ao2mo
+
             clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
             nclas = clas_coeff.shape[1]
             # decompose eri in active LNO to achieve linear scale on the auxilary axis
             print("# Composing AO ERIs from DF basis")
-            chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
-            eri_clas = lib.einsum('lpr,lqs->prqs', chol_df_clas, chol_df_clas, optimize='optimal')
+            # chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
+
+            naux = mf.with_df.get_naoaux()
+            chol_df_clas = np.empty((naux,nclas*(nclas+1)//2))
+            ijslice = (0, nclas, 0, nclas)
+            Lpq = None
+            p1 = 0
+            print('# test new efficient algorithm!!!!!!!')
+            for eri1 in mf.with_df.loop():
+                Lpq = _ao2mo.nr_e2(eri1, clas_coeff, ijslice, aosym='s2', out=Lpq).reshape(-1,nclas,nclas)
+                p0, p1 = p1, p1 + Lpq.shape[0]
+                # print(eri1.shape)
+                print(f"  {Lpq.shape}")
+                chol_df_clas[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in clas_mo representation
+            print(f"# Packed chol tensor in clas by DF shape: {chol_df_clas.shape}")
+
+            eri_clas = lib.einsum('gP,gQ->PQ', chol_df_clas, chol_df_clas, optimize='optimal')
             print("# Finished Composing LAS ERIs")
-            eri_clas = eri_clas.reshape(nclas**2,nclas**2)
+            # eri_clas = eri_clas.reshape(nclas**2,nclas**2)
             print("# Decomposing MO ERIs to Cholesky vectors")
             print("# Tighter Chol_cutoff is recommended for LNO")
             print(f"# Cholesky cutoff is: {chol_cut}")
             chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-            chol_clas = chol_clas.reshape((-1, nclas, nclas))
+            chol_clas = lib.unpack_tril(chol_clas,axis=-1)
+            # chol_clas = chol_clas.reshape((-1, nclas, nclas))
             chola = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
             cholb = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
-            print(f'# Alpha chol1 shape: {chola.shape}')
-            print(f'#  Beta chol1 shape: {cholb.shape}')
+            # print(f'# Alpha chol shape: {chola.shape}')
+            # print(f'#  Beta chol shape: {cholb.shape}')
         elif use_df:
             # use DF Tensors
-            print("# Transform DF Tenor into LNO Basis")
-            chola = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
-            cholb = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
-            chola = chola[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
-            cholb = cholb[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
-            print(f'# Alpha chol shape: {chola.shape}')
-            print(f'#  Beta chol shape: {cholb.shape}')
+            raise  NotImplementedError('Uncomment the code below and change a bit')
+            # print("# Transform DF Tenor into LNO Basis")
+            # chola = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
+            # cholb = lib.einsum('pr,grs,sq->gpq',mo_coeff[1].T,chol_df,mo_coeff[1])
+            # chola = chola[:,ncore[0]:ncore[0]+ncas[0],ncore[0]:ncore[0]+ncas[0]]
+            # cholb = cholb[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
+            # print(f'# Alpha chol shape: {chola.shape}')
+            # print(f'#  Beta chol shape: {cholb.shape}')
 
         # eria1 = lib.einsum('lpr,lqs->prqs',chola1,chola1)
         # eria2 = lib.einsum('lpr,lqs->prqs',chola2,chola2)

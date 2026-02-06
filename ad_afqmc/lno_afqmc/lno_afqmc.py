@@ -145,17 +145,40 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     if getattr(mf, "with_df", None) is not None:
         # decompose eri in MO to achieve linear scale over the Auxiliary-field
         print("# Composing AO ERIs from DF basis")
-        chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
-        chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
-        chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
-        chol_df = lib.einsum('pr,grs,sq->gpq',mo_act.T,chol_df,mo_act)
-        eri_df = lib.einsum('lpq,lrs->pqrs', chol_df, chol_df, optimize='optimal')
+        from pyscf.ao2mo import _ao2mo
+        # mo_coeff = np.asarray(imp_eris.mo_coeff, order='F')
+        # nocc = imp_eris.nocc
+        # nao, nmo = mo_coeff.shape
+        # nvir = nmo - nocc
+        # nvir_pair = nvir*(nvir+1)//2
+
+        naux = mf.with_df.get_naoaux()
+        chol_df = np.empty((naux,ncas*(ncas+1)//2))
+        ijslice = (0, ncas, 0, ncas)
+        Lpq = None
+        p1 = 0
+        print('# test new algorithm!!!!!!!')
+        for eri1 in mf.with_df.loop():
+            Lpq = _ao2mo.nr_e2(eri1, mo_act, ijslice, aosym='s2', out=Lpq).reshape(-1,ncas,ncas)
+            p0, p1 = p1, p1 + Lpq.shape[0]
+            print(eri1.shape)
+            print(Lpq.shape)
+            chol_df[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in mo representation
+        print(f"# packed chol tensor by DF shape: {chol_df.shape}")
+
+        # chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis) # in ao 
+        # chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
+        # chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
+        # chol_df = lib.einsum('pr,grs,sq->gpq',mo_act.T,chol_df,mo_act)
+        eri_df = lib.einsum('gP,gQ->PQ', chol_df, chol_df, optimize='optimal')
         print("# Composing active space MO ERIs from AO ERIs")
-        # eri_mo = ao2mo.kernel(eri_ao_df,mo_coeff[:,actfrag],compact=False)
-        eri_df = eri_df.reshape(ncas**2,ncas**2)
+        # eri_df = lib.pack_tril(eri_df,axis=0) # pyscf.lib pack the lower triangular
+        # eri_df = lib.pack_tril(eri_df,axis=-1)
+        # eri_df = eri_df.reshape(ncas**2,ncas**2)
         print("# Decomposing MO ERIs to Cholesky vectors")
         print(f"# Cholesky cutoff is: {chol_cut}")
         chol = pyscf_interface.modified_cholesky(eri_df,max_error=chol_cut)
+        chol = lib.unpack_tril(chol,axis=-1)
         chol = chol.reshape(-1,ncas,ncas)
     else:
         raise  NotImplementedError('Use DF Only!')
@@ -477,10 +500,12 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     eorb_pt = np.empty(nfrag,dtype='float64')
     eorb_pt_err = np.empty(nfrag,dtype='float64')
     run_time = np.empty(nfrag,dtype='float64')
+
     for n, i in enumerate(run_frg_list):
         with open(f"lnoafqmc.out{i+1}", "r") as readfile:
             for line in readfile:
-                if "Ept (direct observation):" in line:
+                # if "Ept (direct observation):" in line:
+                if "Ept (covariance):" in line:
                     eorb_pt[n] = float(line.split()[-3])
                     eorb_pt_err[n] = float(line.split()[-1])
                 if "total run time" in line:
