@@ -11,8 +11,8 @@ from functools import partial
 from ad_afqmc.lno_afqmc import propagation, sampling
 from ad_afqmc.lno_afqmc import wavefunctions_restricted as lno_wavefunctions
 from collections.abc import Iterable
+import time
 print = partial(print, flush=True)
-from functools import reduce
 
 def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
 
@@ -71,7 +71,26 @@ def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
 def get_veff(mf, dm):
     mol = mf.mol
     print('# Building JK matrix')
+    # t0 = time.perf_counter()
     vj, vk = mf.get_jk(mol, dm, hermi=1)
+    # t1 = time.perf_counter()
+    # print(f"# build JK time: {t1 - t0:.6f} s")
+    return 2*vj - vk
+
+def get_veff2(mf, dm):
+    '''use opt einsum on gpu'''
+    dm = jnp.array(dm)
+    vj = jnp.empty(dm.shape)
+    vk = jnp.empty(dm.shape)
+    print('# Building JK matrix')
+    for cderi in mf.with_df.loop():
+        print(f'# number of DF vectors {cderi.shape[0]}')
+        cderi = lib.unpack_tril(cderi, axis=-1)
+        cderi = jnp.array(cderi)
+        cderi_dm = oe.contract('gik,kj->gij', cderi, dm, backend='jax')
+        vj += oe.contract('gkk,gij->ij', cderi_dm, cderi, backend='jax')
+        vk += oe.contract('gik,gkj->ij', cderi_dm, cderi, backend='jax')
+    # vj, vk = mf.get_jk(mol, dm, hermi=1)
     return 2*vj - vk
 
 def h1e_ras(mf, mo_coeff, ncas, ncore):
@@ -82,20 +101,27 @@ def h1e_ras(mf, mo_coeff, ncas, ncore):
     '''
     # note casci undo DF
 
-    mo_core = mo_coeff[:,:ncore]
-    mo_cas = mo_coeff[:,ncore:ncore+ncas]
+    mo_core = jnp.array(mo_coeff[:,:ncore])
+    mo_cas = jnp.array(mo_coeff[:,ncore:ncore+ncas])
 
-    hcore = mf.get_hcore()
+    hcore = jnp.array(mf.get_hcore())
     energy_core = mf.energy_nuc()
     if mo_core.size == 0:
         corevhf = 0.
     else:
         # core_dm = np.dot(mo_core, mo_core.T)
         core_dm = mo_core @ mo_core.T
-        corevhf = get_veff(mf, core_dm)
-        energy_core += 2 * lib.einsum('ij,ji', core_dm, hcore)
-        energy_core += lib.einsum('ij,ji', core_dm, corevhf)
+        time0 = time.perf_counter()
+        corevhf = get_veff2(mf, core_dm)
+        time1 = time.perf_counter()
+        print(f"# build JK time: {time1 - time0:.6f} s")
+        energy_core += 2 * oe.contract('ij,ji', core_dm, hcore, backend='jax')
+        energy_core += oe.contract('ij,ji', core_dm, corevhf, backend='jax')
+        time2 = time.perf_counter()
+        print(f"# build ecore time: {time2 - time1:.6f} s")
     h1eff = mo_cas.T @ (hcore+corevhf) @ mo_cas
+    time3 = time.perf_counter()
+    print(f"# build h1eff time: {time3 - time0:.6f} s")
     return h1eff, energy_core
 
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
@@ -138,12 +164,6 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     nelec = nactocc*2
     h1e, enuc = h1e_ras(mf, mo_coeff, ncas, ncore)
     mo_act = mo_coeff[:,actfrag]
-    # from pyscf import mcscf
-    # mc = mcscf.CASSCF(mf, ncas, nelec)
-    # mc.mo_coeff = mo_coeff
-    # mc.frozen = frozen
-    # nelec = mc.nelecas
-    # h1e, enuc = mc.get_h1eff()
 
     print('# Generating Cholesky Integrals')
 
@@ -151,31 +171,30 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         # decompose eri in MO to achieve linear scale over the Auxiliary-field
         print("# Composing AO ERIs from DF basis")
         from pyscf.ao2mo import _ao2mo
-        # mo_coeff = np.asarray(imp_eris.mo_coeff, order='F')
-        # nocc = imp_eris.nocc
-        # nao, nmo = mo_coeff.shape
-        # nvir = nmo - nocc
-        # nvir_pair = nvir*(nvir+1)//2
 
         naux = mf.with_df.get_naoaux()
         chol_df = np.empty((naux,ncas*(ncas+1)//2))
         ijslice = (0, ncas, 0, ncas)
         Lpq = None
         p1 = 0
-        print('# test new algorithm!!!!!!!')
+        # print('# test new algorithm!!!!!!!')
+        time0 = time.perf_counter()
         for eri1 in mf.with_df.loop():
             Lpq = _ao2mo.nr_e2(eri1, mo_act, ijslice, aosym='s2', out=Lpq).reshape(-1,ncas,ncas)
             p0, p1 = p1, p1 + Lpq.shape[0]
-            print(eri1.shape)
-            print(Lpq.shape)
+            # print(eri1.shape)
+            # print(Lpq.shape)
             chol_df[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in mo representation
         print(f"# packed chol tensor by DF shape: {chol_df.shape}")
+        # chol_df = jnp.array(chol_df)
 
         # chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis) # in ao 
         # chol_df = lib.unpack_tril(chol_df).reshape(chol_df.shape[0], -1)
         # chol_df = chol_df.reshape((-1, mol.nao, mol.nao))
         # chol_df = lib.einsum('pr,grs,sq->gpq',mo_act.T,chol_df,mo_act)
-        eri_df = lib.einsum('gP,gQ->PQ', chol_df, chol_df, optimize='optimal')
+        # eri_df = lib.einsum('gP,gQ->PQ', chol_df, chol_df, optimize='optimal')
+        eri_df = oe.contract('gP,gQ->PQ', chol_df, chol_df, backend='jax')
+        time1 = time.perf_counter()
         print("# Composing active space MO ERIs from AO ERIs")
         # eri_df = lib.pack_tril(eri_df,axis=0) # pyscf.lib pack the lower triangular
         # eri_df = lib.pack_tril(eri_df,axis=-1)
@@ -185,6 +204,10 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         chol = pyscf_interface.modified_cholesky(eri_df,max_error=chol_cut)
         chol = lib.unpack_tril(chol,axis=-1)
         chol = chol.reshape(-1,ncas,ncas)
+        time2 = time.perf_counter()
+        print(f"# build 2-electron integral time: {time1 - time0:.6f} s")
+        print(f"# decompose 2-electron integral to CD time: {time2 - time1:.6f} s")
+        print(f"# total 2-electron integral time: {time2 - time0:.6f} s")
     else:
         raise  NotImplementedError('Use DF Only!')
 
@@ -194,7 +217,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     print(f'# Number of basis functions: {ncas}')
     print(f'# Cholesky shape: {chol.shape}')
 
-    v0 = 0.5 * jnp.einsum("gpr,grq->pq", chol, chol, optimize="optimal")
+    v0 = 0.5 * oe.contract("gpr,grq->pq", chol, chol, backend="jax")
     h1e_mod = h1e - v0
     chol = chol.reshape((chol.shape[0], -1))
     np.savez(mo_file,prjlo=prjlo)
@@ -222,7 +245,9 @@ def write_dqmc(
     emf,
     filename="FCIDUMP_chol",
 ):
-    # assert len(chol.shape) == 2
+    hcore = np.array(hcore)
+    hcore_mod = np.array(hcore_mod)
+    chol = np.array(chol)
     with h5py.File(filename, "w") as fh5:
         fh5["header"] = np.array([nelec, nmo, chol.shape[0]])
         fh5["hcore"] = hcore.flatten()
@@ -284,7 +309,6 @@ def _prep_afqmc(option_file="options.bin",
     ham_data["chol"] = jnp.array(chol.reshape(chol.shape[0], -1))
 
     wave_data = {}
-    # prjlo = jnp.array(np.load(mo_file)["prjlo"])
     wave_data['prjlo'] = jnp.array(np.load(mo_file)["prjlo"])
     mo_coeff = jnp.array(np.eye(nmo))
 
@@ -297,15 +321,15 @@ def _prep_afqmc(option_file="options.bin",
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
         prj = wave_data['prjlo']
-        wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,prj)
-        wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,prj)
+        wave_data["t1"] = oe.contract('ia,ik->ka',t1, prj, backend='jax')
+        wave_data["t2"] = oe.contract('iajb,ik->kajb',t2, prj, backend='jax')
     elif options["trial"] == "ccsd_pt":
         trial = lno_wavefunctions.ccsd_pt(norb, nelec_sp, n_batch=options["n_batch"])
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
         t2 = jnp.array(amplitudes["t2"])
-        wave_data["t1"] = jnp.einsum('ia,ik->ka',t1,wave_data['prjlo'])
-        wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
+        wave_data["t1"] = oe.contract('ia,ik->ka',t1,wave_data['prjlo'])
+        wave_data["t2"] = oe.contract('iajb,ik->kajb',t2,wave_data['prjlo'])
         wave_data["mo_coeff"] = mo_coeff[:, :nocc]
     elif "ccsd_pt2" in options["trial"]:
         from jax import scipy as jsp
@@ -317,11 +341,13 @@ def _prep_afqmc(option_file="options.bin",
         t1_full[:nocc, nocc:] = t1
         wave_data['exp_t1'] = jsp.linalg.expm(t1_full)
         wave_data['exp_mt1'] = jsp.linalg.expm(-t1_full)
-        wave_data["t2"] = jnp.einsum('iajb,ik->kajb',t2,wave_data['prjlo'])
+        wave_data["t2"] = oe.contract('iajb,ik->kajb',t2, wave_data['prjlo'], backend='jax')
         wave_data["mo_coeff"] = mo_coeff[:, :nocc]
-        lt1 = jnp.einsum('ia,gja->gij', t1, chol[:, :nocc, nocc:])
-        e0t1orb = 2 * jnp.einsum('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1) \
-                    - jnp.einsum('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'])
+        # print(t1.shape)
+        # print(chol.shape)
+        lt1 = oe.contract('ia,gja->gij', t1, chol[:, :nocc, nocc:], backend='jax')
+        e0t1orb = 2 * oe.contract('gik,ik,gjj->',lt1, wave_data['prjlo'], lt1, backend='jax') \
+                    - oe.contract('gij,gjk,ik->',lt1, lt1, wave_data['prjlo'], backend='jax')
         ham_data['e0t1orb'] = e0t1orb
         trial = lno_wavefunctions.ccsd_pt2(norb, nelec_sp, n_batch = options["n_batch"])
         if "fast" in options["trial"]:
@@ -475,20 +501,22 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         mcc._vhf = mlno._vhf
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
+        time0 = time.perf_counter()
         eorb_mp2_cc[ifrag], t1, t2, elcorr_t1 =\
             lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
+        time1 = time.perf_counter()
+        print(f"# CCSD time: {time1 - time0:.6f} s")
         
         prjlo = uocc_loc @ uocc_loc.T.conj()
-        # print(prjlo)
 
         print(f'# LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
         print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
         print(f'# LNO-CCSD(T) Orbital Energy: {eorb_mp2_cc[ifrag][2]:.8f}')
         print(f'# LNO-CCSD t2=0 Orbital Energy: {elcorr_t1:.8f}')
         
-        from mpi4py import MPI
-        if not MPI.Is_finalized():
-            MPI.Finalize()
+        # from mpi4py import MPI
+        # if not MPI.Is_finalized():
+        #     MPI.Finalize()
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
