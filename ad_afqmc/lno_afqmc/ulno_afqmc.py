@@ -11,6 +11,8 @@ from functools import partial
 from ad_afqmc.lno_afqmc import propagation, sampling
 from ad_afqmc.lno_afqmc import wavefunctions_unrestreicted as ulno_wavefunctions
 from collections.abc import Iterable
+import opt_einsum as oe
+import time
 print = partial(print, flush=True)
 from functools import reduce
 
@@ -69,8 +71,30 @@ def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
     return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2
 
 def get_veff(mf, dm):
+    # dm = np.array(dm)
     mol = mf.mol
     vj, vk = mf.get_jk(mol, dm, hermi=1)
+    return vj[0]+vj[1] - vk
+
+def get_veff2(mf, dm):
+
+    vj = [jnp.empty(dm[0].shape), jnp.empty(dm[1].shape)]
+    vk = [jnp.empty(dm[0].shape), jnp.empty(dm[1].shape)]
+
+    print('# Building JK matrix')
+    for cderi in mf.with_df.loop():
+        print(f'# number of DF vectors {cderi.shape[0]}')
+        cderi = lib.unpack_tril(cderi, axis=-1)
+        cderi = jnp.array(cderi)
+        cderi_dm_a = oe.contract('gik,kj->gij', cderi, dm[0], backend='jax')
+        cderi_dm_b = oe.contract('gik,kj->gij', cderi, dm[1], backend='jax')
+        vj[0] += oe.contract('gkk,gij->ij', cderi_dm_a, cderi, backend='jax')
+        vj[1] += oe.contract('gkk,gij->ij', cderi_dm_b, cderi, backend='jax')
+        vk[0] += oe.contract('gik,gkj->ij', cderi_dm_a, cderi, backend='jax')
+        vk[1] += oe.contract('gik,gkj->ij', cderi_dm_b, cderi, backend='jax')
+
+    vj = jnp.array(vj)
+    vk = jnp.array(vk)
     return vj[0]+vj[1] - vk
 
 def h1e_uas(mf, mo_coeff, ncas, ncore):
@@ -81,25 +105,41 @@ def h1e_uas(mf, mo_coeff, ncas, ncore):
     '''
     # mf = mf.undo_df() ucasci undo DF
 
-    mo_core =(mo_coeff[0][:,:ncore[0]], mo_coeff[1][:,:ncore[1]])
-    mo_cas = (mo_coeff[0][:,ncore[0]:ncore[0]+ncas[0]],
-              mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]])
+    mo_core = [jnp.array(mo_coeff[0][:,:ncore[0]]),
+               jnp.array(mo_coeff[1][:,:ncore[1]])]
+    mo_cas = [jnp.array(mo_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]),
+              jnp.array(mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]])]
+    # mo_core = (mo_coeff[0][:,:ncore[0]],
+    #            mo_coeff[1][:,:ncore[1]])
+    # mo_cas = (mo_coeff[0][:,ncore[0]:ncore[0]+ncas[0]],
+    #           mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]])
 
     hcore = mf.get_hcore()
-    hcore = [hcore, hcore]
+    hcore = [jnp.array(hcore), jnp.array(hcore)]
+    # hcore = [hcore, hcore]
     energy_core = mf.energy_nuc()
     if mo_core[0].size == 0 and mo_core[1].size == 0:
         corevhf = (0,0)
     else:
-        core_dm = (np.dot(mo_core[0], mo_core[0].T),
-                   np.dot(mo_core[1], mo_core[1].T))
-        corevhf = get_veff(mf, core_dm)
-        energy_core += np.einsum('ij,ji', core_dm[0], hcore[0])
-        energy_core += np.einsum('ij,ji', core_dm[1], hcore[1])
-        energy_core += np.einsum('ij,ji', core_dm[0], corevhf[0]) * .5
-        energy_core += np.einsum('ij,ji', core_dm[1], corevhf[1]) * .5
-    h1eff = (reduce(np.dot, (mo_cas[0].T, hcore[0]+corevhf[0], mo_cas[0])),
-             reduce(np.dot, (mo_cas[1].T, hcore[1]+corevhf[1], mo_cas[1])))
+        core_dm = jnp.array([mo_core[0] @ mo_core[0].T, 
+                            mo_core[1] @ mo_core[1].T])
+        # core_dm = (mo_core[0] @ mo_core[0].T, 
+        #            mo_core[1] @ mo_core[1].T)
+        time0 = time.perf_counter()
+        corevhf = get_veff2(mf, core_dm)
+        # corevhf = get_veff(mf, core_dm)
+        time1 = time.perf_counter()
+        energy_core += oe.contract('ij,ji', core_dm[0], hcore[0], backend='jax')
+        energy_core += oe.contract('ij,ji', core_dm[1], hcore[1], backend='jax')
+        energy_core += oe.contract('ij,ji', core_dm[0], corevhf[0], backend='jax') * .5
+        energy_core += oe.contract('ij,ji', core_dm[1], corevhf[1], backend='jax') * .5
+        time2 = time.perf_counter()
+    h1eff = [jnp.array(mo_cas[0].T @ (hcore[0]+corevhf[0]) @ mo_cas[0]),
+             jnp.array(mo_cas[1].T @ (hcore[1]+corevhf[1]) @ mo_cas[1])]
+    time3 = time.perf_counter()
+    print(f"# build JK time: {time1 - time0:.6f} s")
+    print(f"# build ecore time: {time2 - time1:.6f} s")
+    print(f"# build h1eff time: {time3 - time0:.6f} s")
     return h1eff, energy_core
 
 def prjmo(prj,s1e,mo):
@@ -111,6 +151,7 @@ def prjmo(prj,s1e,mo):
 
 def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     print("# Constracting cLAS that span both Alpha and Beta active space")
+    # time0 = time.perf_counter()
     s1e = mf.get_ovlp()
     lno_acta = lno_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
     lno_actb = lno_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
@@ -138,6 +179,8 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     print('# True Common LAS Shape: ', clas_coeff.shape)
     a2c = clas_coeff.T @ s1e @ lno_acta # <C|A>
     b2c = clas_coeff.T @ s1e @ lno_actb # <C|B>
+    # time1 = time.perf_counter()
+    # print(f"# Build Common LAS time: {time1 - time0:.6f} s")
     return clas_coeff, a2c, b2c
 
 
@@ -157,24 +200,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     else:
         mf = mf_cc
 
-    if 'ci' in options['trial']:
-        ci2aa = t2[0] + 2 * np.einsum("ia,jb->ijab", t1[0], t1[0])
-        ci2aa = (ci2aa - ci2aa.transpose(0, 1, 3, 2)) / 2
-        ci2aa = ci2aa.transpose(0, 2, 1, 3)
-        ci2bb = t2[2] + 2 * np.einsum("ia,jb->ijab", t1[1], t1[1])
-        ci2bb = (ci2bb - ci2bb.transpose(0, 1, 3, 2)) / 2
-        ci2bb = ci2bb.transpose(0, 2, 1, 3)
-        ci2ab = t2[1] + np.einsum("ia,jb->ijab", t1[0], t1[1])
-        ci2ab = ci2ab.transpose(0, 2, 1, 3)
-        ci1a = np.array(t1[0])
-        ci1b = np.array(t1[1])
-        np.savez(amp_file,
-                 ci1a=ci1a,
-                 ci1b=ci1b,
-                 ci2aa=ci2aa,
-                 ci2ab=ci2ab,
-                 ci2bb=ci2bb)
-    elif 'cc' in options['trial']:
+    if 'cc' in options['trial']:
         t2aa = t2[0]
         t2aa = (t2aa - t2aa.transpose(0, 1, 3, 2)) / 2
         t2aa = t2aa.transpose(0, 2, 1, 3)
@@ -216,10 +242,11 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     ncas = (nactorb_a, nactorb_b)
     ncore = (nfrzocc_a, nfrzocc_b)
     nelec = (nactocc_a, nactocc_b)
+    time0 = time.perf_counter()
     h1e, enuc = h1e_uas(mf, mo_coeff, ncas, ncore)
+    time1 = time.perf_counter()
 
     print('# Generating Cholesky Integrals')
-    nao = mf.mol.nao
 
     if getattr(mf, "with_df", None) is not None:
         # chol_df = df.incore.cholesky_eri(mol, mf.with_df.auxmol.basis)
@@ -228,42 +255,54 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         # print(f'# DF Tensor shape: {chol_df.shape}')
         if not use_df:
             from pyscf.ao2mo import _ao2mo
-
+            time2 = time.perf_counter()
             clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
+            time3 = time.perf_counter()
+
             nclas = clas_coeff.shape[1]
             # decompose eri in active LNO to achieve linear scale on the auxilary axis
             print("# Composing AO ERIs from DF basis")
-            # chol_df_clas = lib.einsum('pr,grs,sq->gpq',clas_coeff.T,chol_df,clas_coeff)
-
             naux = mf.with_df.get_naoaux()
             chol_df_clas = np.empty((naux,nclas*(nclas+1)//2))
             ijslice = (0, nclas, 0, nclas)
             Lpq = None
             p1 = 0
-            print('# test new efficient algorithm!!!!!!!')
+            # print('# test new efficient algorithm!!!!!!!')
+            time4 = time.perf_counter()
             for eri1 in mf.with_df.loop():
                 Lpq = _ao2mo.nr_e2(eri1, clas_coeff, ijslice, aosym='s2', out=Lpq).reshape(-1,nclas,nclas)
                 p0, p1 = p1, p1 + Lpq.shape[0]
-                # print(eri1.shape)
                 print(f"  {Lpq.shape}")
                 chol_df_clas[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in clas_mo representation
-            print(f"# Packed chol tensor in clas by DF shape: {chol_df_clas.shape}")
+            
+            chol_df_clas = jnp.array(chol_df_clas)
+            print(f"# Packed DF tensor in clas shape: {chol_df_clas.shape}")
+            time5 = time.perf_counter()
 
-            eri_clas = lib.einsum('gP,gQ->PQ', chol_df_clas, chol_df_clas, optimize='optimal')
+            eri_clas = oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
+            time6 = time.perf_counter()
             print("# Finished Composing LAS ERIs")
-            # eri_clas = eri_clas.reshape(nclas**2,nclas**2)
             print("# Decomposing MO ERIs to Cholesky vectors")
             print("# Tighter Chol_cutoff is recommended for LNO")
             print(f"# Cholesky cutoff is: {chol_cut}")
             chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
+            time7 = time.perf_counter()
             chol_clas = lib.unpack_tril(chol_clas,axis=-1)
-            # chol_clas = chol_clas.reshape((-1, nclas, nclas))
-            chola = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
-            cholb = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
-            # print(f'# Alpha chol shape: {chola.shape}')
-            # print(f'#  Beta chol shape: {cholb.shape}')
+            chol_clas = jnp.array(chol_clas)
+            a2c = jnp.array(a2c)
+            b2c = jnp.array(b2c)
+            chola = oe.contract('pr,grs,sq->gpq', a2c.T, chol_clas, a2c, backend='jax')
+            cholb = oe.contract('pr,grs,sq->gpq', b2c.T, chol_clas, b2c, backend='jax')
+            time8 = time.perf_counter()
+            print(f"# Build h1eff time: {time1 - time0:.6f} s")
+            print(f"# Build Common LAS time: {time3 - time2:.6f} s")
+            print(f"# Build DF in clsd time: {time5 - time4:.6f} s")
+            print(f"# Build 2-electron integral in clsd time: {time6 - time5:.6f} s")
+            print(f"# CD 2-electron integral in clsd time: {time7 - time6:.6f} s")
+            print(f"# Project CD 2-electron integral to AB time: {time8 - time7:.6f} s")
+            print(f"# Build Integral total time: {time8 - time0:.6f} s")
+
         elif use_df:
-            # use DF Tensors
             raise  NotImplementedError('Uncomment the code below and change a bit')
             # print("# Transform DF Tenor into LNO Basis")
             # chola = lib.einsum('pr,grs,sq->gpq',mo_coeff[0].T,chol_df,mo_coeff[0])
@@ -272,12 +311,6 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
             # cholb = cholb[:,ncore[1]:ncore[1]+ncas[1],ncore[1]:ncore[1]+ncas[1]]
             # print(f'# Alpha chol shape: {chola.shape}')
             # print(f'#  Beta chol shape: {cholb.shape}')
-
-        # eria1 = lib.einsum('lpr,lqs->prqs',chola1,chola1)
-        # eria2 = lib.einsum('lpr,lqs->prqs',chola2,chola2)
-        # print(abs(eria1-eria2).max())
-        # chola = chola1
-        # cholb = cholb1
     else:
         raise  NotImplementedError('Use DF Only!')
         # eri_clas = ao2mo.kernel(mf.mol,clas_coeff,compact=False)
@@ -286,9 +319,8 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         # chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
         # chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
     
-    v0_a = 0.5 * jnp.einsum("nik,njk->ij", chola, chola, optimize="optimal")
-    v0_b = 0.5 * jnp.einsum("nik,njk->ij", cholb, cholb, optimize="optimal")
-    # h1e = jnp.array(h1e)
+    v0_a = 0.5 * oe.contract("nik,njk->ij", chola, chola, backend='jax')
+    v0_b = 0.5 * oe.contract("nik,njk->ij", cholb, cholb, backend='jax')
     h1mod_a = jnp.array(h1e[0] - v0_a)
     h1mod_b = jnp.array(h1e[1] - v0_b)
 
@@ -322,6 +354,12 @@ def write_dqmc(
     h1e_a, h1e_b = h1e
     h1mod_a, h1mod_b = h1e_mod
     chol_a, chol_b = chol
+    h1e_a = np.array(h1e_a)
+    h1e_b = np.array(h1e_b)
+    h1mod_a = np.array(h1mod_a)
+    h1mod_b = np.array(h1mod_b)
+    chol_a = np.array(chol_a)
+    chol_b = np.array(chol_b)
     with h5py.File(filename, "w") as fh5:
         fh5["header"] = np.array([nelec[0], nelec[1], nmo[0], nmo[1], chol_a.shape[0]])
         fh5["h1e_a"] = h1e_a.flatten()
@@ -431,12 +469,12 @@ def _prep_afqmc(option_file="options.bin",
         t2ab = jnp.array(amplitudes["t2ab"])
         t2bb = jnp.array(amplitudes["t2bb"])
         prja, prjb = wave_data['prjlo']
-        wave_data["t1a"] = jnp.einsum('ia,ik->ka',t1a,prja)
-        wave_data["t1b"] = jnp.einsum('ia,ik->ka',t1b,prjb)
-        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        wave_data["t1a"] = oe.contract('ia,ik->ka', t1a, prja, backend='jax')
+        wave_data["t1b"] = oe.contract('ia,ik->ka', t1b, prjb, backend='jax')
+        wave_data["t2aa"] = oe.contract('iajb,ik->kajb', t2aa, prja, backend='jax')
+        wave_data["t2ab"] = oe.contract('iajb,ik->kajb', t2ab, prja, backend='jax')
+        wave_data["t2ba"] = oe.contract('jbia,ik->kajb', t2ab, prjb, backend='jax')
+        wave_data["t2bb"] = oe.contract('iajb,ik->kajb', t2bb, prjb, backend='jax')
     elif options["trial"] == "uccsd_pt":
         trial = ulno_wavefunctions.uccsd_pt(norb, nelec, n_batch = options["n_batch"])
         amplitudes = np.load(amp_file)
@@ -446,12 +484,12 @@ def _prep_afqmc(option_file="options.bin",
         t2ab = jnp.array(amplitudes["t2ab"])
         t2bb = jnp.array(amplitudes["t2bb"])
         prja, prjb = wave_data['prjlo']
-        wave_data["t1a"] = jnp.einsum('ia,ik->ka',t1a,prja)
-        wave_data["t1b"] = jnp.einsum('ia,ik->ka',t1b,prjb)
-        wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-        wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-        wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-        wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+        wave_data["t1a"] = oe.contract('ia,ik->ka', t1a, prja, backend='jax')
+        wave_data["t1b"] = oe.contract('ia,ik->ka', t1b, prjb, backend='jax')
+        wave_data["t2aa"] = oe.contract('iajb,ik->kajb', t2aa, prja, backend='jax')
+        wave_data["t2ab"] = oe.contract('iajb,ik->kajb', t2ab, prja, backend='jax')
+        wave_data["t2ba"] = oe.contract('jbia,ik->kajb', t2ab, prjb, backend='jax')
+        wave_data["t2bb"] = oe.contract('iajb,ik->kajb', t2bb, prjb, backend='jax')
     elif "uccsd_pt2" in options["trial"]:
         nocca, noccb = nelec
         norba, norbb = norb
@@ -470,40 +508,40 @@ def _prep_afqmc(option_file="options.bin",
         wave_data['exp_mt1a'] = jsp.linalg.expm(-t1a_full)
         wave_data['exp_t1b'] = jsp.linalg.expm(t1b_full)
         wave_data['exp_mt1b'] = jsp.linalg.expm(-t1b_full)
-        lt1a = jnp.einsum('ia,gja->gij', t1a, chol_a[:, :nocca, nocca:])
-        lt1b = jnp.einsum('ia,gja->gij', t1b, chol_b[:, :noccb, noccb:])
+        lt1a = oe.contract('ia,gja->gij', t1a, chol_a[:, :nocca, nocca:], backend='jax')
+        lt1b = oe.contract('ia,gja->gij', t1b, chol_b[:, :noccb, noccb:], backend='jax')
         # e0t1orb = <exp(T1)HF|H|HF>_i
-        e0t1orb_aa = (jnp.einsum('gik,ik,gjj->',lt1a, prja, lt1a) 
-                    - jnp.einsum('gij,gjk,ik->',lt1a, lt1a, prja)) * 0.5
-        e0t1orb_ab = jnp.einsum('gik,ik,gjj->',lt1a, prja, lt1b) * 0.5
-        e0t1orb_ba = jnp.einsum('gik,ik,gjj->',lt1b, prjb, lt1a) * 0.5
-        e0t1orb_bb = (jnp.einsum('gik,ik,gjj->',lt1b, prjb, lt1b)
-                    - jnp.einsum('gij,gjk,ik->',lt1b, lt1b, prjb)) * 0.5
+        e0t1orb_aa = (oe.contract('gik,ik,gjj->',lt1a, prja, lt1a, backend='jax')
+                    - oe.contract('gij,gjk,ik->',lt1a, lt1a, prja, backend='jax')) * 0.5
+        e0t1orb_ab = oe.contract('gik,ik,gjj->',lt1a, prja, lt1b, backend='jax') * 0.5
+        e0t1orb_ba = oe.contract('gik,ik,gjj->',lt1b, prjb, lt1a, backend='jax') * 0.5
+        e0t1orb_bb = (oe.contract('gik,ik,gjj->',lt1b, prjb, lt1b, backend='jax')
+                    - oe.contract('gij,gjk,ik->',lt1b, lt1b, prjb, backend='jax')) * 0.5
         ham_data['e0t1orb'] = e0t1orb_aa + e0t1orb_ab + e0t1orb_ba + e0t1orb_bb
         if "ad" in options["trial"]:
             trial = ulno_wavefunctions.uccsd_pt2_ad(norb, nelec, n_batch = options["n_batch"])
-            wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-            wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-            wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-            wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+            wave_data["t2aa"] = oe.contract('iajb,ik->kajb', t2aa, prja, backend='jax')
+            wave_data["t2ab"] = oe.contract('iajb,ik->kajb', t2ab, prja, backend='jax')
+            wave_data["t2ba"] = oe.contract('jbia,ik->kajb', t2ab, prjb, backend='jax')
+            wave_data["t2bb"] = oe.contract('iajb,ik->kajb', t2bb, prjb, backend='jax')
         elif "alpha" in options["trial"]:
             trial = ulno_wavefunctions.uccsd_pt2_alpha(norb, nelec, n_batch = options["n_batch"])
-            wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-            wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
+            wave_data["t2aa"] = oe.contract('iajb,ik->kajb', t2aa, prja, backend='jax')
+            wave_data["t2ab"] = oe.contract('iajb,ik->kajb', t2ab, prja, backend='jax')
             if "fast" in options["trial"]:
                 trial = ulno_wavefunctions.uccsd_pt2_alpha_fast(norb, nelec, n_batch = options["n_batch"])
         elif "beta" in options["trial"]:
             trial = ulno_wavefunctions.uccsd_pt2_beta(norb, nelec, n_batch = options["n_batch"])
-            wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-            wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+            wave_data["t2ba"] = oe.contract('jbia,ik->kajb', t2ab, prjb, backend='jax')
+            wave_data["t2bb"] = oe.contract('iajb,ik->kajb', t2bb, prjb, backend='jax')
             if "fast" in options["trial"]:
                 trial = ulno_wavefunctions.uccsd_pt2_beta_fast(norb, nelec, n_batch = options["n_batch"])
         else:
             trial = ulno_wavefunctions.uccsd_pt2(norb, nelec, n_batch = options["n_batch"])
-            wave_data["t2aa"] = jnp.einsum('iajb,ik->kajb',t2aa,prja)
-            wave_data["t2ab"] = jnp.einsum('iajb,ik->kajb',t2ab,prja)
-            wave_data["t2ba"] = jnp.einsum('jbia,ik->kajb',t2ab,prjb)
-            wave_data["t2bb"] = jnp.einsum('iajb,ik->kajb',t2bb,prjb)
+            wave_data["t2aa"] = oe.contract('iajb,ik->kajb', t2aa, prja, backend='jax')
+            wave_data["t2ab"] = oe.contract('iajb,ik->kajb', t2ab, prja, backend='jax')
+            wave_data["t2ba"] = oe.contract('jbia,ik->kajb', t2ab, prjb, backend='jax')
+            wave_data["t2bb"] = oe.contract('iajb,ik->kajb', t2bb, prjb, backend='jax')
 
     if options["walker_type"] == "uhf":
         prop = propagation.propagator_unrestricted(
@@ -659,8 +697,11 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         mcc._vhf = mlno._vhf
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
+        time0 = time.perf_counter()
         eorb_mp2_cc[ifrag], t1, t2 =\
             ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
+        time1 = time.perf_counter()
+        print(f"# CCSD time: {time1 - time0:.6f} s")
         
         prja = uocc_loc[0] @ uocc_loc[0].T.conj()
         prjb = uocc_loc[1] @ uocc_loc[1].T.conj()
