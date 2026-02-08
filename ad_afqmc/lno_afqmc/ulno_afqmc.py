@@ -1,5 +1,6 @@
 import os, h5py, pickle
 import numpy as np
+import jax
 from jax import numpy as jnp
 from jax import random
 from pyscf.cc.ccsd import CCSD
@@ -76,26 +77,54 @@ def get_veff(mf, dm):
     vj, vk = mf.get_jk(mol, dm, hermi=1)
     return vj[0]+vj[1] - vk
 
-def get_veff2(mf, dm):
 
-    vj = [jnp.empty(dm[0].shape), jnp.empty(dm[1].shape)]
-    vk = [jnp.empty(dm[0].shape), jnp.empty(dm[1].shape)]
+@jax.jit
+def jk_from_cderi(cderi, dm_a, dm_b):
+    """
+    cderi : (g, nao, nao)
+    dm_a  : (nao, nao)
+    dm_b  : (nao, nao)
+    """
+    # dm_a, dm_b = dm
+    dm_tot = dm_a + dm_b # Coulomb uses total density
+
+    cderi_dm_tot = oe.contract('gik,kj->gij', cderi, dm_tot, backend='jax')
+    vj = oe.contract('gkk,gij->ij', cderi_dm_tot, cderi, backend='jax')
+
+    cderi_dm_a = oe.contract('gik,kj->gij', cderi, dm_a, backend='jax')
+    cderi_dm_b = oe.contract('gik,kj->gij', cderi, dm_b, backend='jax')
+
+    vk_a = oe.contract('gik,gkj->ij', cderi_dm_a, cderi, backend='jax')
+    vk_b = oe.contract('gik,gkj->ij', cderi_dm_b, cderi, backend='jax')
+
+    return vj, vk_a, vk_b
+
+def get_veff2(mf, dm):
+    dm_a, dm_b = dm
+    dm_a = jnp.array(dm_a)
+    dm_b = jnp.array(dm_b)
+    
+    vj = jnp.zeros_like(dm_a)
+    vk_a = jnp.zeros_like(dm_a)
+    vk_b = jnp.zeros_like(dm_b)
 
     print('# Building JK matrix')
     for cderi in mf.with_df.loop():
         print(f'# number of DF vectors {cderi.shape[0]}')
-        cderi = lib.unpack_tril(cderi, axis=-1)
-        cderi = jnp.array(cderi)
-        cderi_dm_a = oe.contract('gik,kj->gij', cderi, dm[0], backend='jax')
-        cderi_dm_b = oe.contract('gik,kj->gij', cderi, dm[1], backend='jax')
-        vj[0] += oe.contract('gkk,gij->ij', cderi_dm_a, cderi, backend='jax')
-        vj[1] += oe.contract('gkk,gij->ij', cderi_dm_b, cderi, backend='jax')
-        vk[0] += oe.contract('gik,gkj->ij', cderi_dm_a, cderi, backend='jax')
-        vk[1] += oe.contract('gik,gkj->ij', cderi_dm_b, cderi, backend='jax')
+        cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
+        # cderi = jnp.array(cderi)
+        # cderi_dm_a = oe.contract('gik,kj->gij', cderi, dm[0], backend='jax')
+        # cderi_dm_b = oe.contract('gik,kj->gij', cderi, dm[1], backend='jax')
+        # vj[0] += oe.contract('gkk,gij->ij', cderi_dm_a, cderi, backend='jax')
+        # vj[1] += oe.contract('gkk,gij->ij', cderi_dm_b, cderi, backend='jax')
+        # vk[0] += oe.contract('gik,gkj->ij', cderi_dm_a, cderi, backend='jax')
+        # vk[1] += oe.contract('gik,gkj->ij', cderi_dm_b, cderi, backend='jax')
+        dvj, dvk_a, dvk_b = jk_from_cderi(cderi, dm_a, dm_b)
+        vj += dvj
+        vk_a += dvk_a
+        vk_b += dvk_b
 
-    vj = jnp.array(vj)
-    vk = jnp.array(vk)
-    return vj[0]+vj[1] - vk
+    return jnp.array([vj - vk_a, vj - vk_b])
 
 def h1e_uas(mf, mo_coeff, ncas, ncore):
     '''

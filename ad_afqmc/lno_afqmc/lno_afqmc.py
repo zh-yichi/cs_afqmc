@@ -1,5 +1,6 @@
 import os, h5py, pickle
 import numpy as np
+import jax
 from jax import numpy as jnp
 from jax import random
 import opt_einsum as oe
@@ -77,19 +78,30 @@ def get_veff(mf, dm):
     # print(f"# build JK time: {t1 - t0:.6f} s")
     return 2*vj - vk
 
+
+@jax.jit
+def jk_from_cderi(cderi, dm):
+    cderi_dm = oe.contract('gik,kj->gij', cderi, dm, backend='jax')
+    vj = oe.contract('gkk,gij->ij', cderi_dm, cderi, backend='jax')
+    vk = oe.contract('gik,gkj->ij', cderi_dm, cderi, backend='jax')
+    return vj, vk
+
 def get_veff2(mf, dm):
     '''use opt einsum on gpu'''
     dm = jnp.array(dm)
-    vj = jnp.empty(dm.shape)
-    vk = jnp.empty(dm.shape)
+    vj = jnp.zeros(dm.shape)
+    vk = jnp.zeros(dm.shape)
     print('# Building JK matrix')
-    for cderi in mf.with_df.loop():
-        print(f'# number of DF vectors {cderi.shape[0]}')
-        cderi = lib.unpack_tril(cderi, axis=-1)
-        cderi = jnp.array(cderi)
-        cderi_dm = oe.contract('gik,kj->gij', cderi, dm, backend='jax')
-        vj += oe.contract('gkk,gij->ij', cderi_dm, cderi, backend='jax')
-        vk += oe.contract('gik,gkj->ij', cderi_dm, cderi, backend='jax')
+    for i,cderi in enumerate(mf.with_df.loop()):
+        print(f'# DF loop {i} number of DF vectors {cderi.shape[0]}')
+        cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
+        # cderi = jnp.array(cderi)
+        # cderi_dm = oe.contract('gik,kj->gij', cderi, dm, backend='jax')
+        # vj += oe.contract('gkk,gij->ij', cderi_dm, cderi, backend='jax')
+        # vk += oe.contract('gik,gkj->ij', cderi_dm, cderi, backend='jax')
+        dvj, dvk = jk_from_cderi(cderi, dm)
+        vj += dvj
+        vk += dvk
     # vj, vk = mf.get_jk(mol, dm, hermi=1)
     return 2*vj - vk
 
@@ -173,7 +185,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         from pyscf.ao2mo import _ao2mo
 
         naux = mf.with_df.get_naoaux()
-        chol_df = np.empty((naux,ncas*(ncas+1)//2))
+        chol_df = np.zeros((naux,ncas*(ncas+1)//2))
         ijslice = (0, ncas, 0, ncas)
         Lpq = None
         p1 = 0
@@ -530,9 +542,9 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         mmp = mp.MP2(mf, frozen=nfrozen)
         emp2_tot = mmp.kernel()[0]
 
-    eorb_pt = np.empty(nfrag,dtype='float64')
-    eorb_pt_err = np.empty(nfrag,dtype='float64')
-    run_time = np.empty(nfrag,dtype='float64')
+    eorb_pt = np.zeros(nfrag,dtype='float64')
+    eorb_pt_err = np.zeros(nfrag,dtype='float64')
+    run_time = np.zeros(nfrag,dtype='float64')
 
     for n, i in enumerate(run_frg_list):
         with open(f"lnoafqmc.out{i+1}", "r") as readfile:
