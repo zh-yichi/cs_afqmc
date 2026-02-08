@@ -571,6 +571,16 @@ def _prep_afqmc(options=None,
                 options["n_trj"],
                 nchol,
                 )
+            
+    if options["group"]:
+        sampler = sampling.sampler_group(
+                options["group_size"],
+                options["n_prop_steps"],
+                options["n_ene_blocks"],
+                options["n_sr_blocks"],
+                options["n_blocks"],
+                nchol,
+                )
 
     # elif options["fp_abs"]:
     #     sampler = sampling.sampler_abs(

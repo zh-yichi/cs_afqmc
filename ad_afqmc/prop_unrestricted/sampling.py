@@ -30,35 +30,6 @@ class sampler:
         """Phaseless propagation scan function over steps."""
         prop_data = prop.propagate(trial, ham_data, prop_data, fields, wave_data)
         return prop_data, fields
-    
-    # @partial(jit, static_argnums=(0, 4, 5))
-    # def _step_scan_abs(
-    #     self,
-    #     prop_data: dict,
-    #     fields: jax.Array,
-    #     ham_data: dict,
-    #     prop: propagator,
-    #     trial,
-    #     wave_data: dict,
-    # ) -> Tuple[dict, jax.Array]:
-    #     """Phaseless propagation scan function over steps."""
-    #     prop_data = prop.propagate_free(trial, ham_data, prop_data, fields, wave_data)
-    #     prop_data["walkers"], norms = linalg_utils.qr_vmap_uhf(prop_data["walkers"])
-    #     # weights = jnp.abs(jnp.real(norms[0] * norms[1]))
-    #     weights = jnp.real(norms[0] * norms[1])
-    #     nwalker = int(prop_data["weights"].shape[0])
-    #     prop_data["weights"] *= weights
-    #     # prop_data["weights"] = nwalker * prop_data["weights"] / jnp.sum(prop_data["weights"])
-    #     # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    #     # prop_data["weights"] *= jnp.abs(prop_data["overlaps"])
-    #     prop_data["key"], subkey = random.split(prop_data["key"])
-    #     zeta = random.uniform(subkey)
-    #     prop_data["walkers"], prop_data["weights"] \
-    #         = sr.c_stochastic_reconfiguration_uhf(prop_data["walkers"], prop_data["weights"], zeta)
-    #     # prop_data["weights"] = nwalker * prop_data["weights"] / jnp.sum(prop_data["weights"])
-    #     # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    #     # prop_data["weights"] /= prop_data["overlaps"]
-    #     return prop_data, fields
 
     @partial(jit, static_argnums=(0, 3, 4))
     def _block_scan(
@@ -154,6 +125,254 @@ class sampler:
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
+    
+
+@dataclass
+class sampler_group:
+    group_size: int = 2
+    n_prop_steps: int = 50
+    n_ene_blocks: int = 50
+    n_sr_blocks: int = 1
+    n_blocks: int = 50
+    n_chol: int = 0
+
+    @partial(jit, static_argnums=(0,))
+    def group_sr(self, prop_data: dict) -> dict:
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        zeta = random.uniform(subkey)
+        group_weights = prop_data["group_weights"]
+        group_walkers = prop_data["walkers"].reshape(-1, self.group_size)
+        print('walkers shape ', group_walkers.shape)
+
+        group_walkers, group_weights = sr.stochastic_reconfiguration(
+            group_walkers, group_weights, zeta
+        )
+
+        prop_data["walkers"] = group_walkers.reshape(-1)
+        prop_data["group_weights"] = group_weights
+        
+        return prop_data
+
+    @partial(jit, static_argnums=(0, 1, 2))
+    def propagate_group(
+        self,
+        prop,
+        trial,
+        ham_data: dict,
+        prop_data: dict,
+        fields: jax.Array,
+        wave_data: dict,
+    ) -> dict:
+        
+        olps = trial.calc_overlap(prop_data["walkers"], wave_data)
+        fbs = trial.calc_force_bias(prop_data["walkers"], ham_data, wave_data)
+
+        olps = olps.reshape(-1, self.group_size)
+        fbs = fbs.reshape(-1, self.group_size, self.n_chol)
+        print('fb shape ', fbs.shape)
+        print('olps shape ', olps.shape)
+        group_olps = jnp.sum(olps, axis=1) 
+        group_fbs = jnp.einsum('Gw,Gwg->Gg', olps, fbs)
+        group_fbs = jnp.einsum('Gg,G->Gg', group_fbs, 1/group_olps)
+        print('group_fb shape ', group_fbs.shape)
+        print('group_olps shape ', group_olps.shape)
+        # group_fbs = jnp.broadcast_to(group_fbs[:, None], (group_fbs.shape[0], self.group_size)).reshape(-1)
+
+        field_shifts = -jnp.sqrt(prop.dt) * (1.0j * group_fbs - ham_data["mf_shifts"])
+        print('field_shifts shape ', field_shifts.shape)
+
+        field_shifts = jnp.broadcast_to(field_shifts[:, None, :], 
+                                        (field_shifts.shape[0], self.group_size, self.n_chol)
+                                        ).reshape(-1,self.n_chol)
+        
+        print('field_shifts shape ', field_shifts.shape)
+
+        shifted_fields = fields - field_shifts
+        # shifted_fields = fields - jnp.broadcast_to(
+        #     field_shifts[:, None, :], 
+        #     (field_shifts.shape[0], self.group_size, self.n_chol)
+        #     ).reshape(-1,self.n_chol)
+        
+        shift_term = jnp.sum(shifted_fields * ham_data["mf_shifts"], axis=1)
+        fb_term = jnp.sum(
+            fields * field_shifts - field_shifts * field_shifts / 2.0, axis=1
+        )
+
+        prop_data["walkers"] = prop._apply_trotprop(
+            ham_data, prop_data["walkers"], shifted_fields
+        )
+
+        olps_new = trial.calc_overlap(prop_data["walkers"], wave_data)
+        # olps_new = olps_new.reshape(-1, self.group_size)
+        # group_olps_new = jnp.sum(olps_new, axis=1) 
+
+        # I(x,xbar,walkers,trial) = <trial|walkers_new>/<trial|walkers_old> 
+        #                                 * exp(x_g xbar_g - 1/2 xbar_g xbar_g)
+        print('shift_term shape ', shift_term.shape)
+        print('fb_term shape ', fb_term.shape)
+        # print('gp_olp_new shape ', group_olps_new.shape)
+        # print('gp_olp shape ', group_olps.shape)
+        imp_fun = (
+            jnp.exp(
+                -jnp.sqrt(prop.dt) * shift_term
+                + fb_term # pop_control_ene_shift = estimated ground state energy
+                + prop.dt * (prop_data["pop_control_ene_shift"] + ham_data["h0_prop"])
+                ) * olps_new
+            )
+        imp_fun = jnp.sum(imp_fun.reshape(-1, self.group_size), axis=1) / group_olps
+        
+        theta = jnp.exp(-jnp.sqrt(prop.dt) * shift_term) * olps_new
+        theta = jnp.angle(jnp.sum(theta.reshape(-1, self.group_size), axis=1) / group_olps)
+        print('theta ', theta)
+
+        imp_fun_phaseless = jnp.abs(imp_fun) * jnp.cos(theta)
+        imp_fun_phaseless = jnp.array(
+            jnp.where(jnp.isnan(imp_fun_phaseless), 0.0, imp_fun_phaseless)
+        )
+        imp_fun_phaseless = jnp.where(
+            imp_fun_phaseless < 1.0e-3, 0.0, imp_fun_phaseless
+        )
+        imp_fun_phaseless = jnp.where(imp_fun_phaseless > 100.0, 0.0, imp_fun_phaseless)
+        print('imp_fun_phaseless', imp_fun_phaseless)
+
+        # prop_data["imp_fun"] = imp_fun_phaseless
+        prop_data["group_weights"] = imp_fun_phaseless * prop_data["group_weights"]
+        prop_data["group_weights"] = jnp.array(
+            jnp.where(prop_data["group_weights"] > 100, 0.0, prop_data["group_weights"])
+        )
+        print('group weights ', prop_data["group_weights"])
+
+        prop_data["pop_control_ene_shift"] \
+            = prop_data["e_estimate"] - 0.1 * jnp.array(
+                jnp.log(jnp.sum(prop_data["group_weights"]) 
+                    / (prop.n_walkers / self.group_size)) 
+                    / prop.dt
+                    )
+        prop_data["overlaps"] = olps_new
+
+        return prop_data
+
+    @partial(jit, static_argnums=(0, 4, 5))
+    def _step_scan(
+        self,
+        prop_data: dict,
+        fields: jax.Array,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[dict, jax.Array]:
+        """Phaseless propagation scan function over steps."""
+        prop_data = self.propagate_group(prop, trial, ham_data, prop_data, fields, wave_data)
+        return prop_data, fields
+
+    @partial(jit, static_argnums=(0, 3, 4))
+    def _block_scan(
+        self,
+        prop_data: dict,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+        """Block scan function. Propagation and energy calculation."""
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        fields = random.normal(
+            subkey,
+            shape=(
+                self.n_prop_steps,
+                prop.n_walkers,
+                self.n_chol,
+            ),
+        )
+        _step_scan_wrapper = lambda x, y: self._step_scan(
+            x, y, ham_data, prop, trial, wave_data
+        )
+        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+        prop_data["n_killed_groups"] += prop_data["group_weights"].size - jnp.count_nonzero(
+            prop_data["group_weights"]
+        )
+        prop_data = prop.orthonormalize_walkers(prop_data)
+
+        # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        olps = trial.calc_overlap(prop_data["walkers"], wave_data)
+        ens = trial.calc_energy(prop_data["walkers"], ham_data, wave_data)
+        print('walkers shape ', prop_data["walkers"].shape)
+
+        olps = olps.reshape(-1, self.group_size)
+        ens = ens.reshape(-1, self.group_size)
+        group_olps = jnp.sum(olps, axis=1) 
+        group_ens = jnp.real(jnp.sum(olps * ens, axis=1) / group_olps)
+
+        group_ens = jnp.where(
+            jnp.abs(group_ens - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+            prop_data["e_estimate"],
+            group_ens,
+        )
+
+        wt = jnp.sum(prop_data["group_weights"])
+        en = jnp.sum(group_ens * prop_data["group_weights"]) / wt
+        
+        prop_data["pop_control_ene_shift"] = (
+            0.9 * prop_data["pop_control_ene_shift"] + 0.1 * en
+        )
+
+        return prop_data, (en, wt)
+    
+
+    @partial(jit, static_argnums=(0, 3, 4))
+    def _sr_block_scan(
+        self,
+        prop_data: dict,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+
+        def _block_scan_wrapper(x,_):
+            return self._block_scan(x,ham_data,prop,trial,wave_data)
+
+        prop_data, (block_energy, block_weight) = lax.scan(
+            _block_scan_wrapper, prop_data, None, length=self.n_ene_blocks
+        )
+        print('walkers shape ', prop_data["walkers"].shape)
+        # prop_data = self.group_sr(prop_data)
+        print('walkers shape ', prop_data["walkers"].shape)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        return prop_data, (block_energy, block_weight)
+
+    @partial(jit, static_argnums=(0, 1, 3, 5))
+    def propagate_phaseless(
+        self,
+        ham: hamiltonian,
+        ham_data: dict,
+        prop: propagator,
+        prop_data: dict,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[jax.Array, dict]:
+        def _sr_block_scan_wrapper(x,_):
+            return self._sr_block_scan(x, ham_data, prop, trial, wave_data)
+
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["n_killed_groups"] = 0
+        prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+        prop_data, (block_energy, block_weight) = lax.scan(
+            _sr_block_scan_wrapper, prop_data, None, length=self.n_sr_blocks
+        )
+        prop_data["n_killed_groups"] /= (
+            self.n_sr_blocks * self.n_ene_blocks * (prop.n_walkers // self.group_size)
+        )
+
+        weight = jnp.sum(block_weight)
+        energy = jnp.sum(block_energy * block_weight) / weight
+        return prop_data, (weight, energy)
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.__dict__.values()))
+
+
 
 @dataclass
 class sampler_abs:

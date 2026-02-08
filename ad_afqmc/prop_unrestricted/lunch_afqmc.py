@@ -30,6 +30,9 @@ def run_afqmc(options,nproc=None,dbg=False,
         else:
             script='run_afqmc_ccsd_pt.py'
 
+    if options["group"]:
+        script='run_afqmc_group_sampling.py'
+
     else:
         script='run_afqmc_sampling.py'
 

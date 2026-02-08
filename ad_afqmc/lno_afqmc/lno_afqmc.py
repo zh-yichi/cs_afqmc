@@ -70,6 +70,7 @@ def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
 
 def get_veff(mf, dm):
     mol = mf.mol
+    print('# Building JK matrix')
     vj, vk = mf.get_jk(mol, dm, hermi=1)
     return 2*vj - vk
 
@@ -89,7 +90,8 @@ def h1e_ras(mf, mo_coeff, ncas, ncore):
     if mo_core.size == 0:
         corevhf = 0.
     else:
-        core_dm = np.dot(mo_core, mo_core.T)
+        # core_dm = np.dot(mo_core, mo_core.T)
+        core_dm = mo_core @ mo_core.T
         corevhf = get_veff(mf, core_dm)
         energy_core += 2 * lib.einsum('ij,ji', core_dm, hcore)
         energy_core += lib.einsum('ij,ji', core_dm, corevhf)
@@ -127,6 +129,9 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     nactocc = len(actocc)
     nactvir = len(actvir)
     nactorb = len(actfrag)
+    # print(f'# number of forzen occupied orbitals {nfrzocc}')
+    print(f'# number of active occupied orbitals {nactocc}')
+    print(f'# number of active virtual orbitals {nactvir}')
 
     ncas = nactorb
     ncore = nfrzocc
