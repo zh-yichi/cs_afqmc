@@ -42,8 +42,21 @@ if "rdm1" not in wave_data:
 ham_data = ham.build_measurement_intermediates(ham_data, trial, wave_data)
 ham_data = ham.build_propagation_intermediates(ham_data, prop, trial, wave_data)
 h0 = ham_data['h0']
+# mywalkers = trial.get_init_walkers(wave_data, prop.n_walkers, restricted=True)
+
+# comm.Barrier()
+# if rank == 0:
+#     print(f'# my walkers ', mywalkers)
+#     print(f'# one walker ', mywalkers[0])
+#     print(f'# one walker shape', mywalkers[0].shape)
+# comm.Barrier()
 
 prop_data = prop.init_prop_data(trial, wave_data, ham_data, init_walkers)
+# comm.Barrier()
+# if rank == 0:
+#     print(f'# initial walkers shape ', prop_data["walkers"].shape)
+# comm.Barrier()
+
 if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
     raise ValueError(
         "Initial overlaps are zero. Pass walkers with non-zero overlap."
@@ -51,7 +64,7 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
 prop_data["key"] = random.PRNGKey(seed + rank)
 
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-prop_data["group_weights"] = jnp.ones(prop.n_walkers//sampler.group_size)
+prop_data["group_weights"] = jnp.ones(prop.n_walkers//sampler.group_size, dtype=jnp.complex128)
 prop_data["n_killed_groups"] = 0
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
@@ -59,7 +72,10 @@ comm.Barrier()
 if rank == 0:
     e_init = prop_data["e_estimate"]
     print('# \n')
+    print(f'# trial {trial}')
+    print(f'# prop {prop}')
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
+    # print(f'# initial walkers shape ', prop_data["walkers"].shape)
     print("# Equilibration sweeps:")
     print("#   Iter \t energy \t Walltime")
     print(f"  {0:5d} \t {e_init:.6f} \t {time.time() - init_time:.2f}")
@@ -72,8 +88,8 @@ for n in range(1,options["n_eql"]+1):
     prop_data, (blk_wt, blk_e) = sampler_eq.propagate_phaseless(
         ham, ham_data, prop, prop_data, trial, wave_data)
 
-    blk_wt = np.array([blk_wt], dtype="float64")
-    blk_e = np.array([blk_e], dtype="float64")
+    blk_wt = np.array([blk_wt.real], dtype="float64")
+    blk_e = np.array([blk_e.real], dtype="float64")
 
     gather_wt = None
     gather_e = None
@@ -97,7 +113,7 @@ for n in range(1,options["n_eql"]+1):
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_e, root=0)
 
-    prop_data = prop.orthonormalize_walkers(prop_data)
+    # prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = (
          0.9 * prop_data["e_estimate"] + 0.1 * blk_e
@@ -158,7 +174,7 @@ for n in range(sampler.n_blocks):
     comm.Bcast(blk_wt, root=0)
     comm.Bcast(blk_e, root=0)
 
-    prop_data = prop.orthonormalize_walkers(prop_data)
+    # prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_global(prop_data, comm)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * blk_e
 
