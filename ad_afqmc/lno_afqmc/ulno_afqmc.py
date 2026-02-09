@@ -53,23 +53,23 @@ def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
         # CCSD fragment energy
         t1, t2 = mcc.kernel(eris=imp_eris, t1=t1, t2=t2)[1:]
         elcorr_cc = ulnoccsd.get_fragment_energy(imp_eris, t1, t2, prjlo)
-        if ccsd_t:
-            from pyscf.lno.ulnoccsd_t_slow import kernel as UCCSD_T
-            elcorr_cc_t = UCCSD_T(mcc, imp_eris, prjlo, t1=t1, t2=t2)
-        else:
-            elcorr_cc_t = 0.
+        # if ccsd_t:
+        #     from pyscf.lno.ulnoccsd_t_slow import kernel as UCCSD_T
+        #     elcorr_cc_t = UCCSD_T(mcc, imp_eris, prjlo, t1=t1, t2=t2)
+        # else:
+        #     elcorr_cc_t = 0.
 
-        t1_0 = [t1[0]*0, t1[1]*0]
-        ecct1_0 = ulnoccsd.get_fragment_energy(imp_eris, t1_0, t2, prjlo)
-        print('# LNO-UCCSD (T1 = 0) fragment energy:', ecct1_0)
-        t2_0 = [t2[0]*0, t2[1]*0, t2[2]*0]
-        ecct2_0 = ulnoccsd.get_fragment_energy(imp_eris, t1, t2_0, prjlo)
-        print('# LNO-UCCSD (T2 = 0) fragment energy:', ecct2_0)
+        # t1_0 = [t1[0]*0, t1[1]*0]
+        # ecct1_0 = ulnoccsd.get_fragment_energy(imp_eris, t1_0, t2, prjlo)
+        # print('# LNO-UCCSD (T1 = 0) fragment energy:', ecct1_0)
+        # t2_0 = [t2[0]*0, t2[1]*0, t2[2]*0]
+        # ecct2_0 = ulnoccsd.get_fragment_energy(imp_eris, t1, t2_0, prjlo)
+        # print('# LNO-UCCSD (T2 = 0) fragment energy:', ecct2_0)
 
-    imp_eris = None
-    t1_0 = t2_0 = None
+    # imp_eris = None
+    # t1_0 = t2_0 = None
 
-    return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2
+    return (elcorr_pt2, elcorr_cc, 0), t1, t2
 
 def get_veff(mf, dm):
     # dm = np.array(dm)
@@ -77,6 +77,33 @@ def get_veff(mf, dm):
     vj, vk = mf.get_jk(mol, dm, hermi=1)
     return vj[0]+vj[1] - vk
 
+
+def pack_symmetric(L):
+    """
+    L: shape (g, n, n), symmetric in last two indices
+    returns: shape (g, n*(n+1)//2)
+    """
+    n = L.shape[-1]
+    iu = jnp.tril_indices(n)
+    return L[:, iu[0], iu[1]]
+
+
+# def unpack_symmetric(Lp, n):
+#     """
+#     Lp: shape (g, n*(n+1)//2)
+#     n: matrix dimension
+#     returns: shape (g, n, n), symmetric
+#     """
+#     g = Lp.shape[0]
+#     # npair = Lp.shape[-1]
+#     # n = 
+#     iu = jnp.triu_indices(n)
+
+#     L = jnp.zeros((g, n, n), dtype=Lp.dtype)
+#     L = L.at[:, iu[0], iu[1]].set(Lp)
+#     # reflect upper triangle to lower triangle
+#     L = L + jnp.swapaxes(L, -1, -2) - jnp.diag(jnp.diagonal(L, axis1=-2, axis2=-1))
+#     return L
 
 @jax.jit
 def jk_from_cderi(cderi, dm_a, dm_b):
@@ -110,15 +137,8 @@ def get_veff2(mf, dm):
 
     print('# Building JK matrix')
     for cderi in mf.with_df.loop():
-        print(f'# number of DF vectors {cderi.shape[0]}')
+        # print(f'# number of DF vectors {cderi.shape[0]}')
         cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
-        # cderi = jnp.array(cderi)
-        # cderi_dm_a = oe.contract('gik,kj->gij', cderi, dm[0], backend='jax')
-        # cderi_dm_b = oe.contract('gik,kj->gij', cderi, dm[1], backend='jax')
-        # vj[0] += oe.contract('gkk,gij->ij', cderi_dm_a, cderi, backend='jax')
-        # vj[1] += oe.contract('gkk,gij->ij', cderi_dm_b, cderi, backend='jax')
-        # vk[0] += oe.contract('gik,gkj->ij', cderi_dm_a, cderi, backend='jax')
-        # vk[1] += oe.contract('gik,gkj->ij', cderi_dm_b, cderi, backend='jax')
         dvj, dvk_a, dvk_b = jk_from_cderi(cderi, dm_a, dm_b)
         vj += dvj
         vk_a += dvk_a
@@ -187,10 +207,11 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     lno_actaa = lno_coeff[0].T @ s1e @ lno_acta # proj to the complete
     lno_actba = lno_coeff[0].T @ s1e @ lno_actb # alpha basis for orthogonal
     clno_act = np.hstack([lno_actaa,lno_actba]) # common active lno
-    print('# Naive Common LAS Shape: ', clno_act.shape)
-    u, s, _ = np.linalg.svd(clno_act)
-    print(f'# Common Active Space SVD Singular values:')
-    # print(s)
+    print('# Naive cLAS Shape: ', clno_act.shape)
+    # full_matrices = False gives u that just span the space of clno_act
+    u, s, _ = np.linalg.svd(clno_act, full_matrices=False)
+    print(f'# Orthonormalize cLAS shape: {u.shape}')
+    print(f'# Smallest cLAS SVD Singular values: {s[-1]}')
     print(f"# cLAS projection torr: {torr}")
     for idx in range(lno_acta.shape[1],u.shape[1]+1):
         prj = lno_coeff[0] @ u[:,:idx]
@@ -198,7 +219,7 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
         prj_actb = prjmo(prj,s1e,lno_acta)
         losa = abs(prj_acta-lno_actb).max()
         losb = abs(prj_actb-lno_acta).max()
-        # print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
+        print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
         if losa < torr and losb < torr:
             break
     print(f"# Minimum size of cLAS to span both Alpha and Beta LAS: {idx}")
@@ -212,6 +233,19 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     # print(f"# Build Common LAS time: {time1 - time0:.6f} s")
     return clas_coeff, a2c, b2c
 
+
+@jax.jit
+def cderi2mo(cderi, mo_coeff):
+    cderi_mo = oe.contract('pr,grs,sq->gpq', mo_coeff.T, cderi, mo_coeff, backend='jax')
+    return cderi_mo
+
+@jax.jit
+def get_eri(cderi, clas_coeff):
+    cderi_clas = cderi2mo(cderi, clas_coeff)
+    # cderi_clas = oe.contract('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, backend='jax')
+    cderi_clas = pack_symmetric(cderi_clas)
+    eri_clas = oe.contract('gP,gQ->PQ', cderi_clas, cderi_clas, backend='jax')
+    return eri_clas
 
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                options,chol_cut=1e-5,use_df=False,
@@ -283,53 +317,72 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         # chol_df = chol_df.reshape((-1, nao, nao))
         # print(f'# DF Tensor shape: {chol_df.shape}')
         if not use_df:
-            from pyscf.ao2mo import _ao2mo
+            # from pyscf.ao2mo import _ao2mo
             time2 = time.perf_counter()
-            clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore)
+            clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore, torr=1e-9)
+            clas_coeff = jnp.array(clas_coeff)
+            a2c = jnp.array(a2c)
+            b2c = jnp.array(b2c)
             time3 = time.perf_counter()
 
             nclas = clas_coeff.shape[1]
             # decompose eri in active LNO to achieve linear scale on the auxilary axis
             print("# Composing AO ERIs from DF basis")
-            naux = mf.with_df.get_naoaux()
-            chol_df_clas = np.empty((naux,nclas*(nclas+1)//2))
-            ijslice = (0, nclas, 0, nclas)
-            Lpq = None
-            p1 = 0
-            # print('# test new efficient algorithm!!!!!!!')
+            # naux = mf.with_df.get_naoaux()
+            npair = nclas*(nclas+1)//2
+            # chol_df_clas = np.zeros((naux, npair))
+            # ijslice = (0, nclas, 0, nclas)
+            # Lpq = None
+            # p1 = 0
+    
+            eri_clas = jnp.zeros((npair, npair))
+
             time4 = time.perf_counter()
-            for eri1 in mf.with_df.loop():
-                Lpq = _ao2mo.nr_e2(eri1, clas_coeff, ijslice, aosym='s2', out=Lpq).reshape(-1,nclas,nclas)
-                p0, p1 = p1, p1 + Lpq.shape[0]
-                print(f"  {Lpq.shape}")
-                chol_df_clas[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in clas_mo representation
+            for cderi in mf.with_df.loop():
+                cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
+                eri_clas += get_eri(cderi, clas_coeff)
+                # Lpq = _ao2mo.nr_e2(eri1, clas_coeff, ijslice, aosym='s2', out=Lpq).reshape(-1,nclas,nclas)
+                # Lpq = lib.einsum('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, optimize='optimal')
+                # p0, p1 = p1, p1 + Lpq.shape[0]
+                # chol_df_clas[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in clas_mo representation
+                # Lpq = oe.contract('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, backend='jax')
+                # chol_df_clas = pack_symmetric(Lpq)
+                # eri_clas += oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
+                # cderi = oe.contract('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, backend='jax')
+                # cderi = pack_symmetric(cderi)
+                # eri_clas += oe.contract('gP,gQ->PQ', cderi, cderi, backend='jax')
+                # print(f"  {Lpq.shape}")
             
-            chol_df_clas = jnp.array(chol_df_clas)
-            print(f"# Packed DF tensor in clas shape: {chol_df_clas.shape}")
+            # chol_df_clas = jnp.array(chol_df_clas)
+            # print(f"# Packed eri in clas shape: {eri_clas.shape}")
             time5 = time.perf_counter()
 
-            eri_clas = oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
-            time6 = time.perf_counter()
+            # eri_clas = oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
+            print(f"# Packed eri in clas shape: {eri_clas.shape}")
+            # time6 = time.perf_counter()
             print("# Finished Composing LAS ERIs")
             print("# Decomposing MO ERIs to Cholesky vectors")
             print("# Tighter Chol_cutoff is recommended for LNO")
             print(f"# Cholesky cutoff is: {chol_cut}")
+            eri_clas = np.array(eri_clas)
             chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-            time7 = time.perf_counter()
-            chol_clas = lib.unpack_tril(chol_clas,axis=-1)
+            chol_clas = lib.unpack_tril(chol_clas, axis=-1)
+            time6 = time.perf_counter()
             chol_clas = jnp.array(chol_clas)
-            a2c = jnp.array(a2c)
-            b2c = jnp.array(b2c)
-            chola = oe.contract('pr,grs,sq->gpq', a2c.T, chol_clas, a2c, backend='jax')
-            cholb = oe.contract('pr,grs,sq->gpq', b2c.T, chol_clas, b2c, backend='jax')
-            time8 = time.perf_counter()
+            # chol_clas = unpack_symmetric(chol_clas, nclas)
+            print(f"# Unpacked chol in clas shape: {chol_clas.shape}")
+            # cbola = oe.contract('pr,grs,sq->gpq', a2c.T, chol_clas, a2c, backend='jax')
+            # cholb = oe.contract('pr,grs,sq->gpq', b2c.T, chol_clas, b2c, backend='jax')
+            chola = cderi2mo(chol_clas, a2c)
+            cholb = cderi2mo(chol_clas, b2c) 
+            time7 = time.perf_counter()
             print(f"# Build h1eff time: {time1 - time0:.6f} s")
             print(f"# Build Common LAS time: {time3 - time2:.6f} s")
-            print(f"# Build DF in clsd time: {time5 - time4:.6f} s")
-            print(f"# Build 2-electron integral in clsd time: {time6 - time5:.6f} s")
-            print(f"# CD 2-electron integral in clsd time: {time7 - time6:.6f} s")
-            print(f"# Project CD 2-electron integral to AB time: {time8 - time7:.6f} s")
-            print(f"# Build Integral total time: {time8 - time0:.6f} s")
+            # print(f"# Build DF in clsd time: {time5 - time4:.6f} s")
+            print(f"# Build 2-electron integral in clas time: {time5 - time4:.6f} s")
+            print(f"# CD 2-electron integral in clas time: {time6 - time5:.6f} s")
+            print(f"# Project CD 2-electron integral to AB time: {time7 - time6:.6f} s")
+            print(f"# Build Integral total time: {time7 - time0:.6f} s")
 
         elif use_df:
             raise  NotImplementedError('Uncomment the code below and change a bit')
@@ -644,7 +697,7 @@ def run_lnoafqmc(options,nproc=None,
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
               nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5, emp2_tot = None,
               use_df = False, lno_type = ['1h']*2, run_frg_list = None, 
-              nproc = None, fast = True, ccsd_t=False):
+              nproc = None, fast = False, ccsd_t=False):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
@@ -657,6 +710,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     # lo_proj_thresh_active = 0.1
     eris = None
     trial = options["trial"]
+    nfrag_tot = int(mf.mol.nelectron - 2*nfrozen)
 
     if run_frg_list is None:
         nfrag = len(frag_lolist)
@@ -682,7 +736,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     eorb_mp2_cc = [None] * nfrag
     # Loop over fragment
     for ifrag, loidx in enumerate(frag_lolist):
-        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag} ###########')
+        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag_tot} ###########')
         if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
             orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
             lno_param = [
@@ -730,7 +784,6 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         eorb_mp2_cc[ifrag], t1, t2 =\
             ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
         time1 = time.perf_counter()
-        print(f"# CCSD time: {time1 - time0:.6f} s")
         
         prja = uocc_loc[0] @ uocc_loc[0].T.conj()
         prjb = uocc_loc[1] @ uocc_loc[1].T.conj()
@@ -739,6 +792,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         print(f'# LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
         print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
         print(f'# LNO-CCSD(T) Orbital Energy: {eorb_mp2_cc[ifrag][2]:.8f}')
+        print(f"# LNO-CCSD time: {time1 - time0:.6f} s")
         
         from mpi4py import MPI
         if not MPI.Is_finalized():
