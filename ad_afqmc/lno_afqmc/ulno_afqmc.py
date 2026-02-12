@@ -219,7 +219,7 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
         prj_actb = prjmo(prj,s1e,lno_acta)
         losa = abs(prj_acta-lno_actb).max()
         losb = abs(prj_actb-lno_acta).max()
-        print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
+        # print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
         if losa < torr and losb < torr:
             break
     print(f"# Minimum size of cLAS to span both Alpha and Beta LAS: {idx}")
@@ -235,17 +235,44 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
 
 
 @jax.jit
-def cderi2mo(cderi, mo_coeff):
+def cderi2mo_gpu(cderi, mo_coeff):
     cderi_mo = oe.contract('pr,grs,sq->gpq', mo_coeff.T, cderi, mo_coeff, backend='jax')
-    return cderi_mo
+    return pack_symmetric(cderi_mo)
+
+def cderi2mo_cpu(cderi, mo_coeff):
+    cderi_mo = lib.einsum('pr,grs,sq->gpq', mo_coeff.T, cderi, mo_coeff, optimize='optimal')
+    return pack_symmetric(cderi_mo)
 
 @jax.jit
-def get_eri(cderi, clas_coeff):
-    cderi_clas = cderi2mo(cderi, clas_coeff)
-    # cderi_clas = oe.contract('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, backend='jax')
-    cderi_clas = pack_symmetric(cderi_clas)
-    eri_clas = oe.contract('gP,gQ->PQ', cderi_clas, cderi_clas, backend='jax')
-    return eri_clas
+def get_eri(cderi):
+    # cderi_clas = cderi2mo(cderi, clas_coeff)
+    eri = oe.contract('gP,gQ->PQ', cderi, cderi, backend='jax')
+    return eri
+
+def compress_cderi_cpu(cderi, thresh=1e-6):
+    """
+    Perform SVD on cderi (CPU) and keep components with s^2 > thresh.
+
+    Parameters
+    ----------
+    cderi : np.ndarray
+        Input matrix (m, n)
+    thresh : float
+        Threshold on squared singular values
+
+    Returns
+    -------
+    compressed cderi: np.ndarray
+    """
+    _, s, Vh = np.linalg.svd(cderi, full_matrices=False)
+
+    mask = s**2 > thresh
+
+    s = s[mask]
+    Vh = Vh[mask, :]
+    cp_cderi = lib.einsum('s,sP->sP', s, Vh, optimize='optimal')
+
+    return cp_cderi
 
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                options,chol_cut=1e-5,use_df=False,
@@ -320,32 +347,28 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
             # from pyscf.ao2mo import _ao2mo
             time2 = time.perf_counter()
             clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore, torr=1e-9)
-            clas_coeff = jnp.array(clas_coeff)
-            a2c = jnp.array(a2c)
-            b2c = jnp.array(b2c)
+            # clas_coeff = jnp.array(clas_coeff)
+            # a2c = jnp.array(a2c)
+            # b2c = jnp.array(b2c)
             time3 = time.perf_counter()
 
             nclas = clas_coeff.shape[1]
             # decompose eri in active LNO to achieve linear scale on the auxilary axis
             print("# Composing AO ERIs from DF basis")
-            # naux = mf.with_df.get_naoaux()
             npair = nclas*(nclas+1)//2
-            # chol_df_clas = np.zeros((naux, npair))
-            # ijslice = (0, nclas, 0, nclas)
-            # Lpq = None
-            # p1 = 0
-    
-            eri_clas = jnp.zeros((npair, npair))
-
+            # eri_clas = jnp.zeros((npair, npair))
+            naux = mf.with_df.get_naoaux()
+            cderi_clas = np.zeros((naux, npair))
+            p1 = 0
             time4 = time.perf_counter()
             for cderi in mf.with_df.loop():
-                cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
-                eri_clas += get_eri(cderi, clas_coeff)
-                # Lpq = _ao2mo.nr_e2(eri1, clas_coeff, ijslice, aosym='s2', out=Lpq).reshape(-1,nclas,nclas)
-                # Lpq = lib.einsum('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, optimize='optimal')
-                # p0, p1 = p1, p1 + Lpq.shape[0]
-                # chol_df_clas[p0:p1] = lib.pack_tril(Lpq, axis=-1) # in clas_mo representation
-                # Lpq = oe.contract('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, backend='jax')
+                # cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
+                cderi = lib.unpack_tril(cderi, axis=-1)
+                # cderi = cderi2mo(cderi, clas_coeff)
+                cderi = cderi2mo_cpu(cderi, clas_coeff)
+                p0, p1 = p1, p1 + cderi.shape[0]
+                cderi_clas[p0:p1] = cderi
+                # eri_clas += get_eri(cderi)
                 # chol_df_clas = pack_symmetric(Lpq)
                 # eri_clas += oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
                 # cderi = oe.contract('pr,grs,sq->gpq', clas_coeff.T, cderi, clas_coeff, backend='jax')
@@ -353,35 +376,39 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                 # eri_clas += oe.contract('gP,gQ->PQ', cderi, cderi, backend='jax')
                 # print(f"  {Lpq.shape}")
             
+            
             # chol_df_clas = jnp.array(chol_df_clas)
             # print(f"# Packed eri in clas shape: {eri_clas.shape}")
             time5 = time.perf_counter()
 
             # eri_clas = oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
-            print(f"# Packed eri in clas shape: {eri_clas.shape}")
-            # time6 = time.perf_counter()
-            print("# Finished Composing LAS ERIs")
-            print("# Decomposing MO ERIs to Cholesky vectors")
-            print("# Tighter Chol_cutoff is recommended for LNO")
+            print(f"# Raw CDERI in cLAS shape: {cderi_clas.shape}")
+            print("# Finish Composing cLAS CDERIs")
+            print("# Compress CDERIs into Cholesky Vectors")
+            # print("# Tighter Chol_cutoff is recommended for LNO")
             print(f"# Cholesky cutoff is: {chol_cut}")
-            eri_clas = np.array(eri_clas)
-            chol_clas = pyscf_interface.modified_cholesky(eri_clas,max_error=chol_cut)
-            chol_clas = lib.unpack_tril(chol_clas, axis=-1)
+            # eri_clas = np.array(eri_clas)
+            # eri_clas = lib.einsum('gP,gQ->PQ', cderi_clas, cderi_clas, optimize='optimal')
+            # cderi_clas = pyscf_interface.modified_cholesky(eri_clas, max_error=chol_cut)
+            cderi_clas = compress_cderi_cpu(cderi_clas, thresh=chol_cut)
+            cderi_clas = lib.unpack_tril(cderi_clas, axis=-1)
             time6 = time.perf_counter()
-            chol_clas = jnp.array(chol_clas)
+            # chol_clas = jnp.array(chol_clas)
             # chol_clas = unpack_symmetric(chol_clas, nclas)
-            print(f"# Unpacked chol in clas shape: {chol_clas.shape}")
+            print(f"# Compressed Cholesky Vectors in cLAS shape: {cderi_clas.shape}")
             # cbola = oe.contract('pr,grs,sq->gpq', a2c.T, chol_clas, a2c, backend='jax')
             # cholb = oe.contract('pr,grs,sq->gpq', b2c.T, chol_clas, b2c, backend='jax')
-            chola = cderi2mo(chol_clas, a2c)
-            cholb = cderi2mo(chol_clas, b2c) 
+            chola = cderi2mo_cpu(cderi_clas, a2c)
+            cholb = cderi2mo_cpu(cderi_clas, b2c)
+            chola = lib.unpack_tril(chola, axis=-1)
+            cholb = lib.unpack_tril(cholb, axis=-1)
             time7 = time.perf_counter()
-            print(f"# Build h1eff time: {time1 - time0:.6f} s")
+            print(f"# Build effective h0 and h1 time: {time1 - time0:.6f} s")
             print(f"# Build Common LAS time: {time3 - time2:.6f} s")
             # print(f"# Build DF in clsd time: {time5 - time4:.6f} s")
-            print(f"# Build 2-electron integral in clas time: {time5 - time4:.6f} s")
-            print(f"# CD 2-electron integral in clas time: {time6 - time5:.6f} s")
-            print(f"# Project CD 2-electron integral to AB time: {time7 - time6:.6f} s")
+            print(f"# Build CDERI in cLAS time: {time5 - time4:.6f} s")
+            print(f"# Compress CDERI to Choleskey Vectors time: {time6 - time5:.6f} s")
+            print(f"# Project Cholesky from cLAS to Alpha and Beta time: {time7 - time6:.6f} s")
             print(f"# Build Integral total time: {time7 - time0:.6f} s")
 
         elif use_df:
@@ -401,10 +428,14 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
         # chol_a = lib.einsum('pr,grs,sq->gpq',a2c.T,chol_clas,a2c)
         # chol_b = lib.einsum('pr,grs,sq->gpq',b2c.T,chol_clas,b2c)
     
-    v0_a = 0.5 * oe.contract("nik,njk->ij", chola, chola, backend='jax')
-    v0_b = 0.5 * oe.contract("nik,njk->ij", cholb, cholb, backend='jax')
-    h1mod_a = jnp.array(h1e[0] - v0_a)
-    h1mod_b = jnp.array(h1e[1] - v0_b)
+    # v0_a = 0.5 * oe.contract("nik,njk->ij", chola, chola, backend='jax')
+    # v0_b = 0.5 * oe.contract("nik,njk->ij", cholb, cholb, backend='jax')
+    v0_a = 0.5 * lib.einsum("gik,gjk->ij", chola, chola, optimize='optimal')
+    v0_b = 0.5 * lib.einsum("gik,gjk->ij", cholb, cholb, optimize='optimal')
+    # h1mod_a = jnp.array(h1e[0] - v0_a)
+    # h1mod_b = jnp.array(h1e[1] - v0_b)
+    h1mod_a = np.array(h1e[0]) - v0_a
+    h1mod_b = np.array(h1e[1]) - v0_b
 
     print("# Finished calculating Cholesky integrals")
     print('# Size of the correlation space')
