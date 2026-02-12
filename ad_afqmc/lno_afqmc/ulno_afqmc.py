@@ -255,24 +255,78 @@ def compress_cderi_cpu(cderi, thresh=1e-6):
 
     Parameters
     ----------
-    cderi : np.ndarray
-        Input matrix (m, n)
-    thresh : float
-        Threshold on squared singular values
+    cderi : np.ndarray (naux, npair)
+    thresh : float |Threshold on squared singular values sqaure
 
     Returns
     -------
     compressed cderi: np.ndarray
     """
     _, s, Vh = np.linalg.svd(cderi, full_matrices=False)
-
+    # print(s)
     mask = s**2 > thresh
 
     s = s[mask]
     Vh = Vh[mask, :]
-    cp_cderi = lib.einsum('s,sP->sP', s, Vh, optimize='optimal')
+    # cp_cderi = lib.einsum('s,sP->sP', s, Vh, optimize='optimal')
+    cp_cderi = s[:, None] * Vh
 
     return cp_cderi
+
+@jax.jit
+def _svd_gpu(cderi):
+    return jnp.linalg.svd(cderi, full_matrices=False)
+
+# @jax.jit
+def compress_cderi_gpu(cderi, thresh=1e-6):
+    """
+    Perform SVD on cderi (GPU via JAX) and keep components with s^2 > thresh.
+
+    Parameters
+    ----------
+    cderi : jnp.ndarray
+        Input matrix (m, n) already on GPU
+    thresh : float
+        Threshold on squared singular values
+
+    Returns
+    -------
+    cp_cderi : jnp.ndarray
+        Compressed cderi (k, n)
+    """
+
+    # SVD on GPU
+    _, s, Vh = _svd_gpu(cderi)
+    # print(s)
+
+    # singular values are sorted descending
+    mask = s**2 > thresh
+    s = s[mask]
+
+    Vh = Vh[mask, :]
+    cp_cderi = s[:, None] * Vh
+
+    return cp_cderi
+
+
+# def compress_cderi_AB_gpu(cderi_a, cderi_b, thresh=1e-6):
+
+#     _, sa, Vha = _svd_gpu(cderi_a)
+#     _, sb, Vhb = _svd_gpu(cderi_b)
+
+#     mask = mask = (sa**2 > thresh) & (sb**2 > thresh)
+
+#     sa = sa[mask]
+#     sb = sb[mask]
+
+#     Vha = Vha[mask, :]
+#     Vhb = Vhb[mask, :]
+
+#     cp_cderi_a = sa[:, None] * Vha
+#     cp_cderi_b = sb[:, None] * Vhb
+
+#     return cp_cderi_a, cp_cderi_b
+
 
 def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                options,chol_cut=1e-5,use_df=False,
@@ -352,22 +406,36 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
             # b2c = jnp.array(b2c)
             time3 = time.perf_counter()
 
-            nclas = clas_coeff.shape[1]
             # decompose eri in active LNO to achieve linear scale on the auxilary axis
             print("# Composing AO ERIs from DF basis")
+            nclas = clas_coeff.shape[1]
             npair = nclas*(nclas+1)//2
-            # eri_clas = jnp.zeros((npair, npair))
+            # npair_a = nactorb_a*(nactorb_a+1)//2
+            # npair_b = nactorb_b*(nactorb_b+1)//2
             naux = mf.with_df.get_naoaux()
             cderi_clas = np.zeros((naux, npair))
+            # cderi_clas = jnp.zeros((naux, npair))
+            # cderi_a = np.zeros((naux, npair_a))
+            # cderi_b = np.zeros((naux, npair_b))
+            # mo_acta = mo_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
+            # mo_actb = mo_coeff[1][:,ncore[1]:ncore[1]+ncas[1]]
             p1 = 0
             time4 = time.perf_counter()
             for cderi in mf.with_df.loop():
-                # cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
                 cderi = lib.unpack_tril(cderi, axis=-1)
-                # cderi = cderi2mo(cderi, clas_coeff)
                 cderi = cderi2mo_cpu(cderi, clas_coeff)
                 p0, p1 = p1, p1 + cderi.shape[0]
                 cderi_clas[p0:p1] = cderi
+                # cderi1 = cderi2mo_cpu(cderi, mo_acta)
+                # cderi2 = cderi2mo_cpu(cderi, mo_actb)
+                # p0, p1 = p1, p1 + cderi.shape[0]
+                # cderi_a[p0:p1] = cderi1
+                # cderi_b[p0:p1] = cderi2
+
+                # cderi = jnp.array(lib.unpack_tril(cderi, axis=-1))
+                # cderi = cderi2mo_gpu(cderi, clas_coeff)
+                # p0, p1 = p1, p1 + cderi.shape[0]
+                # cderi_clas[p0:p1] = cderi
                 # eri_clas += get_eri(cderi)
                 # chol_df_clas = pack_symmetric(Lpq)
                 # eri_clas += oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
@@ -383,25 +451,38 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
 
             # eri_clas = oe.contract('gP,gQ->PQ', chol_df_clas, chol_df_clas, backend='jax')
             print(f"# Raw CDERI in cLAS shape: {cderi_clas.shape}")
-            print("# Finish Composing cLAS CDERIs")
-            print("# Compress CDERIs into Cholesky Vectors")
+            # print(f"# Raw CDERI Alpha shape: {cderi_a.shape}")
+            # print(f"# Raw CDERI Beta shape: {cderi_b.shape}")
+            # print("# Finish Composing cLAS CDERIs")
+            print("# Compress CDERI into Cholesky Vectors")
+            # print("# Compress CDERI Alpha and Beta into Cholesky Vectors")
             # print("# Tighter Chol_cutoff is recommended for LNO")
             print(f"# Cholesky cutoff is: {chol_cut}")
             # eri_clas = np.array(eri_clas)
             # eri_clas = lib.einsum('gP,gQ->PQ', cderi_clas, cderi_clas, optimize='optimal')
             # cderi_clas = pyscf_interface.modified_cholesky(eri_clas, max_error=chol_cut)
-            cderi_clas = compress_cderi_cpu(cderi_clas, thresh=chol_cut)
-            cderi_clas = lib.unpack_tril(cderi_clas, axis=-1)
+            # cderi_clas = compress_cderi_cpu(cderi_clas, thresh=chol_cut)
+            cderi_clas = jnp.array(cderi_clas)
+            cderi_clas = compress_cderi_gpu(cderi_clas, thresh=chol_cut)
+            cderi_clas = np.array(cderi_clas)
+            # cderi_a = jnp.array(cderi_a)
+            # cderi_b = jnp.array(cderi_b)
+            # cderi_a, cderi_b = compress_cderi_AB_gpu(cderi_a, cderi_b, thresh=1e-6)
+            # cderi_a = np.array(cderi_a)
+            # cderi_b = np.array(cderi_b)
+            # print(f"# Raw CDERI Alpha shape: {cderi_a.shape}")
+            # print(f"# Raw CDERI Beta shape: {cderi_b.shape}")
             time6 = time.perf_counter()
             # chol_clas = jnp.array(chol_clas)
             # chol_clas = unpack_symmetric(chol_clas, nclas)
-            print(f"# Compressed Cholesky Vectors in cLAS shape: {cderi_clas.shape}")
+            # print(f"# Compressed Cholesky Vectors in cLAS shape: {cderi_clas.shape}")
+            cderi_clas = lib.unpack_tril(cderi_clas, axis=-1)
             # cbola = oe.contract('pr,grs,sq->gpq', a2c.T, chol_clas, a2c, backend='jax')
             # cholb = oe.contract('pr,grs,sq->gpq', b2c.T, chol_clas, b2c, backend='jax')
-            chola = cderi2mo_cpu(cderi_clas, a2c)
-            cholb = cderi2mo_cpu(cderi_clas, b2c)
-            chola = lib.unpack_tril(chola, axis=-1)
-            cholb = lib.unpack_tril(cholb, axis=-1)
+            cderi_a = cderi2mo_cpu(cderi_clas, a2c)
+            cderi_b = cderi2mo_cpu(cderi_clas, b2c)
+            cderi_a = lib.unpack_tril(cderi_a, axis=-1)
+            cderi_b = lib.unpack_tril(cderi_b, axis=-1)
             time7 = time.perf_counter()
             print(f"# Build effective h0 and h1 time: {time1 - time0:.6f} s")
             print(f"# Build Common LAS time: {time3 - time2:.6f} s")
@@ -430,26 +511,26 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
     
     # v0_a = 0.5 * oe.contract("nik,njk->ij", chola, chola, backend='jax')
     # v0_b = 0.5 * oe.contract("nik,njk->ij", cholb, cholb, backend='jax')
-    v0_a = 0.5 * lib.einsum("gik,gjk->ij", chola, chola, optimize='optimal')
-    v0_b = 0.5 * lib.einsum("gik,gjk->ij", cholb, cholb, optimize='optimal')
+    v0_a = 0.5 * lib.einsum("gik,gjk->ij", cderi_a, cderi_a, optimize='optimal')
+    v0_b = 0.5 * lib.einsum("gik,gjk->ij", cderi_b, cderi_b, optimize='optimal')
     # h1mod_a = jnp.array(h1e[0] - v0_a)
     # h1mod_b = jnp.array(h1e[1] - v0_b)
     h1mod_a = np.array(h1e[0]) - v0_a
     h1mod_b = np.array(h1e[1]) - v0_b
 
-    print("# Finished calculating Cholesky integrals")
-    print('# Size of the correlation space')
+    print("# Finished calculating Integrals")
+    print('# Size of the correlation space: ')
     print(f'# Number of electrons: {nelec}')
     print(f'# Number of basis functions: {ncas}')
-    print(f'# Alpha Basis Cholesky shape: {chola.shape}')
-    print(f'#  Beta Basis Cholesky shape: {cholb.shape}')
+    print(f'# Alpha Basis Cholesky shape: {cderi_a.shape}')
+    print(f'#  Beta Basis Cholesky shape: {cderi_b.shape}')
     
-    chola.reshape(chola.shape[0], -1)
-    cholb.reshape(cholb.shape[0], -1)
+    cderi_a = cderi_a.reshape(cderi_a.shape[0], -1)
+    cderi_b = cderi_b.reshape(cderi_b.shape[0], -1)
     
     np.savez(mo_file,prja=prjlo[0],prjb=prjlo[1])
 
-    write_dqmc(h1e,[h1mod_a,h1mod_b],[chola, cholb],
+    write_dqmc(h1e,[h1mod_a,h1mod_b],[cderi_a, cderi_b],
                nelec,ncas,enuc,mf.e_tot,filename=chol_file)
 
     return nelec, ncas

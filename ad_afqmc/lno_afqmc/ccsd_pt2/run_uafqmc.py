@@ -256,28 +256,23 @@ for n in range(sampler.n_blocks):
 comm.Barrier()
 if rank == 0:
     assert glb_wt is not None
-    samples_clean, idx = stat_utils.reject_outliers(
-        np.stack((
-                glb_wt[:(n+1)*size],
-                glb_e0[:(n+1)*size],
-                glb_eorb[:(n+1)*size],
-                glb_t2eorb[:(n+1)*size],
-                glb_t2orb[:(n+1)*size],
-                glb_e0bar[:(n+1)*size],
-                glb_t1olp[:(n+1)*size],
-                )).T,
-                1,
-            )
-    nsamples = samples_clean.shape[0]
-    print(f"# Number of outliers in post: {glb_wt[:(n+1)*size].size - nsamples}")
+    # samples_clean, idx = stat_utils.reject_outliers(
+    #     np.stack((glb_wt, glb_e0, glb_eorb,
+    #               glb_t2eorb, glb_t2orb,
+    #               glb_e0bar, glb_t1olp,
+    #             )).T,
+    #             1,
+    #         )
+    # nsamples = samples_clean.shape[0]
+    # print(f"# Number of outliers in post: {glb_wt[:(n+1)*size].size - nsamples}")
     
-    glb_wt = samples_clean[:, 0]
-    glb_e0 = samples_clean[:, 1]
-    glb_eorb = samples_clean[:, 2]
-    glb_t2eorb = samples_clean[:, 3]
-    glb_t2orb = samples_clean[:, 4]
-    glb_e0bar = samples_clean[:, 5]
-    glb_t1olp = samples_clean[:, 6]
+    # glb_wt = samples_clean[:, 0]
+    # glb_e0 = samples_clean[:, 1]
+    # glb_eorb = samples_clean[:, 2]
+    # glb_t2eorb = samples_clean[:, 3]
+    # glb_t2orb = samples_clean[:, 4]
+    # glb_e0bar = samples_clean[:, 5]
+    # glb_t1olp = samples_clean[:, 6]
 
     wt = np.sum(glb_wt)
     e0 = np.sum(glb_wt * glb_e0) / wt
@@ -286,6 +281,8 @@ if rank == 0:
     t2orb = np.sum(glb_wt * glb_t2orb) / wt
     e0bar = np.sum(glb_wt * glb_e0bar) / wt
     t1olp = np.sum(glb_wt * glb_t1olp) / wt
+
+    nsamples = len(glb_wt)
 
     e0_err = np.sqrt(np.sum(glb_wt * (glb_e0 - e0)**2) / wt / nsamples)
 
@@ -296,10 +293,18 @@ if rank == 0:
     cov = np.cov([glb_eorb,glb_t2eorb,glb_t2orb,glb_e0bar,glb_t1olp])
     eorb_pt_err = np.sqrt(dE @ cov @ dE)/np.sqrt(nsamples)
 
+    # remove multi-variable outliers
+    # deorb = (glb_eorb - eorb).T @ np.linalg.inv(cov) @ (glb_eorb - eorb)
+    # dt2eorb = (glb_t2eorb - t2eorb).T @ np.linalg.inv(cov) @ (glb_t2eorb - t2eorb)
+    # dt2orb = (glb_t2orb - t2orb).T @ np.linalg.inv(cov) @ (glb_t2orb - t2orb)
+    # de0bar = (glb_e0bar - e0bar).T @ np.linalg.inv(cov) @ (glb_e0bar - e0bar)
+    # dt1olp = (glb_t1olp - t1olp).T @ np.linalg.inv(cov) @ (glb_t1olp - t1olp)
+    # print(f'{deorb:.6f} {dt2eorb:.6f} {dt2orb:.6f} {de0bar:.6f} {dt1olp:.6f}')
+
     ept_samples = ept_samples[:n+1]
     d = np.abs(ept_samples-np.median(ept_samples))
     d_med = np.median(d) + 1e-7
-    mask = d/d_med < 10
+    mask = d/d_med < 20
     ept_clean = ept_samples[mask]
     print('# remove outliers in directly oberseved samples: ', len(ept_samples)-len(ept_clean))
 
