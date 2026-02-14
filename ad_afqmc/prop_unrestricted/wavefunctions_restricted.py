@@ -6,7 +6,7 @@ from typing import Sequence, Tuple, Union
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import jit, jvp, lax, vmap
+from jax import random, jit, jvp, lax, vmap
 import opt_einsum as oe
 
 
@@ -1619,11 +1619,162 @@ class ccd_pt(rhf):
     
 @dataclass
 class ccsd_pt2(rhf):
-    """Tensor contraction form of the UCCSD_PT2 (exact T1) trial wave function."""
+    """Tensor contraction form of the CCSD_PT2 (exact T1) trial wave function."""
 
     norb: int
     nelec: Tuple[int, int]
     n_batch: int = 1
+
+    # # @partial(jit, static_argnums=(0))
+    # def decompose_t2(self, wave_data: dict):
+    #     # adapted from Yann
+
+    #     nO = self.nelec[0]
+    #     nV = self.norb - nO
+    #     nex = nO * nV
+
+    #     t2 = wave_data['t2']
+
+    #     # assert t2.shape == (nO, nO, nV, nV)
+
+    #     # T2 = LL^T
+    #     # t2 = jnp.einsum("iajb->aibj", t2)
+    #     assert t2.shape == (nO, nV, nO, nV)
+        
+    #     t2 = t2.reshape(nex, nex)
+    #     e_val, e_vec = jnp.linalg.eigh(t2)
+    #     L = e_vec @ jnp.diag(jnp.sqrt(e_val + 0.0j))
+    #     assert jnp.abs(jnp.linalg.norm(t2 - L @ L.T)) < 1e-12
+
+    #     # Summation on the left
+    #     L = L.T.reshape(nex, nO, nV)
+    #     t2_rec = jnp.einsum('gia,gjb->iajb', L, L)
+    #     assert jnp.abs(wave_data['t2'] - t2_rec).max() < 1e-12
+
+    #     # wave_data["T2_L"] = L
+
+    #     return L, e_val
+
+    # # @partial(jit, static_argnums=(0, 2))
+    # def get_stocc(self, wave_data: dict, prop_data: dict, nslater: int):
+    #     nO = self.nelec[0]
+    #     t1 = wave_data["t1"]
+
+    #     # L, e_val = hs_op_yann(self, wave_data)
+    #     # L = L.transpose(0,2,1)
+    #     L, _ = self.decompose_t2(wave_data)
+
+    #     prop_data["key"], subkey = random.split(prop_data["key"])
+    #     fields = random.normal(
+    #         subkey,
+    #         shape=(
+    #             nslater,
+    #             L.shape[0],
+    #         ),
+    #     )
+
+    #     # e^{t1+x*tau2}
+    #     t1s = jnp.array([t1 + 0.0j] * nslater)
+    #     taus = t1s + jnp.einsum("wg,gia->wia", fields, L)
+
+    #     # from jax import scipy as jsp
+    #     def _exp_tau(tau, sd):
+    #         # tau_full = jnp.zeros((self.norb, self.norb),dtype=jnp.complex128)
+    #         # for matrix that only have one block nonzero exp(tau_ia) = 1 + tau_ia true
+    #         tau_full = jnp.eye(self.norb,dtype=jnp.complex128)
+    #         exp_tau = tau_full.at[:nO, nO:].set(tau)
+    #         # exp_tau = jsp.linalg.expm(tau_full)
+    #         return exp_tau.T @ sd
+
+    #     # Initial slater determinants
+    #     init_sd = jnp.array([jnp.eye(self.norb)[:,:nO] + 0.0j] * nslater)
+    #     stocc = vmap(_exp_tau)(taus, init_sd)
+
+    #     return stocc
+
+    # @partial(jit, static_argnums=0)
+    # def get_green_slater(self, trial_slater: jax.Array, walker: jax.Array) -> jax.Array:
+        
+    #     green = (
+    #         walker @ (
+    #             jnp.linalg.inv(trial_slater.T.conj() @ walker)
+    #                 ) @ trial_slater.T.conj()
+    #         ).T
+        
+    #     return green
+
+    # @partial(jit, static_argnums=0)
+    # def get_energy_slater(self, slater: jax.Array, walker: jax.Array, ham_data: dict) -> jax.Array:
+    #     norb = self.norb
+
+    #     h0, chol = ham_data["h0"], ham_data["chol"]
+    #     h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+    #     chol = chol.reshape(-1,norb,norb)
+
+    #     green = self.get_green_slater(slater, walker)
+    #     hg = oe.contract("pq,pq->", h1, green, backend="jax")
+    #     e1 = 2 * hg
+    #     lg = oe.contract("gpr,qr->gpq", chol, green, backend="jax")
+    #     e2_1 = 2 * jnp.sum(oe.contract('gpp->g', lg, backend="jax")**2)
+    #     e2_2 = oe.contract('gpq,gqp->',lg,lg, backend="jax")
+    #     e2 = e2_1 - e2_2
+
+    #     return h0 + e1 + e2
+
+    # @partial(jit, static_argnums=0)
+    # def get_overlap_slater(self, slater: jax.Array, walker: jax.Array) -> jax.Array:
+    #     return jnp.linalg.det(slater.T.conj() @ walker) ** 2
+    
+    # @partial(jit, static_argnums=0)
+    # def get_energy_slaters_one_walker(
+    #     self, 
+    #     slaters: jax.Array,
+    #     walker: jax.Array,
+    #     ham_data: dict
+    #     ):
+    #     """
+    #     slaters: (N, norb, nocc)
+    #     walker:  (norb, nocc)
+
+    #     returns: (N,) energies
+    #     """
+
+    #     def scan_slaters(carry, slater):
+    #         # carry is unused; we keep it for scan API
+    #         energy = self.get_energy_slater(self, slater, walker, ham_data)
+    #         return carry, energy
+
+    #     # Initial dummy carry (None not allowed)
+    #     init_carry = 0.0
+
+    #     _, energies = lax.scan(scan_slaters, init_carry, slaters)
+
+    #     return energies
+
+    # @partial(jit, static_argnums=0)
+    # def get_overlap_slaters_one_walker(
+    #     self,
+    #     slaters: jax.Array,
+    #     walker: jax.Array,
+    #     ):
+    #     """
+    #     slaters: (N, norb, nocc)
+    #     walker:  (norb, nocc)
+
+    #     returns: (N,) energies
+    #     """
+
+    #     def scan_slaters(carry, slater):
+    #         # carry is unused; we keep it for scan API
+    #         overlap = self.get_overlap_slater(slater, walker)
+    #         return carry, overlap
+
+    #     # Initial dummy carry (None not allowed)
+    #     init_carry = 0.0
+
+    #     _, overlaps = lax.scan(scan_slaters, init_carry, slaters)
+
+    #     return overlaps
 
     @partial(jit, static_argnums=0)
     def thouless_trans(self, t1):
@@ -2014,6 +2165,196 @@ class ccsd_pt2_ad(rhf):
             self._calc_energy_pt_restricted,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
         return t1, t2, e0, e1
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+    
+
+class stoccsd(rhf):
+    '''
+    Trial = Stochastically sampled CCSD wavefunction
+    Guide = RHF
+    '''
+
+    norb: int
+    nelec: Tuple[int, int]
+    n_batch: int = 1
+    nslater: int = 1000
+
+    # @partial(jit, static_argnums=(0))
+    def decompose_t2(self, wave_data: dict):
+        # adapted from Yann
+
+        nO = self.nelec[0]
+        nV = self.norb - nO
+        nex = nO * nV
+
+        t2 = wave_data['t2']
+
+        # assert t2.shape == (nO, nO, nV, nV)
+
+        # T2 = LL^T
+        # t2 = jnp.einsum("iajb->aibj", t2)
+        assert t2.shape == (nO, nV, nO, nV)
+        
+        t2 = t2.reshape(nex, nex)
+        e_val, e_vec = jnp.linalg.eigh(t2)
+        L = e_vec @ jnp.diag(jnp.sqrt(e_val + 0.0j))
+        assert jnp.abs(jnp.linalg.norm(t2 - L @ L.T)) < 1e-12
+
+        # Summation on the left
+        L = L.T.reshape(nex, nO, nV)
+        t2_rec = jnp.einsum('gia,gjb->iajb', L, L)
+        assert jnp.abs(wave_data['t2'] - t2_rec).max() < 1e-12
+
+        # wave_data["T2_L"] = L
+
+        return L, e_val
+
+    # @partial(jit, static_argnums=(0, 3))
+    def get_stocc(self, wave_data: dict, prop_data: dict):
+        nO = self.nelec[0]
+        nslater = self.nslater
+        t1 = wave_data["t1"]
+
+        # L, e_val = hs_op_yann(self, wave_data)
+        # L = L.transpose(0,2,1)
+        L, _ = self.decompose_t2(wave_data)
+
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        fields = random.normal(
+            subkey,
+            shape=(
+                nslater,
+                L.shape[0],
+            ),
+        )
+
+        # e^{t1+x*tau2}
+        t1s = jnp.array([t1 + 0.0j] * nslater)
+        taus = t1s + jnp.einsum("wg,gia->wia", fields, L)
+
+        # from jax import scipy as jsp
+        def _exp_tau(tau, sd):
+            # tau_full = jnp.zeros((self.norb, self.norb),dtype=jnp.complex128)
+            # for matrix that only have one block nonzero exp(tau_ia) = 1 + tau_ia true
+            tau_full = jnp.eye(self.norb,dtype=jnp.complex128)
+            exp_tau = tau_full.at[:nO, nO:].set(tau)
+            # exp_tau = jsp.linalg.expm(tau_full)
+            return exp_tau.T @ sd
+
+        # Initial slater determinants
+        init_sd = jnp.array([jnp.eye(self.norb)[:,:nO] + 0.0j] * nslater)
+        stocc = vmap(_exp_tau)(taus, init_sd)
+
+        return stocc
+
+    @partial(jit, static_argnums=0)
+    def get_green_slater(self, trial_slater: jax.Array, walker: jax.Array) -> jax.Array:
+        
+        green = (
+            walker @ (
+                jnp.linalg.inv(trial_slater.T.conj() @ walker)
+                    ) @ trial_slater.T.conj()
+            ).T
+        
+        return green
+
+    @partial(jit, static_argnums=0)
+    def get_energy_slater(self, slater: jax.Array, walker: jax.Array, ham_data: dict) -> jax.Array:
+        norb = self.norb
+
+        h0, chol = ham_data["h0"], ham_data["chol"]
+        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
+        chol = chol.reshape(-1,norb,norb)
+
+        green = self.get_green_slater(slater, walker)
+        hg = oe.contract("pq,pq->", h1, green, backend="jax")
+        e1 = 2 * hg
+        lg = oe.contract("gpr,qr->gpq", chol, green, backend="jax")
+        e2_1 = 2 * jnp.sum(oe.contract('gpp->g', lg, backend="jax")**2)
+        e2_2 = oe.contract('gpq,gqp->',lg,lg, backend="jax")
+        e2 = e2_1 - e2_2
+
+        return h0 + e1 + e2
+
+    @partial(jit, static_argnums=0)
+    def get_overlap_slater(self, slater: jax.Array, walker: jax.Array) -> jax.Array:
+        return jnp.linalg.det(slater.T.conj() @ walker) ** 2
+    
+    @partial(jit, static_argnums=0)
+    def get_energy_slaters_one_walker(
+        self, 
+        slaters: jax.Array,
+        walker: jax.Array,
+        ham_data: dict
+        ):
+        """
+        slaters: (N, norb, nocc)
+        walker:  (norb, nocc)
+
+        returns: (N,) energies
+        """
+
+        def scan_slaters(carry, slater):
+            # carry is unused; we keep it for scan API
+            energy = self.get_energy_slater(slater, walker, ham_data)
+            return carry, energy
+
+        # Initial dummy carry (None not allowed)
+        init_carry = 0.0
+
+        _, energies = lax.scan(scan_slaters, init_carry, slaters)
+
+        return energies
+
+    @partial(jit, static_argnums=0)
+    def get_overlap_slaters_one_walker(
+        self,
+        slaters: jax.Array,
+        walker: jax.Array,
+        ):
+        """
+        slaters: (N, norb, nocc)
+        walker:  (norb, nocc)
+
+        returns: (N,) energies
+        """
+
+        def scan_slaters(carry, slater):
+            # carry is unused; we keep it for scan API
+            overlap = self.get_overlap_slater(slater, walker)
+            return carry, overlap
+
+        # Initial dummy carry (None not allowed)
+        init_carry = 0.0
+
+        _, overlaps = lax.scan(scan_slaters, init_carry, slaters)
+
+        return overlaps
+    
+    @partial(jit, static_argnums=0)
+    def get_eloc_oloc_stocc(
+        self, walker: jax.Array, ham_data: dict, wave_data: dict
+    ) -> jax.Array:
+        slaters = wave_data['stocc']
+        energies = self.get_energy_slaters_one_walker(slaters, walker, ham_data)
+        overlaps = self.get_overlap_slaters_one_walker(slaters, walker) / slaters.shape[0]
+        oloc = jnp.sum(overlaps)
+        eloc = jnp.sum(overlaps * energies) / oloc
+        return (eloc, oloc) 
+    
+    @partial(jit, static_argnums=0)
+    def calc_energy_overlap_stocc(
+            self, walkers: jax.Array, ham_data: jax.Array, wave_data: dict
+            ):
+
+        (energies, overlaps) =  vmap(
+            lambda walker: self.get_eloc_oloc_stocc(walker, ham_data, wave_data
+            ))(walkers)
+        
+        return (energies, overlaps)
+
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))

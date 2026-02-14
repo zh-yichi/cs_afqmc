@@ -209,10 +209,6 @@ def _prep_afqmc(options=None,
     options["n_blocks"] = options.get("n_blocks", 50)
     options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
     options["n_eql"] = options.get("n_eql", 1)
-    # options["ad_mode"] = options.get("ad_mode", None)
-    # assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
-    # options["orbital_rotation"] = options.get("orbital_rotation", True)
-    # options["do_sr"] = options.get("do_sr", True)
     options["walker_type"] = options.get("walker_type", "rhf")
     options["symmetry"] = options.get("symmetry", False)
     options["save_walkers"] = options.get("save_walkers", False)
@@ -221,9 +217,6 @@ def _prep_afqmc(options=None,
     options["free_projection"] = options.get("free_projection", False)
     options["fp_abs"] = options.get("fp_abs", False)
     options["n_batch"] = options.get("n_batch", 1)
-    # options["LNO"] = options.get("LNO",False)
-    # options['prjlo'] = options.get('prjlo',None)
-    # options["orbE"] = options.get("orbE",0)
     options['maxError'] = options.get('maxError',1e-3)
 
     if options['use_gpu']:
