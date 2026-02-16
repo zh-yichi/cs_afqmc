@@ -9,10 +9,8 @@ def run_afqmc(options,
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
-
-    use_gpu = options["use_gpu"]
     
-    if use_gpu:
+    if options["use_gpu"]:
         config.afqmc_config["use_gpu"] = True
         config.setup_jax()
         print(f'# running AFQMC on GPU')

@@ -15,7 +15,7 @@ from collections.abc import Iterable
 import time
 print = partial(print, flush=True)
 
-def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
+def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact):
 
     maskocc = mo_occ>1e-10
     nmo = mo_occ.size
@@ -54,20 +54,20 @@ def lno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
 
         t2 += lib.einsum('ia,jb->ijab',t1,t1)
         elcorr_cc = lnoccsd.get_fragment_energy(oovv, t2, uocc_loc)
-        t1t1 = lib.einsum('ia,jb->ijab',t1,t1)
-        elcorr_t1 = lnoccsd.get_fragment_energy(oovv, t1t1, uocc_loc)
+        # t1t1 = lib.einsum('ia,jb->ijab',t1,t1)
+        # elcorr_t1 = lnoccsd.get_fragment_energy(oovv, t1t1, uocc_loc)
         # CCSD(T) fragment energy
-        if ccsd_t:
-            from pyscf.lno.lnoccsd_t import kernel as CCSD_T
-            t2 -= lib.einsum('ia,jb->ijab',t1,t1)   # restore t2
-            elcorr_cc_t = CCSD_T(mcc, imp_eris, uocc_loc, t1=t1, t2=t2)
-        else:
-            elcorr_cc_t = 0.
-            t2 -= lib.einsum('ia,jb->ijab',t1,t1)
+        # if ccsd_t:
+        #     from pyscf.lno.lnoccsd_t import kernel as CCSD_T
+        #     t2 -= lib.einsum('ia,jb->ijab',t1,t1)   # restore t2
+        #     elcorr_cc_t = CCSD_T(mcc, imp_eris, uocc_loc, t1=t1, t2=t2)
+        # else:
+        #     elcorr_cc_t = 0.
+        #     t2 -= lib.einsum('ia,jb->ijab',t1,t1)
 
     oovv = imp_eris = mcc = None
 
-    return (elcorr_pt2, elcorr_cc, elcorr_cc_t), t1, t2, elcorr_t1
+    return (elcorr_pt2, elcorr_cc), t1, t2 #, elcorr_t1
 
 def get_veff(mf, dm):
     mol = mf.mol
@@ -143,6 +143,7 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
                amp_file="amplitudes.npz",
                chol_file="FCIDUMP_chol"):
     
+    jax.config.update("jax_enable_x64", True)
     
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
@@ -274,6 +275,8 @@ def _prep_afqmc(option_file="options.bin",
                 amp_file="amplitudes.npz",
                 chol_file="FCIDUMP_chol"):
     
+    jax.config.update("jax_enable_x64", True)
+    
     try:
         with open(option_file, "rb") as f:
             options = pickle.load(f)
@@ -401,28 +404,27 @@ def _prep_afqmc(option_file="options.bin",
     return ham_data, prop, trial, wave_data, sampler, options
 
 import os
-def run_lnoafqmc(options,nproc=None,
-              option_file='options.bin'):
-
+def run_lnoafqmc(options, option_file='options.bin'):
+    jax.config.update("jax_enable_x64", True)
+    
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
 
-    use_gpu = options["use_gpu"]
-    if use_gpu:
+    if options["use_gpu"]:
         print(f'# running AFQMC on GPU')
         config.afqmc_config = {"use_gpu": True}
         config.setup_jax()
         gpu_flag = "--use_gpu"
-        mpi_prefix = ""
+        # mpi_prefix = ""
     else:
         print(f'# running AFQMC on CPU')
         gpu_flag = ""
-        mpi_prefix = "mpirun "
-        if nproc is not None:
-            mpi_prefix += f"-np {nproc} "
+        # mpi_prefix = "mpirun "
+        # if nproc is not None:
+        #     mpi_prefix += f"-np {nproc} "
     # if  'cc' in options['trial'] and 'pt' in options['trial']:
     if 'pt2' in options['trial']:
-        script='ccsd_pt2/run_afqmc.py'
+        script='ccsd_pt2/run_afqmc_nompi.py'
 
     else:
         raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
@@ -433,22 +435,41 @@ def run_lnoafqmc(options,nproc=None,
     print(f'# AFQMC script: {script}')
     
     os.system(
-        f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
-        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc.out"
+        # f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
+        f" python {script} {gpu_flag} |tee afqmc.out"
     )
 
-def run_afqmc(mf, options, lo_coeff, frag_lolist,
-              nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5,
-              lno_type = ['1h']*2, run_frg_list = None, 
-              nproc = None, ccsd_t = False, emp2_tot = None):
+def run_afqmc(mf,
+              options, 
+              lo_coeff = None, 
+              lo_coeff_file = 'lo_coeff.npz',
+              nfrozen = 0,
+              thresh = 1e-6, 
+              chol_cut = 1e-5,
+              run_frg_list = None, 
+              emp2_tot = None,
+              ccsd_verbose = 0,
+              ):
     
-    mlno = lnoccsd.LNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
-    mlno.lno_thresh = [thresh*10,thresh]
+    if lo_coeff is None:
+        try:
+            lo_coeff = np.load(lo_coeff_file)["lo_coeff"]
+        except:
+            raise ValueError(
+                f"lo_coeff was not provided and could not be loaded "
+                f"from file '{lo_coeff_file}'"
+                )
+        
+    frag_lolist = [[i] for i in range(lo_coeff.shape[1])]
+    nfrag_tot = len(frag_lolist)
+    
+    mlno = lnoccsd.LNOCCSD(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=ccsd_verbose)
+    mlno.lno_thresh = [thresh*10, thresh]
     mlno.lo_proj_thresh = 1e-10
     mlno.lo_proj_thresh_active = thresh #0.1
     lno_thresh = mlno.lno_thresh
-    lno_type = ['1h','1h'] if lno_type is None else lno_type
-    lno_thresh = [1e-5, 1e-6] if lno_thresh is None else lno_thresh
+    lno_type = ['1h','1h'] # if lno_type is None else lno_type
+    # lno_thresh = [1e-5, 1e-6] if lno_thresh is None else lno_thresh
     lno_pct_occ = None
     lno_norb = None
     eris = None
@@ -476,7 +497,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     eorb_mp2_cc = [None] * nfrag
     # Loop over fragment
     for ifrag,loidx in enumerate(frag_lolist):
-        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag} ###########')
+        print(f'\n ########### RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag_tot} ###########')
         if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
             orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
             lno_param = [
@@ -507,15 +528,15 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         mo_occ = mlno.mo_occ
         lno_frozen, maskact = lnoccsd.get_maskact(lno_frozen, mo_occ.size)
         # print(lno_frozen)
-        mcc = lnoccsd.CCSD(mf, mo_coeff=lno_coeff, frozen=lno_frozen).set(verbose=4)
+        mcc = lnoccsd.CCSD(mf, mo_coeff=lno_coeff, frozen=lno_frozen).set(verbose=ccsd_verbose)
         mcc._s1e = mlno._s1e
         mcc._h1e = mlno._h1e
         mcc._vhf = mlno._vhf
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
         time0 = time.perf_counter()
-        eorb_mp2_cc[ifrag], t1, t2, elcorr_t1 =\
-            lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
+        eorb_mp2_cc[ifrag], t1, t2 =\
+            lno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact)
         time1 = time.perf_counter()
         print(f"# CCSD time: {time1 - time0:.6f} s")
         
@@ -523,24 +544,18 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
 
         print(f'# LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
         print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
-        print(f'# LNO-CCSD(T) Orbital Energy: {eorb_mp2_cc[ifrag][2]:.8f}')
-        print(f'# LNO-CCSD t2=0 Orbital Energy: {elcorr_t1:.8f}')
-        
-        # from mpi4py import MPI
-        # if not MPI.Is_finalized():
-        #     MPI.Finalize()
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
             = prep_afqmc(mf,lno_coeff,t1,t2,lno_frozen,prjlo,
                          options,chol_cut=chol_cut)
-        run_lnoafqmc(options,nproc)
+        run_lnoafqmc(options)
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
     # finish lno loop
-    if emp2_tot is None:
-        mmp = mp.MP2(mf, frozen=nfrozen)
-        emp2_tot = mmp.kernel()[0]
+    # if emp2_tot is None:
+        # mmp = mp.MP2(mf, frozen=nfrozen)
+        # emp2_tot = mmp.kernel()[0]
 
     eorb_pt = np.zeros(nfrag,dtype='float64')
     eorb_pt_err = np.zeros(nfrag,dtype='float64')
@@ -550,7 +565,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         with open(f"lnoafqmc.out{i+1}", "r") as readfile:
             for line in readfile:
                 # if "Ept (direct observation):" in line:
-                if "Ept (covariance):" in line:
+                if "AFQMC/pt2CCSD energy (Mahalanobis):" in line:
                     eorb_pt[n] = float(line.split()[-3])
                     eorb_pt_err[n] = float(line.split()[-1])
                 if "total run time" in line:
@@ -563,28 +578,28 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     norb = np.mean(norb_list)
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
-    e_ccsd_pt = sum(eorb_mp2_cc[:,2])
     e_afqmc_pt = sum(eorb_pt)
     e_afqmc_pt_err = np.sqrt(sum(eorb_pt_err**2))
     tot_time = sum(run_time)
 
     with open(f'lno_result.out', 'w') as out_file:
-        print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t) ' \
-              '  eorb_afqmc/ccsd_pt  nelec  norb  time',
+        print('# frag  eorb_mp2  eorb_ccsd  eorb_afqmc/ccsd_pt  nelec  norb  time',
                 file=out_file)
         for n, i in enumerate(run_frg_list):
             print(f'{i+1:3d}  '
-                    f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
-                    f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
-                    f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
+                  f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  '
+                  f'{eorb_pt[n]:.6f} +/- {eorb_pt_err[n]:.6f}  '
+                  f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
+            
         print(f'# LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)
         print(f'# LNO Average Number of Electrons: {nelec:.1f}',file=out_file)
         print(f'# LNO Average Number of Basis: {norb:.1f}',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
         print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
-        print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
+        # print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
         print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt:.6f} +/- {e_afqmc_pt_err:.6f}',file=out_file)
-        print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
+        if emp2_tot is not None:
+            print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
         print(f"# total run time: {tot_time:.2f}",file=out_file)
 
     return None

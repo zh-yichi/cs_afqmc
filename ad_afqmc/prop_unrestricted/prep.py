@@ -213,9 +213,9 @@ def _prep_afqmc(options=None,
     options["n_batch"] = options.get("n_batch", 1)
     options["max_error"] = options.get("max_error", 1e-3)
 
-    if options['use_gpu']:
-        config.afqmc_config["use_gpu"] = True
-    config.setup_jax()
+    # if options['use_gpu']:
+    #     config.afqmc_config["use_gpu"] = True
+    # config.setup_jax()
 
     try:
         with h5py.File("observable.h5", "r") as fh5:
