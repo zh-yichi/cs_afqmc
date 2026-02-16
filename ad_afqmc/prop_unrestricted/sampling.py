@@ -96,13 +96,13 @@ class sampler:
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         return prop_data, (block_energy, block_weight)
 
-    @partial(jit, static_argnums=(0, 1, 3, 5))
+    @partial(jit, static_argnums=(0, 3, 4))
     def propagate_phaseless(
         self,
-        ham: hamiltonian,
+        prop_data: dict,
+        # ham: hamiltonian,
         ham_data: dict,
         prop: propagator,
-        prop_data: dict,
         trial,
         wave_data: dict,
     ) -> Tuple[jax.Array, dict]:
