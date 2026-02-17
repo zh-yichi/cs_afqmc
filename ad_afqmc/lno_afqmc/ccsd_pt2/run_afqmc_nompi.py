@@ -5,7 +5,7 @@ import jax
 from jax import random
 from jax import numpy as jnp
 from functools import partial
-from ad_afqmc import config, stat_utils
+from ad_afqmc import config
 from ad_afqmc.lno_afqmc import sampling
 from ad_afqmc.lno_afqmc import lno_afqmc
 
@@ -124,7 +124,7 @@ for n in range(sampler.n_blocks):
     eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
     ept_sp[n] = eorb_pt
 
-    if n % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:                
+    if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:                
         wt = np.sum(wt_sp[:n+1])
         e0 = np.sum(wt_sp[:n+1] * e0_sp[:n+1]) / wt
         eorb = np.sum(wt_sp[:n+1] * eorb_sp[:n+1]) / wt
@@ -154,7 +154,7 @@ for n in range(sampler.n_blocks):
         
         eorb_pt_err = np.sqrt(dE @ cov @ dE) / np.sqrt((n+1))
         
-        print(f"  {n:4d} \t \t {e0:.6f} \t {e0_err:.6f} \t"
+        print(f"  {n+1:4d} \t \t {e0:.6f} \t {e0_err:.6f} \t"
               f"  {eorb_pt:.6f} \t {eorb_pt_err:.6f} \t"
               f"  {time.time() - init_time:.2f}")
 
@@ -200,6 +200,9 @@ cov = np.cov([
     e0bar_sp,
     t1olp_sp,
     ])
+# print(eorb_sp)
+# print(e0bar_sp)
+# print(cov[:4,:4])
 
 eorb_pt_err = np.sqrt(dE @ cov @ dE)/np.sqrt(nsamples)
 print(f"# AFQMC/pt2CCSD energy (Raw): {eorb_pt:.6f} +/- {eorb_pt_err:.6f}")
@@ -208,12 +211,12 @@ print(f'# Remove outliners by Mahalanobis distance ')
 t1_var = np.sum(t1olp_sp - t1olp)**2
 if np.sqrt(t1_var) < 1e-12:
     print(f'# <exp(T1)> is not varying ({t1_var:.2e}) during the sampling, it might cause numerical in the variance')
-    print(f'# <exp(T1)> is removed from the covariant matrix. Recommend using ptCCSD trial')
-    x = np.vstack([eorb_sp, t2eorb_sp, t2orb_sp, e0bar_sp]).T
-    mu = np.array([eorb, t2eorb, t2orb, e0bar])
+    print(f'# <exp(T1)> and <H_bar> removed from the covariant matrix. Recommend using ptCCSD trial')
+    x = np.vstack([eorb_sp, t2eorb_sp, t2orb_sp]).T
+    mu = np.array([eorb, t2eorb, t2orb])
     d2 = np.zeros(nsamples)
     for i in range(nsamples):
-        d2[i] = (x[i]-mu).T @ np.linalg.inv(cov[:-1,:-1]) @ (x[i]-mu)
+        d2[i] = (x[i]-mu).T @ np.linalg.inv(cov[:3,:3]) @ (x[i]-mu)
 else:
     x = np.vstack([eorb_sp, t2eorb_sp, t2orb_sp, e0bar_sp, t1olp_sp]).T
     mu = np.array([eorb, t2eorb, t2orb, e0bar, t1olp])
