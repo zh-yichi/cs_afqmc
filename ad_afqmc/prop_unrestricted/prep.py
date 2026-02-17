@@ -169,16 +169,39 @@ def _prep_afqmc(options=None,
                 options = pickle.load(f)
         except:
             options = {}
-    
-    trial = options['trial']
-    if 'u' not in trial.lower():
+
+    options["dt"] = options.get("dt", 0.01)
+    options["n_exp_terms"] = options.get("n_exp_terms",6)
+    options["n_walkers"] = options.get("n_walkers", 50)
+    options["n_prop_steps"] = options.get("n_prop_steps", 50)
+    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
+    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
+    options["n_blocks"] = options.get("n_blocks", 50)
+    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
+    options["n_eql"] = options.get("n_eql", 1)
+    options["walker_type"] = options.get("walker_type", "rhf")
+    options["symmetry"] = options.get("symmetry", False)
+    options["save_walkers"] = options.get("save_walkers", False)
+    options["trial"] = options.get("trial", None)
+    # options["ene0"] = options.get("ene0", 0.0)
+    options["free_projection"] = options.get("free_projection", False)
+    options["fp_abs"] = options.get("fp_abs", False)
+    options["n_batch"] = options.get("n_batch", 1)
+    options["max_error"] = options.get("max_error", 1e-3)
+
+    if 'u' not in options['trial']:
+        spin_type = 'restricted'
+    elif 'u' in options['trial']:
+        spin_type = 'unrestricted'
+
+    if spin_type == 'restricted':
         with h5py.File(chol_file, "r") as fh5:
             [nelec, nmo, ms, nchol] = fh5["header"]
             h0 = jnp.array(fh5.get("energy_core"))
             h1 = jnp.array(fh5.get("hcore")).reshape(nmo, nmo)
             chol = jnp.array(fh5.get("chol")).reshape(-1, nmo, nmo)
             h1_mod = jnp.array(fh5.get("hcore_mod")).reshape(nmo, nmo)
-    elif 'u' in trial.lower():
+    elif spin_type == 'unrestricted':
         with h5py.File(chol_file, "r") as fh5:
             [nelec, nmo, ms, nchol] = fh5["header"]
             h0 = jnp.array(fh5.get("energy_core"))
@@ -194,56 +217,34 @@ def _prep_afqmc(options=None,
     nelec_sp = ((nelec + abs(ms)) // 2, (nelec - abs(ms)) // 2)
     norb = nmo
 
-    options["dt"] = options.get("dt", 0.01)
-    options["n_exp_terms"] = options.get("n_exp_terms",6)
-    options["n_walkers"] = options.get("n_walkers", 50)
-    options["n_prop_steps"] = options.get("n_prop_steps", 50)
-    options["n_ene_blocks"] = options.get("n_ene_blocks", 50)
-    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
-    options["n_blocks"] = options.get("n_blocks", 50)
-    options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
-    options["n_eql"] = options.get("n_eql", 1)
-    options["walker_type"] = options.get("walker_type", "rhf")
-    options["symmetry"] = options.get("symmetry", False)
-    options["save_walkers"] = options.get("save_walkers", False)
-    options["trial"] = options.get("trial", None)
-    options["ene0"] = options.get("ene0", 0.0)
-    options["free_projection"] = options.get("free_projection", False)
-    options["fp_abs"] = options.get("fp_abs", False)
-    options["n_batch"] = options.get("n_batch", 1)
-    options["max_error"] = options.get("max_error", 1e-3)
 
-    # if options['use_gpu']:
-    #     config.afqmc_config["use_gpu"] = True
-    # config.setup_jax()
-
-    try:
-        with h5py.File("observable.h5", "r") as fh5:
-            [observable_constant] = fh5["constant"]
-            observable_op = np.array(fh5.get("op")).reshape(nmo, nmo)
-            if options["walker_type"] == "uhf":
-                observable_op = jnp.array([observable_op, observable_op])
-            observable = [observable_op, observable_constant]
-    except:
-        observable = None
+    # try:
+    #     with h5py.File("observable.h5", "r") as fh5:
+    #         [observable_constant] = fh5["constant"]
+    #         observable_op = np.array(fh5.get("op")).reshape(nmo, nmo)
+    #         if options["walker_type"] == "uhf":
+    #             observable_op = jnp.array([observable_op, observable_op])
+    #         observable = [observable_op, observable_constant]
+    # except:
+    #     observable = None
 
     ham = hamiltonian.hamiltonian(nmo)
     ham_data = {}
     ham_data["h0"] = h0
 
-    if 'u' not in trial.lower():
+    if spin_type == 'restricted':
         ham_data["h1"] = jnp.array([h1, h1])
         ham_data["h1_mod"] = jnp.array(h1_mod)
         nchol = chol.shape[0]
         ham_data["chol"] = jnp.array(chol.reshape(chol.shape[0], -1))
-    elif 'u' in trial.lower():
+    elif spin_type == 'unrestricted':
         ham_data["h1"] = jnp.array(h1)
         ham_data["h1_mod"] = jnp.array(h1_mod)
         nchol = chol[0].shape[0]
         ham_data["chol"] = jnp.array([chol[0].reshape(chol[0].shape[0], -1),
-                                    chol[1].reshape(chol[1].shape[0], -1)])
+                                      chol[1].reshape(chol[1].shape[0], -1)])
 
-    ham_data["ene0"] = options["ene0"]
+    # ham_data["ene0"] = options["ene0"]
 
     wave_data = {}
     mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
@@ -271,17 +272,17 @@ def _prep_afqmc(options=None,
             trial = wavefunctions_restricted.cisd(norb, nelec_sp, n_batch=options["n_batch"])
             if "pt" in options["trial"]:
                 trial = wavefunctions_restricted.cisd_pt(norb, nelec_sp, n_batch=options["n_batch"])
-            if "hf1" in options["trial"]:
-                trial = wavefunctions_restricted.cisd_hf1(norb, nelec_sp, n_batch=options["n_batch"])
-            if "hf2" in options["trial"]:
-                trial = wavefunctions_restricted.cisd_hf2(norb, nelec_sp, n_batch=options["n_batch"])
+            if "hf" in options["trial"]:
+                trial = wavefunctions_restricted.cisd_hf(norb, nelec_sp, n_batch=options["n_batch"])
+            # if "hf2" in options["trial"]:
+            #     trial = wavefunctions_restricted.cisd_hf2(norb, nelec_sp, n_batch=options["n_batch"])
             if "/" in options["trial"]:
                 guide_wave = wavefunctions_restricted.cisd(norb, nelec_sp, n_batch=options["n_batch"])
                 trial_wave = wavefunctions_restricted.rhf(norb, nelec_sp, n_batch=options["n_batch"])
                 trial = wavefunctions_restricted.mixed(guide_wave, trial_wave)
         except:
             raise ValueError("Trial specified as cisd, but amplitudes.npz not found.")
-        
+
     elif options["trial"] == "cid":
         try:
             amplitudes = np.load(amp_file)
@@ -527,10 +528,18 @@ def _prep_afqmc(options=None,
                 nchol,
                 )
 
+    if options['trial'] == 'cisd_hf':
+        sampler = sampling.sampler_mixed(
+            options["n_prop_steps"],
+            options["n_ene_blocks"],
+            options["n_sr_blocks"],
+            options["n_blocks"],
+            nchol,)
+
     print(f"# norb: {norb}")
     print(f"# nelec: {nelec_sp}")
     for op in options:
         if options[op] is not None:
             print(f"# {op}: {options[op]}")
 
-    return ham_data, ham, prop, trial, wave_data, sampler, observable, options
+    return ham_data, ham, prop, trial, wave_data, sampler, options

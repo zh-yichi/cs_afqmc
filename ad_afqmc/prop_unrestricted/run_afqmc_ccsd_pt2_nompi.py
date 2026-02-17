@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
 config.setup_jax()
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options = (prep._prep_afqmc())
+ham_data, ham, prop, trial, wave_data, sampler, options = (prep._prep_afqmc())
 
 init_time = time.time()
 init_walkers = None

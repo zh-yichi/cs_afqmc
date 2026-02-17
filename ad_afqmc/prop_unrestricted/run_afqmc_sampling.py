@@ -26,7 +26,7 @@ rank = comm.Get_rank()
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options = (prep._prep_afqmc())
+ham_data, ham, prop, trial, wave_data, sampler, options = (prep._prep_afqmc())
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
