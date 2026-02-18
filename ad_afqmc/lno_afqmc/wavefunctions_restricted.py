@@ -1420,12 +1420,37 @@ class ccsd_pt2(rhf):
 
         return e0, t1olp, eorb, t2eorb, t2orb, e12bar
 
-    @partial(jit, static_argnums=(0))
-    def calc_eorb_pt2(self,walkers,ham_data,wave_data):
-        e0, t1olp, eorb, t2eorb, t2orb, e12bar = vmap(
-            self._calc_eorb_pt2,in_axes=(0, None, None))(
-            walkers, ham_data, wave_data)
-        return e0, t1olp, eorb, t2eorb, t2orb, e12bar
+    # @partial(jit, static_argnums=(0))
+    # def calc_eorb_pt2(self,walkers,ham_data,wave_data):
+    #     e0, t1olp, eorb, t2eorb, t2orb, e12bar = vmap(
+    #         self._calc_eorb_pt2,in_axes=(0, None, None))(
+    #         walkers, ham_data, wave_data)
+    #     return e0, t1olp, eorb, t2eorb, t2orb, e12bar
+
+    @partial(jit, static_argnums=0) 
+    def calc_eorb_pt2(self, walkers: jax.Array, ham_data: dict, wave_data: dict) -> jax.Array:
+
+        n_walkers = walkers.shape[0]
+        batch_size = n_walkers // self.n_batch
+        
+        def scan_batch(carry, walker_batch):
+            e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar \
+                = vmap(self._calc_eorb_pt2, in_axes=(0, None, None))(
+                walker_batch, ham_data, wave_data
+            )
+            return carry, (e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar)
+        
+        _, (e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar) \
+            = lax.scan(scan_batch, None, walkers.reshape(self.n_batch, batch_size, self.norb,-1))
+
+        e0 = e0.reshape(n_walkers)
+        t1olp = t1olp.reshape(n_walkers)
+        eorb_bar = eorb_bar.reshape(n_walkers)
+        t2eorb = t2eorb.reshape(n_walkers)
+        t2orb = t2orb.reshape(n_walkers)
+        e12bar = e12bar.reshape(n_walkers)
+
+        return e0, t1olp, eorb_bar, t2eorb, t2orb, e12bar
     
     @partial(jit, static_argnums=0)
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
