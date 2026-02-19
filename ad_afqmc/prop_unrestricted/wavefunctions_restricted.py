@@ -206,6 +206,28 @@ class wave_function_restricted(ABC):
         # wave_data["T2_L"] = L
 
         return L, e_val
+    
+    @partial(jit, static_argnums=0)
+    def _thouless(self, init_slater, t):
+        # calculate |psi'> = exp(t_ia a+ i)|psi>
+        norb, nocc = self.norb, self.nelec[0]
+        nvir = norb - nocc
+        assert t.shape == (nocc, nvir)
+        t_full = jnp.eye(norb, dtype=jnp.complex128)
+        exp_t = t_full.at[:nocc, nocc:].set(t)
+        # exp_tau = jsp.linalg.expm(t_full)
+        return exp_t.T @ init_slater
+    
+    @partial(jit, static_argnums=0)
+    def _thouless_full(self, init_slater, t):
+        # calculate |psi'> = exp(t_pq p+ q)|psi>
+        from jax import scipy as jsp
+        norb, nocc = self.norb, self.nelec[0]
+        assert t.shape == (norb, norb)
+        t_full = jnp.zeros((norb, norb), dtype=jnp.complex128)
+        t_full = t_full.at[:nocc, nocc:].set(t)
+        exp_t = jsp.linalg.expm(t_full)
+        return exp_t.T @ init_slater
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
