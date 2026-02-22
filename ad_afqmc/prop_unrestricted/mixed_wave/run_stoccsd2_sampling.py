@@ -44,8 +44,8 @@ e_init = prop_data["e_estimate"]
 
 oci, eci = trial.calc_energy_ci(prop_data["walkers"], ham_data, wave_data)
 ocr, ecr = trial.calc_energy_cr(prop_data["walkers"], ham_data, wave_data)
-eci_init = jnp.real(eci / oci)[0]
-ecc_init = jnp.real((eci + ecr)/(oci + ocr))[0]
+eci_init = jnp.real(eci)[0]
+ecc_init = jnp.real((oci*eci + ecr) / (oci + ocr))[0]
 
 print(f'# Propagating with {options["n_walkers"]} walkers')
 print("# Equilibration sweeps:")
@@ -98,7 +98,7 @@ for n in range(sampler.n_blocks):
         ecc, ecc_err = \
             stat_utils.blocking_analysis(wcc_sp[: n + 1], ecc_sp[: n + 1])
         if eci_err is not None and ecc_err is not None:
-            print(f"  {n:4d} \t \t {eci:.6f} \t {eci_err:.6f} \t {ecc:.6f} \t {ecc_err:.6f} \t {time.time() - init_time:.2f}")
+            print(f"  {n+1:4d} \t \t {eci:.6f} \t {eci_err:.6f} \t {ecc:.6f} \t {ecc_err:.6f} \t {time.time() - init_time:.2f}")
             if eci_err < options["max_error"] and ecc_err < options["max_error"]:
                 break
         else:

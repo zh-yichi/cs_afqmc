@@ -179,36 +179,35 @@ class sampler_stoccsd2(sampler):
         overlap_ci, energy_ci = trial.calc_energy_ci(prop_data["walkers"], ham_data, wave_data)
         overlap_cr, energy_cr = trial.calc_energy_cr(prop_data["walkers"], ham_data, wave_data)
 
-        eloc = jnp.real(energy_ci/overlap_ci)
-        eloc_cr = jnp.real((energy_ci + energy_cr)/(overlap_ci + overlap_cr))
+        eci = jnp.real(energy_ci)
+        ecc = jnp.real((overlap_ci*energy_ci + energy_cr) / (overlap_ci + overlap_cr))
 
-        olp_tg = jnp.real(overlap_ci/overlap_g)
-        olp_tg_cr = jnp.real((overlap_ci + overlap_cr)/overlap_g)
+        oci_tg = jnp.real(overlap_ci / overlap_g)
+        occ_tg = jnp.real((overlap_ci + overlap_cr) / overlap_g)
 
-        eloc = jnp.where(
-            jnp.abs(eloc - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        eci = jnp.where(
+            jnp.abs(eci - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
             prop_data["e_estimate"],
-            eloc,
+            eci,
         )
-        eloc_cr = jnp.where(
-            jnp.abs(eloc_cr - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        ecc = jnp.where(
+            jnp.abs(ecc - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
             prop_data["e_estimate"],
-            eloc_cr,
+            ecc,
         )
         
         wt = prop_data["weights"]
-        wp = wt * olp_tg
-        wp_cr = wt * olp_tg_cr
+        wci = wt * oci_tg
+        wcc = wt * occ_tg
 
-        # blk_wt = jnp.sum(wt)
-        blk_wp = jnp.sum(wp)
-        blk_wp_cr = jnp.sum(wp_cr)
-        blk_eci = jnp.sum(wp * eloc) / blk_wp
-        blk_eci_cr = jnp.sum(wp_cr * eloc_cr) / blk_wp_cr
+        blk_wci = jnp.sum(wci)
+        blk_wcc = jnp.sum(wcc)
+        blk_eci = jnp.sum(wci * eci) / blk_wci
+        blk_ecc = jnp.sum(wcc * ecc) / blk_wcc
 
         prop_data["pop_control_ene_shift"] = 0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_eci
 
-        return prop_data, (blk_wp, blk_wp_cr, blk_eci, blk_eci_cr)
+        return prop_data, (blk_wci, blk_wcc, blk_eci, blk_ecc)
 
     @partial(jit, static_argnums=(0,3,4))
     def _sr_block_scan(
@@ -223,13 +222,13 @@ class sampler_stoccsd2(sampler):
         def _block_scan_wrapper(x,_):
             return self._block_scan(x,ham_data,prop,trial,wave_data)
         
-        prop_data, (blk_wp, blk_wp_cr, blk_eci, blk_eci_cr) \
+        prop_data, (blk_wci, blk_wcc, blk_eci, blk_ecc) \
             = lax.scan(
             _block_scan_wrapper, prop_data, None, length = self.n_ene_blocks
         )
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        return prop_data, (blk_wp, blk_wp_cr, blk_eci, blk_eci_cr)
+        return prop_data, (blk_wci, blk_wcc, blk_eci, blk_ecc)
 
     @partial(jit, static_argnums=(0,3,4))
     def propagate_phaseless(
@@ -246,7 +245,7 @@ class sampler_stoccsd2(sampler):
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         prop_data["n_killed_walkers"] = 0
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_wp, blk_wp_cr, blk_eci, blk_eci_cr) \
+        prop_data, (blk_wci, blk_wcc, blk_eci, blk_ecc) \
             = lax.scan(
             _sr_block_scan_wrapper, prop_data, None, length = self.n_sr_blocks
         )
@@ -254,12 +253,12 @@ class sampler_stoccsd2(sampler):
             self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
         )
 
-        wp = jnp.sum(blk_wp)
-        wp_cr = jnp.sum(blk_wp_cr)
-        eci = jnp.sum(blk_wp * blk_eci) / wp
-        eci_cr = jnp.sum(blk_wp_cr * blk_eci_cr) / wp_cr
+        wci = jnp.sum(blk_wci)
+        wcc = jnp.sum(blk_wcc)
+        eci = jnp.sum(blk_wci * blk_eci) / wci
+        ecc = jnp.sum(blk_wcc * blk_ecc) / wcc
 
-        return prop_data, (wp, wp_cr, eci, eci_cr)
+        return prop_data, (wci, wcc, eci, ecc)
     
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

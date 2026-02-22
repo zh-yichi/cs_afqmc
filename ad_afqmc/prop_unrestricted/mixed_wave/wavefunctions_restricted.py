@@ -343,7 +343,7 @@ class stoccsd2(rhf):
         o0 = self._slater_olp(walker, trial_slater)
         overlap = (1.0 + 2*ci1g +  gt2g) * o0 # <(1+c1+c2)psi|walker>
         # <psi|h0+h1+h2|walker> + <ci1 psi|h0+h1+h2|walker> + <ci2 pai|h0+h1+h2|walker>
-        energy = h0*overlap + (e1_0 + e2_0 + e1_1 + e2_1 + e1_2 + e2_2) * o0
+        energy = h0 + (e1_0 + e2_0 + e1_1 + e2_1 + e1_2 + e2_2) / (1.0 + 2*ci1g +  gt2g)
 
         return overlap, energy
     
@@ -364,7 +364,7 @@ class stoccsd2(rhf):
         e2 = e2_1 + e2_2
 
         overlap = self._slater_olp(walker, slater)
-        energy = (h0 + e1 + e2) * overlap
+        energy = h0 + e1 + e2
 
         return overlap, energy
 
@@ -379,23 +379,27 @@ class stoccsd2(rhf):
 
     @partial(jit, static_argnums=0)
     def _calc_energy_ci_xtau(self, walker: jax.Array, ham_data: dict, wave_data: dict, xtau: jax.Array) -> jax.Array:
+        
         ci1 = xtau
         ci2 = oe.contract('ia,jb->iajb', xtau, xtau, backend='jax')
         overlap, energy = self._calc_energy_cisd(walker, ham_data, wave_data, ci1, ci2)
         # TODO: write a separate ci_energy for disconnected ci2
-        return overlap, energy
 
+        return overlap, energy
 
     @partial(jit, static_argnums=0)
     def _calc_exp_ci_xtau(self, walker, ham_data, wave_data, xtau):
+
         o_exp, e_exp = self._calc_energy_exp_xtau(walker, ham_data, wave_data, xtau)
         o_ci, e_ci =  self._calc_energy_ci_xtau(walker, ham_data, wave_data, xtau)
         do = o_exp - o_ci
-        de = e_exp - e_ci
+        de = o_exp*e_exp - o_ci*e_ci
+        
         return (do, de)
 
     @partial(jit, static_argnums=0)
     def _calc_exp_ci_xtaus(self, walker, ham_data, wave_data):
+
         def _scan_xtaus(carry, xtau: jax.Array):
             (do, de) = self._calc_exp_ci_xtau(walker, ham_data, wave_data, xtau)
             return carry, (do, de)
@@ -403,10 +407,10 @@ class stoccsd2(rhf):
         init_carry = 0.0
         _, (dos, des) = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
 
-        do = jnp.sum(dos)
-        de = jnp.sum(des)
+        do = jnp.sum(dos) / wave_data['xtau'].shape[0] # intermediately normalize stocc
+        de = jnp.sum(des) / wave_data['xtau'].shape[0]
 
-        return (do, de)
+        return do, de
 
     @partial(jit, static_argnums=(0))
     def calc_energy_cr(self, walkers, ham_data, wave_data):
@@ -471,12 +475,10 @@ class stoccsd2(rhf):
         e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3
 
-
         o0 = self._slater_olp(walker, wave_data["mo_t"])
         overlap = (1.0 + gt2g) * o0 # denominator
         
-        # numerator  
-        energy = h0*overlap + (e1_0 + e2_0 + e1_2 + e2_2)*o0
+        energy = h0 + (e1_0 + e2_0 + e1_2 + e2_2) / (1.0 + gt2g)
 
         return overlap, energy
 
