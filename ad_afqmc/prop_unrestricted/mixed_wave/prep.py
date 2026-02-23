@@ -39,13 +39,10 @@ def _prep_afqmc(options=None,
     options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
     options["n_eql"] = options.get("n_eql", 1)
     options["walker_type"] = options.get("walker_type", "rhf")
-    # options["symmetry"] = options.get("symmetry", False)
-    # options["save_walkers"] = options.get("save_walkers", False)
     options["trial"] = options.get("trial", None)
-    # options["free_projection"] = options.get("free_projection", False)
-    # options["fp_abs"] = options.get("fp_abs", False)
     options["n_batch"] = options.get("n_batch", 1)
     options["max_error"] = options.get("max_error", 1e-3)
+    options["nslater"] = options.get("nslater", 100)
 
     if 'u' not in options['trial']:
         spin_type = 'restricted'
@@ -94,17 +91,29 @@ def _prep_afqmc(options=None,
     wave_data = {}
     mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
 
-    # if options["trial"] == "rhf":
-    #     trial = wavefunctions_restricted.rhf(norb, nelec_sp, n_batch=options["n_batch"])
-    #     wave_data["mo_coeff"] = mo_coeff[0][:, : nelec_sp[0]]
-
-    if options["trial"] == "stoccsd2":
-        trial = wavefunctions_restricted.stoccsd2(
-            norb,
-            nelec_sp,
-            n_batch = options["n_batch"],
-            nslater = options['nslater']
-            )
+    if "stoccsd" in options["trial"]:
+        if "2" in options["trial"]:
+            trial = wavefunctions_restricted.stoccsd2(
+                norb,
+                nelec_sp,
+                n_batch = options["n_batch"],
+                nslater = options['nslater']
+                )
+        elif "3" in options["trial"]:
+            trial = wavefunctions_restricted.stoccsd3(
+                norb,
+                nelec_sp,
+                n_batch = options["n_batch"],
+                nslater = options['nslater']
+                )
+        elif "4" in options["trial"]:
+            trial = wavefunctions_restricted.stoccsd4(
+                norb,
+                nelec_sp,
+                n_batch = options["n_batch"],
+                nslater = options['nslater']
+                )
+            
         sampler = sampling.sampler_stoccsd2(
             options["n_prop_steps"],
             options["n_ene_blocks"],
@@ -112,6 +121,7 @@ def _prep_afqmc(options=None,
             options["n_blocks"],
             nchol,
             )
+        
         nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
         t1 = jnp.array(amplitudes["t1"])
@@ -124,10 +134,6 @@ def _prep_afqmc(options=None,
         wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
 
     if options["walker_type"] == "rhf":
-        # if options["symmetry"]:
-        #     ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
-        # else:
-        #     ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
         prop = propagation.propagator_restricted(
             options["dt"], 
             options["n_walkers"], 
@@ -136,19 +142,6 @@ def _prep_afqmc(options=None,
         )
 
     elif options["walker_type"] == "uhf":
-        # if options["symmetry"]:
-        #     ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
-        # else:
-        #     ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
-
-        # if options["free_projection"]:
-        #     prop = propagation.propagator_unrestricted(
-        #         options["dt"],
-        #         options["n_walkers"],
-        #         10,
-        #         n_batch=options["n_batch"],
-        #     )
-        # else:
         prop = propagation.propagator_unrestricted(
             options["dt"],
             options["n_walkers"],

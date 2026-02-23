@@ -178,7 +178,10 @@ class wave_function_restricted(ABC):
                 jnp.array([natorbs_dn + 0.0j] * n_walkers),
             ]
         
-    def decompose_t2(self, wave_data: dict):
+    def decompose_t2(self,
+                     wave_data: dict, 
+                     thresh: float = 1e-6
+                     ):
         # adapted from Yann
 
         nO = self.nelec[0]
@@ -187,25 +190,32 @@ class wave_function_restricted(ABC):
 
         t2 = wave_data['t2']
 
-        # assert t2.shape == (nO, nO, nV, nV)
-
-        # T2 = LL^T
-        # t2 = jnp.einsum("iajb->aibj", t2)
         assert t2.shape == (nO, nV, nO, nV)
         
         t2 = t2.reshape(nex, nex)
         e_val, e_vec = jnp.linalg.eigh(t2)
-        L = e_vec @ jnp.diag(jnp.sqrt(e_val + 0.0j))
-        assert jnp.abs(jnp.linalg.norm(t2 - L @ L.T)) < 1e-12
+
+        # Keep only important modes
+        mask = jnp.abs(e_val) > thresh
+        e_val_trunc = e_val[mask]
+        e_vec_trunc = e_vec[:, mask]
+
+        L = e_vec_trunc @ jnp.diag(jnp.sqrt(e_val_trunc + 0.0j))
+        
+        err = jnp.linalg.norm(t2 - L @ L.T)
+        print(f'# Throw {len(e_val)-len(e_val_trunc)} vectors in T2 deomposition')
+        print(f'# cutoff = {thresh:.2e} | error = {err:.2e}')
+        print(f'# number of T2 decomposition vectors {len(e_val_trunc)}')
+
+        # L = e_vec @ jnp.diag(jnp.sqrt(e_val + 0.0j))
+        # assert jnp.abs(jnp.linalg.norm(t2 - L @ L.T)) < 1e-12
 
         # Summation on the left
-        L = L.T.reshape(nex, nO, nV)
-        t2_rec = jnp.einsum('gia,gjb->iajb', L, L)
-        assert jnp.abs(wave_data['t2'] - t2_rec).max() < 1e-12
+        L = L.T.reshape(-1, nO, nV)
+        # t2_rec = jnp.einsum('gia,gjb->iajb', L, L)
+        # assert jnp.abs(wave_data['t2'] - t2_rec).max() < 1e-12
 
-        # wave_data["T2_L"] = L
-
-        return L, e_val
+        return L, e_val_trunc
     
     @partial(jit, static_argnums=0)
     def _thouless(self, init_slater, t):

@@ -4,7 +4,7 @@ a = 2 # bond length in a cluster
 d = 100 # distance between each cluster
 unit = 'b' # unit of length
 na = 2 # size of a cluster (monomer)
-nc = 2 # set as integer multiple of monomers
+nc = 4 # set as integer multiple of monomers
 spin = 0 # spin per monomer
 frozen = 0 # frozen orbital per monomer
 elmt = 'H'
@@ -34,9 +34,9 @@ options =  {'n_eql': 3,
             'n_walkers': 100,
             'seed': 2,
             'walker_type': 'rhf',
-            'trial': 'stoccsd2',
+            'trial': 'stoccsd4',
             'nslater': 100, # number of slater determinants to sample the ccsd
-            'use_gpu': True,
+            'use_gpu': False,
             }
 
 from ad_afqmc.prop_unrestricted.mixed_wave import prep, launch_afqmc
