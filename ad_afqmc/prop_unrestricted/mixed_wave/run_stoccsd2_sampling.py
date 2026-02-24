@@ -91,27 +91,27 @@ for n in range(1,options["n_eql"]+1):
     print(f" {n*block_time:.2f}  {eci.real:.6f}  {num_cr.real:.6f}  {den_cr.real:.6f}  {ecc.real:.6f}  {time.time() - init_time:.2f} ")
 
 print("# Sampling sweeps:")
-print("# nBlocks  energy_ci  numer_cr  denom_cr  e_stocc  Walltime")
+print("# nBlocks  energy_ci  error  energy_cc  error  Walltime")
 
 whf_sp = np.zeros(sampler.n_blocks,dtype="float64")
-numci_sp = np.zeros(sampler.n_blocks,dtype="float64")
-denci_sp = np.zeros(sampler.n_blocks,dtype="float64")
-numcr_sp = np.zeros(sampler.n_blocks,dtype="float64")
-dencr_sp = np.zeros(sampler.n_blocks,dtype="float64")
-eci_sp = np.zeros(sampler.n_blocks,dtype="float64")
-ecc_sp = np.zeros(sampler.n_blocks,dtype="float64")
+numci_sp = np.zeros(sampler.n_blocks,dtype="complex128")
+denci_sp = np.zeros(sampler.n_blocks,dtype="complex128")#float64")
+numcr_sp = np.zeros(sampler.n_blocks,dtype="complex128")
+dencr_sp = np.zeros(sampler.n_blocks,dtype="complex128")
+eci_sp = np.zeros(sampler.n_blocks,dtype="complex128")
+# ecc_sp = np.zeros(sampler.n_blocks,dtype="complex128")
 
 for n in range(sampler.n_blocks):
     prop_data, (whf, numci, denci, numcr, dencr) \
         = sampler.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
 
-    whf_sp[n] = whf.real
-    numci_sp[n] = numci.real
-    denci_sp[n] = denci.real
-    numcr_sp[n] = numcr.real
-    dencr_sp[n] = dencr.real
+    whf_sp[n] = whf
+    numci_sp[n] = numci
+    denci_sp[n] = denci
+    numcr_sp[n] = numcr
+    dencr_sp[n] = dencr
     eci_sp[n] = jnp.real(numci / denci)
-    ecc_sp[n] = jnp.real((numci + numcr) / (denci + dencr))
+    # ecc_sp[n] = jnp.real((numci + numcr) / (denci + dencr))
 
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
@@ -120,7 +120,7 @@ for n in range(sampler.n_blocks):
     if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         numci = np.sum(whf_sp[:n+1] * numci_sp[:n+1]) / np.sum(whf_sp[:n+1])
         denci = np.sum(whf_sp[:n+1] * denci_sp[:n+1]) / np.sum(whf_sp[:n+1])
-        eci = jnp.real(numci / denci)
+        eci = numci / denci
 
         # partial_eci/partial_num, partial_eci/partial_don
         deci = [1/denci, -numci/denci**2]
@@ -140,7 +140,7 @@ for n in range(sampler.n_blocks):
         covcc = np.cov([numci_sp[:n+1], numcr_sp[:n+1], denci_sp[:n+1], dencr_sp[:n+1]])
         ecc_err = np.sqrt(decc @ covcc @ decc) / np.sqrt((n))
 
-        print(f"  {n+1:4d}  {eci:.6f}  {eci_err:.6f}  {ecc:.6f}  {ecc_err:.6f}  {time.time() - init_time:.2f}")
+        print(f"  {n+1:4d}  {eci.real:.6f}  {eci_err.real:.6f}  {ecc.real:.6f}  {ecc_err.real:.6f}  {time.time() - init_time:.2f}")
 
 #         # eci, eci_err = \
 #         #     stat_utils.blocking_analysis(wci_sp[: n + 1], eci_sp[: n + 1])
@@ -193,7 +193,7 @@ for n in range(sampler.n_blocks):
 # #     ecc_err = f"  {ecc_err}  "
 # # ecc = f"{ecc:.6f}"
 
-# print(f"Final Results:")
-# print(f"AFQMC/CISD energy: {eci} +/- {eci_err}")
-# print(f"AFQMC/sto-CCSD energy: {ecc} +/- {ecc_err}")
-# print(f"total run time: {time.time() - init_time:.2f}")
+print(f"Final Results:")
+print(f"AFQMC/CISD energy: {eci.real:.6f} +/- {eci_err.real:.6f}")
+print(f"AFQMC/sto-CCSD energy: {ecc.real:.6f} +/- {ecc_err.real:.6f}")
+print(f"total run time: {time.time() - init_time:.2f}")

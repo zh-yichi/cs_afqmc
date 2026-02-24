@@ -217,17 +217,6 @@ def _prep_afqmc(options=None,
     nelec_sp = ((nelec + abs(ms)) // 2, (nelec - abs(ms)) // 2)
     norb = nmo
 
-
-    # try:
-    #     with h5py.File("observable.h5", "r") as fh5:
-    #         [observable_constant] = fh5["constant"]
-    #         observable_op = np.array(fh5.get("op")).reshape(nmo, nmo)
-    #         if options["walker_type"] == "uhf":
-    #             observable_op = jnp.array([observable_op, observable_op])
-    #         observable = [observable_op, observable_constant]
-    # except:
-    #     observable = None
-
     ham = hamiltonian.hamiltonian(nmo)
     ham_data = {}
     ham_data["h0"] = h0
@@ -243,8 +232,6 @@ def _prep_afqmc(options=None,
         nchol = chol[0].shape[0]
         ham_data["chol"] = jnp.array([chol[0].reshape(chol[0].shape[0], -1),
                                       chol[1].reshape(chol[1].shape[0], -1)])
-
-    # ham_data["ene0"] = options["ene0"]
 
     wave_data = {}
     mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
@@ -274,8 +261,6 @@ def _prep_afqmc(options=None,
                 trial = wavefunctions_restricted.cisd_pt(norb, nelec_sp, n_batch=options["n_batch"])
             if "hf" in options["trial"]:
                 trial = wavefunctions_restricted.cisd_hf(norb, nelec_sp, n_batch=options["n_batch"])
-            # if "hf2" in options["trial"]:
-            #     trial = wavefunctions_restricted.cisd_hf2(norb, nelec_sp, n_batch=options["n_batch"])
             if "/" in options["trial"]:
                 guide_wave = wavefunctions_restricted.cisd(norb, nelec_sp, n_batch=options["n_batch"])
                 trial_wave = wavefunctions_restricted.rhf(norb, nelec_sp, n_batch=options["n_batch"])
