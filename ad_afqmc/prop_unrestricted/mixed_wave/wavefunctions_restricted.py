@@ -196,7 +196,7 @@ class stoccsd2(rhf):
         tau, _ = self.decompose_t2(wave_data)
 
         prop_data["key"], subkey = random.split(prop_data["key"])
-        fields = random.normal(
+        fields_x = random.normal(
             subkey,
             shape=(
                 nslater,
@@ -204,7 +204,8 @@ class stoccsd2(rhf):
             ),
         )
 
-        xtau = jnp.einsum("sg,gia->sia", fields, tau) # (nslater,nocc,nvir)
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        xtau = jnp.einsum("sg,gia->sia", fields_x, tau) # (nslater,nocc,nvir)
 
         return xtau
     
@@ -243,121 +244,17 @@ class stoccsd2(rhf):
             - oe.contract("iajb,ib,ja->", ci2, green_ov, green_ov, backend="jax")
         return (1.0 + o1 + o2) * o0
 
-    @partial(jit, static_argnums=0)
-    def _calc_energy_cisd(
-        self, 
-        walker: jax.Array, 
-        ham_data: dict, 
-        wave_data: dict,
-        ci1:  jax.Array,
-        ci2:  jax.Array,
-        ):
-
-        '''
-        A local energy evaluator for <psi(ci1+ci2)HF|H|walker> / <psi(ci1+ci2)|walker>
-        all operators and the walkers and psi are in the same basis (normally MO)
-        |psi> is not necesarily diagonal
-        
-        all green's function and the chol and ci coeff are as their original definition
-        no half rotation performed
-        '''
-
-        ci1 = ci1.conj() # applied to the bra
-        ci2 = ci2.conj() # applied to the bra
-
-        nocc, norb = self.nelec[0], self.norb
-        h0  = ham_data['h0']
-        trial_slater = wave_data["mo_t"]
-        h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-        chol = ham_data["chol"].reshape(-1, norb, norb)
-        green = self._green(walker, trial_slater) # full green
-        green_ov = green[:nocc, nocc:]
-        greenp = (green - jnp.eye(norb))[:, nocc:]
-        
-        ##################### ref terms #########################
-        # one-body 
-        hg = oe.contract("pq,pq->", h1, green, backend="jax")
-        e1_0 = 2 * hg
-
-        # two-body 
-        gl = oe.contract("pr,gqr->gpq", green, chol, backend="jax")
-        trgl = oe.contract('gpp->g', gl, backend="jax")
-        e2_0_1 = 2 * jnp.sum(trgl**2)
-        e2_0_2 = -oe.contract('gpq,gqp->',gl,gl, backend="jax")
-        e2_0 = e2_0_1 + e2_0_2
-        ##########################################################
-
-        ######################### ci terms #######################
-        # one-body single excitations 
-        ci1g = oe.contract("ia,ia->", ci1, green_ov, backend="jax")
-        e1_1_1 = 4 * ci1g * hg # c_ia G_ia G_pq h_pq
-        gpci1 = oe.contract("pa,ia->pi", greenp, ci1, backend="jax")
-        ci1_green = oe.contract("pi,iq->pq", gpci1, green[:nocc,:], backend="jax")
-        e1_1_2 = -2 * oe.contract("pq,pq->", h1, ci1_green, backend="jax") # c_ia Gp_pa G_iq h_pq
-        e1_1 = e1_1_1 + e1_1_2 # <psi|ci1 h1|walker> / <psi|walker>
-
-        # one-body double excitations
-        t2g_c = oe.contract("iajb,ia->jb", ci2, green_ov, backend="jax")
-        t2g_e = oe.contract("iajb,ib->ja", ci2, green_ov, backend="jax")
-        t2_green_c = (greenp @ t2g_c.T) @ green[:nocc,:]
-        t2_green_e = (greenp @ t2g_e.T) @ green[:nocc,:]
-        t2_green = 2 * t2_green_c - t2_green_e
-        t2g = 2 * t2g_c - t2g_e
-        gt2g = oe.contract("ia,ia->", t2g, green_ov, backend="jax")
-        e1_2_1 = 2 * hg * gt2g
-        e1_2_2 = -2 * oe.contract("ij,ij->", h1, t2_green, backend="jax")
-        e1_2 = e1_2_1 + e1_2_2 # <exp(T1)HF|T2 h1|walker> / <exp(T1)HF|walker>
-
-        # two-body single excitations
-        e2_1_1 = 2 * e2_0 * ci1g # c_ia G_ia G_pr G_ps L_pr L_ps
-        lci1g = oe.contract("gpq,pq->g", chol, ci1_green, backend="jax")
-        e2_1_2 = -2 * oe.contract("g,g->",lci1g, trgl, backend="jax") # c_ia Gp_pa G_ir G_qs L_pr L_qs
-
-        lci1 = oe.contract("gpa,ia->gpi", chol[:, :, nocc:], ci1, backend="jax")
-        lg1 = oe.contract("gpr,qr->gpq", chol, green[:nocc,:], backend="jax")
-        lci1g = oe.contract("gri,pr->gip", lci1, green, backend="jax")
-        glgpci1 = jnp.einsum("gpr,ri->gpi", gl, gpci1, optimize="optimal")
-        e2_1_3 = jnp.einsum("gpi,gpi->", glgpci1, lg1, optimize="optimal")
-        e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3) # <exp(T1)HF|ci1 h2|walker> / <exp(T1)HF|walker>
-
-        # two-body double excitations
-        e2_2_1 = e2_0 * gt2g
-        lt2g = oe.contract("gij,ij->g", chol, t2_green, backend="jax")
-        e2_2_2_1 = -oe.contract("g,g->", lt2g, trgl, backend="jax")
-
-        def scan_aux(carry, x):
-            chol_i, gl_i = x
-            lt2_green_i = oe.contract("pr,qr->pq",chol_i,t2_green,backend="jax")
-            carry[0] += 0.5 * oe.contract("pq,pq->",gl_i,lt2_green_i,backend="jax")
-            glgp_i = oe.contract("iq,qa->ia", gl_i[:nocc,:],greenp,backend="jax")
-            l2t2_1 = oe.contract("ia,jb,iajb->",glgp_i,glgp_i,ci2,backend="jax")
-            l2t2_2 = oe.contract("ib,ja,iajb->",glgp_i,glgp_i,ci2,backend="jax")
-            carry[1] += 2 * l2t2_1 - l2t2_2
-            return carry, 0.0
-
-        [e2_2_2_2, e2_2_3], _ = lax.scan(scan_aux, [0.0, 0.0], (chol, gl))
-
-        e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
-        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
-
-        o0 = self._slater_olp(walker, trial_slater)
-        overlap = (1.0 + 2*ci1g +  gt2g) * o0 # <(1+c1+c2)psi|walker>
-        # <psi|h0+h1+h2|walker> + <ci1 psi|h0+h1+h2|walker> + <ci2 pai|h0+h1+h2|walker>
-        energy = h0 + (e1_0 + e2_0 + e1_1 + e2_1 + e1_2 + e2_2) / (1.0 + 2*ci1g +  gt2g)
-
-        return overlap, energy
-    
     # @partial(jit, static_argnums=0)
-    # def _calc_energy_cisd_disconnected(
+    # def _calc_energy_cisd(
     #     self, 
     #     walker: jax.Array, 
     #     ham_data: dict, 
     #     wave_data: dict,
     #     ci1:  jax.Array,
+    #     ci2:  jax.Array,
     #     ):
 
     #     '''
-    #     Disconnected Doubles!!! c_iajb = c_ia c_jb
     #     A local energy evaluator for <psi(ci1+ci2)HF|H|walker> / <psi(ci1+ci2)|walker>
     #     all operators and the walkers and psi are in the same basis (normally MO)
     #     |psi> is not necesarily diagonal
@@ -366,22 +263,22 @@ class stoccsd2(rhf):
     #     no half rotation performed
     #     '''
 
+    #     ci1 = ci1.conj() # applied to the bra
+    #     ci2 = ci2.conj() # applied to the bra
+
     #     nocc, norb = self.nelec[0], self.norb
     #     h0  = ham_data['h0']
-    #     # trial_slater = wave_data["mo_t"]
+    #     trial_slater = wave_data["mo_t"]
     #     h1 = (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
     #     chol = ham_data["chol"].reshape(-1, norb, norb)
-    #     green = self._green(walker, wave_data["mo_t"]) # full green
+    #     green = self._green(walker, trial_slater) # full green
     #     green_ov = green[:nocc, nocc:]
     #     greenp = (green - jnp.eye(norb))[:, nocc:]
         
-    #     ci1 = ci1.conj() # applied to the bra
-        
     #     ##################### ref terms #########################
     #     # one-body 
-    #     gh = oe.contract("pr,qr->pq", h1, green, backend="jax")
-    #     tr_gh = oe.contract("pp->", gh, backend="jax")
-    #     e1_0 = 2 * tr_gh
+    #     hg = oe.contract("pq,pq->", h1, green, backend="jax")
+    #     e1_0 = 2 * hg
 
     #     # two-body 
     #     gl = oe.contract("pr,gqr->gpq", green, chol, backend="jax")
@@ -392,60 +289,50 @@ class stoccsd2(rhf):
     #     ##########################################################
 
     #     ######################### ci terms #######################
-    #     # universal terms #
-    #     cig = oe.contract("ia,ja->ij", ci1, green_ov, backend="jax")
-    #     cigp = oe.contract("ia,pa->ip", ci1, greenp, backend="jax")
-        
-    #     o0 = self._slater_olp(walker, wave_data["mo_t"])
-    #     o1 = oe.contract("ii->", cig, backend="jax") # c_ia G_ia
-    #     o2_1 = o1**2
-    #     o2_2 = -oe.contract("ij,ji->", cig, cig, backend="jax") # c_ia G_ja c_jb G_ib
-    #     o2 = 2*o2_1 + o2_2
-
-    #     olp = (1.0 + 2*o1 + o2) * o0
-    #     ###################
-
     #     # one-body single excitations 
-    #     e1_1_1 = 4 * o1 * tr_gh # c_ia G_ia G_pq h_pq
-    #     cigp_g = oe.contract("ip,iq->pq", cigp, green[:nocc,:], backend="jax") # c_ia Gp_pa G_ir
-    #     e1_1_2 = -2 * oe.contract("pq,pq->", cigp_g, h1, backend="jax") # c_ia Gp_pa G_iq h_pq
+    #     ci1g = oe.contract("ia,ia->", ci1, green_ov, backend="jax")
+    #     e1_1_1 = 4 * ci1g * hg # c_ia G_ia G_pq h_pq
+    #     gpci1 = oe.contract("pa,ia->pi", greenp, ci1, backend="jax")
+    #     ci1_green = oe.contract("pi,iq->pq", gpci1, green[:nocc,:], backend="jax")
+    #     e1_1_2 = -2 * oe.contract("pq,pq->", h1, ci1_green, backend="jax") # c_ia Gp_pa G_iq h_pq
     #     e1_1 = e1_1_1 + e1_1_2 # <psi|ci1 h1|walker> / <psi|walker>
 
     #     # one-body double excitations
-
-    #     t2_green_c = o1 * oe.contract('jp,jq->pq', cigp, green[:nocc,:], backend='jax')
-    #     t2_green_e = oe.contract('ji,ip,jq->pq', cig, cigp, green[:nocc,:], backend='jax')
+    #     t2g_c = oe.contract("iajb,ia->jb", ci2, green_ov, backend="jax")
+    #     t2g_e = oe.contract("iajb,ib->ja", ci2, green_ov, backend="jax")
+    #     t2_green_c = (greenp @ t2g_c.T) @ green[:nocc,:]
+    #     t2_green_e = (greenp @ t2g_e.T) @ green[:nocc,:]
     #     t2_green = 2 * t2_green_c - t2_green_e
-    #     e1_2_1 = 2 * o2 * tr_gh
+    #     t2g = 2 * t2g_c - t2g_e
+    #     gt2g = oe.contract("ia,ia->", t2g, green_ov, backend="jax")
+    #     e1_2_1 = 2 * hg * gt2g
     #     e1_2_2 = -2 * oe.contract("ij,ij->", h1, t2_green, backend="jax")
     #     e1_2 = e1_2_1 + e1_2_2 # <exp(T1)HF|T2 h1|walker> / <exp(T1)HF|walker>
 
     #     # two-body single excitations
-    #     e2_1_1 = 2 * o1 * e2_0 # c_ia G_ia G_pr G_ps L_pr L_ps
-
-    #     lci1g = oe.contract("gpq,pq->g", chol, cigp_g, backend="jax") # c_ia Gp_pa G_ir L_pr
-    #     e2_1_2 = -2 * oe.contract("g,g->", lci1g, trgl, backend="jax") # c_ia Gp_pa G_ir G_qs L_pr L_qs
+    #     e2_1_1 = 2 * e2_0 * ci1g # c_ia G_ia G_pr G_ps L_pr L_ps
+    #     lci1g = oe.contract("gpq,pq->g", chol, ci1_green, backend="jax")
+    #     e2_1_2 = -2 * oe.contract("g,g->",lci1g, trgl, backend="jax") # c_ia Gp_pa G_ir G_qs L_pr L_qs
 
     #     lci1 = oe.contract("gpa,ia->gpi", chol[:, :, nocc:], ci1, backend="jax")
     #     lg1 = oe.contract("gpr,qr->gpq", chol, green[:nocc,:], backend="jax")
     #     lci1g = oe.contract("gri,pr->gip", lci1, green, backend="jax")
-    #     glgpci1 = jnp.einsum("gpr,ir->gpi", gl, cigp, optimize="optimal")
+    #     glgpci1 = jnp.einsum("gpr,ri->gpi", gl, gpci1, optimize="optimal")
     #     e2_1_3 = jnp.einsum("gpi,gpi->", glgpci1, lg1, optimize="optimal")
     #     e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3) # <exp(T1)HF|ci1 h2|walker> / <exp(T1)HF|walker>
 
     #     # two-body double excitations
-    #     e2_2_1 = o2 * e2_0
+    #     e2_2_1 = e2_0 * gt2g
     #     lt2g = oe.contract("gij,ij->g", chol, t2_green, backend="jax")
     #     e2_2_2_1 = -oe.contract("g,g->", lt2g, trgl, backend="jax")
 
     #     def scan_aux(carry, x):
     #         chol_i, gl_i = x
-    #         lt2_green_i = oe.contract("pr,qr->pq", chol_i, t2_green, backend="jax")
-    #         carry[0] += 0.5 * oe.contract("pq,pq->", gl_i, lt2_green_i, backend="jax")
-    #         glgp_i = oe.contract("iq,qa->ia", gl_i[:nocc,:], greenp, backend="jax")
-    #         glgp_ci_i = oe.contract("ia,ja->ij", glgp_i, ci1, backend="jax")
-    #         l2t2_1 = oe.contract("ii->", glgp_ci_i, backend="jax")**2
-    #         l2t2_2 = oe.contract("ij,ji->", glgp_ci_i, glgp_ci_i, backend="jax")
+    #         lt2_green_i = oe.contract("pr,qr->pq",chol_i,t2_green,backend="jax")
+    #         carry[0] += 0.5 * oe.contract("pq,pq->",gl_i,lt2_green_i,backend="jax")
+    #         glgp_i = oe.contract("iq,qa->ia", gl_i[:nocc,:],greenp,backend="jax")
+    #         l2t2_1 = oe.contract("ia,jb,iajb->",glgp_i,glgp_i,ci2,backend="jax")
+    #         l2t2_2 = oe.contract("ib,ja,iajb->",glgp_i,glgp_i,ci2,backend="jax")
     #         carry[1] += 2 * l2t2_1 - l2t2_2
     #         return carry, 0.0
 
@@ -454,9 +341,12 @@ class stoccsd2(rhf):
     #     e2_2_2 = 4 * (e2_2_2_1 + e2_2_2_2)
     #     e2_2 = e2_2_1 + e2_2_2 + e2_2_3
 
-    #     energy = h0 + (e1_0 + e2_0 + e1_1 + e2_1 + e1_2 + e2_2) / (1.0 + 2*o1 + o2)
+    #     o0 = self._slater_olp(walker, trial_slater)
+    #     overlap = (1.0 + 2*ci1g +  gt2g) * o0 # <(1+c1+c2)psi|walker>
+    #     # <psi|h0+h1+h2|walker> + <ci1 psi|h0+h1+h2|walker> + <ci2 pai|h0+h1+h2|walker>
+    #     energy = h0 + (e1_0 + e2_0 + e1_1 + e2_1 + e1_2 + e2_2) / (1.0 + 2*ci1g +  gt2g)
 
-    #     return olp, energy
+    #     return overlap, energy
     
     @partial(jit, static_argnums=0)
     def _calc_energy_slater(self, slater: jax.Array, walker: jax.Array, ham_data: dict) -> jax.Array:
@@ -487,50 +377,85 @@ class stoccsd2(rhf):
         overlap, energy = self._calc_energy_slater(slater, walker, ham_data)
 
         return overlap, energy
-
+    
     @partial(jit, static_argnums=0)
-    def _calc_energy_ci_xtau(self, walker: jax.Array, ham_data: dict, wave_data: dict, xtau: jax.Array) -> jax.Array:
+    def _calc_overlap_exp_xtau(self, walker: jax.Array, wave_data: dict, xtau: jax.Array) -> jax.Array:
         
-        ci1 = xtau
-        ci2 = oe.contract('ia,jb->iajb', xtau, xtau, backend='jax')
-        overlap, energy = self._calc_energy_cisd(walker, ham_data, wave_data, ci1, ci2)
-        # TODO: write a separate ci_energy for disconnected ci2
+        slater = self._thouless(wave_data['mo_t'], xtau)
+        overlap = self._slater_olp(walker, slater)
 
-        return overlap, energy
+        return overlap
 
-    @partial(jit, static_argnums=0)
-    def _calc_exp_ci_xtau(self, walker, ham_data, wave_data, xtau):
-
-        o_exp, e_exp = self._calc_energy_exp_xtau(walker, ham_data, wave_data, xtau)
-        o_ci, e_ci =  self._calc_energy_ci_xtau(walker, ham_data, wave_data, xtau)
-        do = o_exp - o_ci
-        de = o_exp*e_exp - o_ci*e_ci
+    # @partial(jit, static_argnums=0)
+    # def _calc_energy_ci_xtau(self, walker: jax.Array, ham_data: dict, wave_data: dict, xtau: jax.Array) -> jax.Array:
         
-        return (do, de)
+    #     ci1 = xtau
+    #     ci2 = oe.contract('ia,jb->iajb', xtau, xtau, backend='jax')
+    #     overlap, energy = self._calc_energy_cisd(walker, ham_data, wave_data, ci1, ci2)
+    #     # TODO: write a separate ci_energy for disconnected ci2
 
-    @partial(jit, static_argnums=0)
-    def _calc_exp_ci_xtaus(self, walker, ham_data, wave_data):
+    #     return overlap, energy
 
-        def _scan_xtaus(carry, xtau: jax.Array):
-            (do, de) = self._calc_exp_ci_xtau(walker, ham_data, wave_data, xtau)
-            return carry, (do, de)
+    # @partial(jit, static_argnums=0)
+    # def _calc_numerator_xtau(self, walker, ham_data, wave_data, xtau):
+    #     # (<exp(xtau)|H|walker> - <1+xtau+(xtau)^2|H|walker>) / <HF|walker>
 
-        init_carry = 0.0
-        _, (dos, des) = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
-
-        do = jnp.sum(dos) / wave_data['xtau'].shape[0] # intermediately normalize stocc
-        de = jnp.sum(des) / wave_data['xtau'].shape[0]
-
-        return do, de
-
-    @partial(jit, static_argnums=(0))
-    def calc_energy_cr(self, walkers, ham_data, wave_data):
-
-        doverlap, denergy = vmap(
-            self._calc_exp_ci_xtaus,in_axes=(0, None, None))(
-            walkers, ham_data, wave_data)
+    #     o_exp, e_exp = self._calc_energy_exp_xtau(walker, ham_data, wave_data, xtau)
+    #     o_ci, e_ci =  self._calc_energy_ci_xtau(walker, ham_data, wave_data, xtau)
+    #     # do = o_exp - o_ci
+    #     de = o_exp*e_exp - o_ci*e_ci
         
-        return doverlap, denergy
+    #     return de
+    
+    # @partial(jit, static_argnums=0)
+    # def _calc_denominator_xtau(self, walker, ham_data, wave_data, xtau):
+    #     # (<exp(xtau)|walker> - <1+xtau+(xtau)^2|walker>) / <HF|walker>
+
+    #     o_exp = self._calc_overlap_exp_xtau(walker, wave_data, xtau)
+    #     o_ci =  self._calc_overlap_ci_xtau(walker, ham_data, wave_data, xtau)
+
+    #     do = o_exp - o_ci
+        
+    #     return do
+
+    # @partial(jit, static_argnums=0)
+    # def _calc_numerator(self, walker, ham_data, wave_data):
+
+    #     def _scan_xtaus(carry, xtau: jax.Array):
+    #         de = self._calc_numerator_xtau(walker, ham_data, wave_data, xtau)
+    #         return carry, de
+
+    #     init_carry = 0.0
+    #     _, des = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
+
+    #     # do = jnp.sum(dos) / wave_data['xtau'].shape[0] # intermediately normalize stocc
+    #     de = jnp.sum(des) / wave_data['xtau'].shape[0]
+
+    #     return de
+    
+    # @partial(jit, static_argnums=0)
+    # def _calc_denominator(self, walker, ham_data, wave_data):
+
+    #     def _scan_xtaus(carry, xtau: jax.Array):
+    #         do = self._calc_olp_exp_ci(walker, ham_data, wave_data, xtau)
+    #         return carry, do
+
+    #     init_carry = 0.0
+    #     _, dos = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
+
+    #     do = jnp.sum(dos) / wave_data['xtau'].shape[0] # intermediately normalize stocc
+    #     # de = jnp.sum(des) / wave_data['xtau'].shape[0]
+
+    #     return do
+
+    # @partial(jit, static_argnums=(0))
+    # def calc_numerator(self, walkers, ham_data, wave_data):
+
+    #     doverlap, denergy = vmap(
+    #         self._calc_numerator,in_axes=(0, None, None))(
+    #         walkers, ham_data, wave_data)
+        
+    #     return doverlap, denergy
 
     @partial(jit, static_argnums=0)
     def _calc_energy_cid(
@@ -599,29 +524,6 @@ class stoccsd2(rhf):
             self._calc_energy_cid,in_axes=(0, None, None))(
             walkers, ham_data, wave_data)
         return overlap, energy
-
-    # @partial(jit, static_argnums=0)
-    # def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
-    #     # norb = self.norb
-    #     ham_data["h1"] = (
-    #         ham_data["h1"].at[0].set((ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0)
-    #     )
-
-    #     # ham_data["rot_h1"] = wave_data["mo_coeff"].T.conj() @ (
-    #     #     (ham_data["h1"][0] + ham_data["h1"][1]) / 2.0
-    #     # )
-    #     # ham_data["rot_chol"] = oe.contract(
-    #     #     "pi,gij->gpj",
-    #     #     wave_data["mo_coeff"].T.conj(),
-    #     #     ham_data["chol"].reshape(-1, norb, norb), backend="jax"
-    #     # )
-    #     # ham_data["lci1"] = oe.contract(
-    #     #     "git,pt->gip",
-    #     #     ham_data["chol"].reshape(-1, self.norb, self.norb)[:, :, self.nelec[0] :],
-    #     #     wave_data["ci1"],
-    #     #     optimize="optimal", backend="jax"
-    #     # )
-    #     return ham_data
 
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
@@ -826,7 +728,27 @@ class stoccsd4(stoccsd3):
     nslater: int = 100
 
     @partial(jit, static_argnums=0)
-    def _calc_energy_cisd(
+    def _ci_walker_olp_disconnected(self, walker: jax.Array, slater: jax.Array, ci1: jax.Array) -> complex:
+        ''' 
+        disconnected ci2
+        <(1+ci1+ci2)psi|walker>
+        = c_ia* <psi|ia|walker> + 1/2 c_iajb* <psi|ijab|walker>
+        '''
+        ci1 = ci1.conj()
+
+        nocc = walker.shape[1]
+        green_ov = self._green(walker, slater)[:nocc, nocc:]
+        cig = oe.contract("ia,ja->ij", ci1, green_ov, backend="jax")
+        o0 = self._slater_olp(walker, slater)
+        o1 = oe.contract("ii->", cig, backend="jax") # c_ia G_ia
+        o2_1 = o1**2
+        o2_2 = -oe.contract("ij,ji->", cig, cig, backend="jax") # c_ia G_ja c_jb G_ib
+        o2 = 2*o2_1 + o2_2
+
+        return (1.0 + 2*o1 + o2) * o0
+
+    @partial(jit, static_argnums=0)
+    def _calc_energy_cisd_disconnected(
         self,
         walker: jax.Array, 
         ham_data: dict, 
@@ -916,17 +838,6 @@ class stoccsd4(stoccsd3):
         lt2g = oe.contract("gij,ij->g", chol, t2_green, backend="jax")
         e2_2_2_1 = -oe.contract("g,g->", lt2g, trgl, backend="jax")
 
-        # def scan_aux(carry, x):
-        #     chol_i, gl_i = x
-        #     lt2_green_i = oe.contract("pr,qr->pq", chol_i, t2_green, backend="jax")
-        #     carry[0] += 0.5 * oe.contract("pq,pq->", gl_i, lt2_green_i, backend="jax")
-        #     glgp_i = oe.contract("iq,qa->ia", gl_i[:nocc,:], greenp, backend="jax")
-        #     glgp_ci_i = oe.contract("ia,ja->ij", glgp_i, ci1, backend="jax")
-        #     l2t2_1 = oe.contract("ii->", glgp_ci_i, backend="jax")**2
-        #     l2t2_2 = oe.contract("ij,ji->", glgp_ci_i, glgp_ci_i, backend="jax")
-        #     carry[1] += 2 * l2t2_1 - l2t2_2
-        #     return carry, 0.0
-
         lt2_green = oe.contract("gpr,qr->gpq", chol, t2_green, backend="jax")
         e2_2_2_2 = 0.5 * oe.contract("gpq,gpq->", gl, lt2_green, backend="jax")
 
@@ -947,9 +858,88 @@ class stoccsd4(stoccsd3):
     @partial(jit, static_argnums=0)
     def _calc_energy_ci_xtau(self, walker: jax.Array, ham_data: dict, wave_data: dict, xtau: jax.Array) -> jax.Array:
         
-        overlap, energy = self._calc_energy_cisd(walker, ham_data, wave_data, xtau)
+        overlap, energy = self._calc_energy_cisd_disconnected(walker, ham_data, wave_data, xtau)
+        # overlap, energy = self._calc_energy_cisd(walker, ham_data, wave_data, xtau)
 
         return overlap, energy
     
+    @partial(jit, static_argnums=0)
+    def _calc_overlap_ci_xtau(self, walker: jax.Array, wave_data: dict, xtau: jax.Array) -> jax.Array:
+        
+        overlap = self._ci_walker_olp_disconnected(walker, wave_data['mo_t'], xtau)
+        # ci1 = xtau
+        # ci2 = oe.contract('ia,jb->iajb', xtau, xtau, backend='jax')
+        # overlap = self._ci_walker_olp(walker, wave_data['mo_t'], ci1, ci2)
+
+        return overlap
+    
+    @partial(jit, static_argnums=0)
+    def _calc_numerator_xtau(self, walker, ham_data, wave_data, xtau):
+        # (<exp(xtau)|H|walker> - <1+xtau+(xtau)^2|H|walker>)
+
+        o_exp, e_exp = self._calc_energy_exp_xtau(walker, ham_data, wave_data, xtau)
+        o_ci, e_ci =  self._calc_energy_ci_xtau(walker, ham_data, wave_data, xtau)
+        # do = o_exp - o_ci
+        dnumerator = o_exp*e_exp - o_ci*e_ci
+
+        return dnumerator
+
+    @partial(jit, static_argnums=0)
+    def _calc_denominator_xtau(self, walker, wave_data, xtau):
+        # (<exp(xtau)|walker> - <1+xtau+(xtau)^2|walker>)
+
+        o_exp = self._calc_overlap_exp_xtau(walker, wave_data, xtau)
+        o_ci =  self._calc_overlap_ci_xtau(walker, wave_data, xtau)
+
+        do = o_exp - o_ci
+        
+        return do
+    
+    @partial(jit, static_argnums=0)
+    def _calc_numerator(self, walker, ham_data, wave_data):
+
+        def _scan_xtaus(carry, xtau: jax.Array):
+            dnum = self._calc_numerator_xtau(walker, ham_data, wave_data, xtau)
+            return carry, dnum
+
+        init_carry = 0.0
+        _, dnums = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
+
+        # intermediately normalize stocc
+        dnumerator = jnp.sum(dnums) / wave_data['xtau'].shape[0]
+
+        return dnumerator
+    
+    @partial(jit, static_argnums=0)
+    def _calc_denominator(self, walker, wave_data):
+
+        def _scan_xtaus(carry, xtau: jax.Array):
+            do = self._calc_denominator_xtau(walker, wave_data, xtau)
+            return carry, do
+
+        init_carry = 0.0
+        _, dos = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
+
+        do = jnp.sum(dos) / wave_data['xtau'].shape[0] # intermediately normalize stocc
+
+        return do
+
+    @partial(jit, static_argnums=(0))
+    def calc_numerator(self, walkers, ham_data, wave_data):
+
+        denergy = vmap(
+            self._calc_numerator,in_axes=(0, None, None))(
+            walkers, ham_data, wave_data)
+        
+        return denergy
+
+    @partial(jit, static_argnums=(0))
+    def calc_denominator(self, walkers, wave_data):
+
+        doverlap = vmap(
+            self._calc_denominator,in_axes=(0, None))(walkers, wave_data)
+        
+        return doverlap
+
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
