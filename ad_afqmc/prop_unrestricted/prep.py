@@ -33,7 +33,7 @@ def prep_afqmc(
         if cc.frozen is not None:
             norb_frozen = cc.frozen
         if isinstance(cc, UCCSD):
-            meanfield_type == 'unrestricted'
+            spin_type = 'unrestricted'
             t1a = np.array(cc.t1[0])
             t1b = np.array(cc.t1[1])
             t2aa, t2ab, t2bb = cc.t2
@@ -51,7 +51,7 @@ def prep_afqmc(
                 t2bb=t2bb,
             )
         elif isinstance(cc, CCSD):
-            meanfield_type = 'restricted'
+            spin_type = 'restricted'
             t2 = cc.t2
             t2 = t2.transpose(0, 2, 1, 3)
             t1 = np.array(cc.t1)
@@ -78,7 +78,7 @@ def prep_afqmc(
     # assert norb_frozen * 2 < sum(
     #     nelec
     # ), "Frozen orbitals exceed number of electrons"
-    if meanfield_type == 'restricted':
+    if spin_type == 'restricted':
         mc = mcscf.CASSCF(
             mf, mol.nao - norb_frozen, mol.nelectron - 2 * norb_frozen
         )
@@ -103,7 +103,7 @@ def prep_afqmc(
         h1e_mod = h1e - v0
         chol = chol.reshape((chol.shape[0], -1))
             
-    elif meanfield_type == 'unrestricted':
+    elif spin_type == 'unrestricted':
         mc = mcscf.UCASSCF(
             mf, mol.nao - norb_frozen,
             mol.nelectron - 2 * norb_frozen)
@@ -434,35 +434,36 @@ def _prep_afqmc(options=None,
             mo_ta[:noccA,:noccA].T,mo_tb[:noccB,:noccB].T,t2ab)
 
     if options["walker_type"] == "rhf":
-        if options["symmetry"]:
-            ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
-        else:
-            ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
+        # if options["symmetry"]:
+        #     ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
+        # else:
+        #     ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
         prop = propagation.propagator_restricted(
-            options["dt"], 
-            options["n_walkers"], 
-            options["n_exp_terms"],
-            options["n_batch"]
-        )
+                options["dt"], 
+                options["n_walkers"], 
+                options["n_exp_terms"],
+                options["n_batch"]
+            )
 
     elif options["walker_type"] == "uhf":
-        if options["symmetry"]:
-            ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
-        else:
-            ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
+        # if options["symmetry"]:
+        #     ham_data["mask"] = jnp.where(jnp.abs(ham_data["h1"]) > 1.0e-10, 1.0, 0.0)
+        # else:
+        #     ham_data["mask"] = jnp.ones(ham_data["h1"].shape)
 
-        if options["free_projection"]:
-            prop = propagation.propagator_unrestricted(
+        # if options["free_projection"]:
+        #     prop = propagation.propagator_unrestricted(
+        #         options["dt"],
+        #         options["n_walkers"],
+        #         10,
+        #         n_batch=options["n_batch"],
+        #     )
+        # else:
+        prop = propagation.propagator_unrestricted(
                 options["dt"],
                 options["n_walkers"],
-                10,
-                n_batch=options["n_batch"],
-            )
-        else:
-            prop = propagation.propagator_unrestricted(
-                options["dt"],
-                options["n_walkers"],
-                n_batch=options["n_batch"],
+                options["n_exp_terms"],
+                options["n_batch"],
             )
 
     sampler = sampling.sampler(

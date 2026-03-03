@@ -174,58 +174,28 @@ class sampler_stoccsd2(sampler):
             prop_data["weights"]
         )
 
-        # fields_x for T2 decomposition
-        fields_x = random.normal(
-            subkey,
-            shape=(
-                trial.nslater,
-                wave_data['tau'].shape[0],
-            ),
-        )
-
-        wave_data['xtau'] = jnp.einsum("sg,gia->sia", fields_x, wave_data['tau'])
+        # raondom fields_x for T2 decomposition
+        xtaus = trial.get_xtaus(prop_data, wave_data, prop)
 
         prop_data = prop.orthonormalize_walkers(prop_data)
         overlap_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
         prop_data["overlaps"] = overlap_hf
         overlap_ci, energy_ci = trial.calc_energy_ci(prop_data["walkers"], ham_data, wave_data)
-        # overlap_cr, energy_cr = trial.calc_energy_cr(prop_data["walkers"], ham_data, wave_data)
-        numerator_cr = trial.calc_numerator(prop_data["walkers"], ham_data, wave_data)
-        denominator_cr = trial.calc_denominator(prop_data["walkers"], wave_data)
-
-        # eci = jnp.real(energy_ci)
-        # numerator = jnp.real((overlap_ci * energy_ci + numerator_cr) / overlap_hf)
-        # denominator = jnp.real((overlap_ci + denominator_cr) / overlap_hf)
-        # num_ci = jnp.real(overlap_ci * energy_ci / overlap_hf)
-        # den_ci = jnp.real(overlap_ci / overlap_hf)
-
-        # num_cr = jnp.real(numerator_cr / overlap_hf)
-        # den_cr = jnp.real(denominator_cr / overlap_hf)
-        # ecc = jnp.real((overlap_ci*energy_ci + energy_cr) / (overlap_ci + overlap_cr))
+        numerator_cr = trial.calc_numerator(prop_data["walkers"], xtaus, ham_data, wave_data)
+        denominator_cr = trial.calc_denominator(prop_data["walkers"], xtaus, wave_data)
 
         num_ci = overlap_ci * energy_ci / overlap_hf
         den_ci = overlap_ci / overlap_hf
         num_cr = numerator_cr / overlap_hf
         den_cr = denominator_cr / overlap_hf
 
-        # eci = jnp.where(
-        #     jnp.abs(eci - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-        #     prop_data["e_estimate"],
-        #     eci,
-        # )
-
         whf = prop_data["weights"]
-        # wci = whf * (overlap_ci / overlap_hf)
 
         blk_whf = jnp.sum(whf)
-        # blk_wci = jnp.sum(wci)
-        # blk_eci = jnp.sum(wci * eci) / blk_wci
         blk_num_ci = jnp.sum(whf * num_ci) / blk_whf
         blk_den_ci = jnp.sum(whf * den_ci) / blk_whf
         blk_num_cr = jnp.sum(whf * num_cr) / blk_whf
         blk_den_cr = jnp.sum(whf * den_cr) / blk_whf
-
-        # prop_data["pop_control_ene_shift"] = 0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_eci.real
 
         return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
 
@@ -274,14 +244,74 @@ class sampler_stoccsd2(sampler):
         )
         
         whf = jnp.sum(blk_whf)
-        # wci = jnp.sum(blk_wci)
-        # eci = jnp.sum(blk_wci * blk_eci) / wci
         num_ci = jnp.sum(blk_whf * blk_num_ci) / whf
         den_ci = jnp.sum(blk_whf * blk_den_ci) / whf
         num_cr = jnp.sum(blk_whf * blk_num_cr) / whf
         den_cr = jnp.sum(blk_whf * blk_den_cr) / whf
 
         return prop_data, (whf, num_ci, den_ci, num_cr, den_cr)
+    
+    def __hash__(self) -> int:
+        return hash(tuple(self.__dict__.values()))
+    
+@dataclass
+class sampler_ustoccsd2(sampler_stoccsd2):
+    n_prop_steps: int = 50
+    n_ene_blocks: int = 50
+    n_sr_blocks: int = 1
+    n_blocks: int = 50
+    n_chol: int = 0
+
+    @partial(jit, static_argnums=(0,3,4))
+    def _block_scan(
+        self,
+        prop_data: dict,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+        """Block scan function. Propagation and energy calculation."""
+
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        fields = random.normal(
+            subkey,
+            shape=(
+                self.n_prop_steps,
+                prop.n_walkers,
+                self.n_chol,
+            ),
+        )
+        _step_scan_wrapper = lambda x, y: self._step_scan(
+            x, y, ham_data, prop, trial, wave_data
+        )
+        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+            prop_data["weights"]
+        )
+
+        xtaus = trial.get_xtaus(prop_data, wave_data, prop)
+
+        prop_data = prop.orthonormalize_walkers(prop_data)
+        overlap_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["overlaps"] = overlap_hf
+        overlap_ci, energy_ci = trial.calc_energy_cid(prop_data["walkers"], ham_data, wave_data)
+        numerator_cr, denominator_cr = trial.calc_correction(prop_data["walkers"], xtaus, ham_data, wave_data)
+
+        num_ci = overlap_ci * energy_ci / overlap_hf
+        den_ci = overlap_ci / overlap_hf
+        num_cr = numerator_cr / overlap_hf
+        den_cr = denominator_cr / overlap_hf
+
+        whf = prop_data["weights"]
+
+        blk_whf = jnp.sum(whf)
+        blk_num_ci = jnp.sum(whf * num_ci) / blk_whf
+        blk_den_ci = jnp.sum(whf * den_ci) / blk_whf
+        blk_num_cr = jnp.sum(whf * num_cr) / blk_whf
+        blk_den_cr = jnp.sum(whf * den_cr) / blk_whf
+
+        return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
     
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

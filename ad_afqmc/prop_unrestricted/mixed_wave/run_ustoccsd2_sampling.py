@@ -59,7 +59,7 @@ print("# Equilibration sweeps:")
 print("# atom_time  energy_ci  numer_cr  denom_cr  e_stocc  Walltime")
 print(f"  {0.:.2f}  {eci_init.real:.6f}  {num_cr[0].real:.6f}  {den_cr[0].real:.6f}  {ecc_init.real:.6f}  {time.time() - init_time:.2f}")
 
-sampler_eq = sampling.sampler_stoccsd2(
+sampler_eq = sampling.sampler_ustoccsd2(
     n_prop_steps=50, 
     n_ene_blocks=5, 
     n_sr_blocks=10, 
@@ -158,8 +158,8 @@ eci_jk_err = np.sqrt(np.sum((eci_jk-eci_jk_mean)**2) * n/(n+1))
 
 #CCSD
 ecc_jk = (numci_jk + numcr_jk) / (denci_jk + dencr_jk)
-for i in range(len(whf_jk)):
-    print(f'  {i+1}  {ecc_jk.real[i]:.6f}')
+# for i in range(len(whf_jk)):
+#     print(f'  {i+1}  {ecc_jk.real[i]:.6f}')
 ecc_jk_mean = np.sum(ecc_jk) / (n+1)
 ecc_jk_err = np.sqrt(np.sum((ecc_jk-ecc_jk_mean)**2) * n/(n+1))
 #print(f"  {n+1:4d}  {eci_jk_mean.real:.6f}  {eci_jk_err.real:.6f}  {ecc_jk_mean.real:.6f}  {ecc_jk_err.real:.6f}  {time.time() - init_time:.2f}")

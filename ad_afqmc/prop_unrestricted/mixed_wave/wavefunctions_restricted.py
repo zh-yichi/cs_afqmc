@@ -188,26 +188,22 @@ class stoccsd2(rhf):
     n_batch: int = 1
     nslater: int = 100
 
-    # @partial(jit, static_argnums=0)
-    def get_xtau(self, wave_data: dict, prop_data: dict):
-        nslater = self.nslater
-
-        # t_iajb = tau_gia tau_gjb
-        tau, _ = self.decompose_t2(wave_data)
-
+    @partial(jit, static_argnums=(0,3))
+    def get_xtaus(self, prop_data, wave_data, prop):
         prop_data["key"], subkey = random.split(prop_data["key"])
-        fields_x = random.normal(
+        
+        fieldx = random.normal(
             subkey,
             shape=(
-                nslater,
-                tau.shape[0],
+                prop.n_walkers,
+                self.nslater,
+                wave_data['tau'][0].shape[0],
             ),
         )
+        # xtaus shape (nwalker, nslater, nocc, nvir)
+        xtaus = jnp.einsum("wsg,gia->wsia", fieldx, wave_data['tau'])
 
-        prop_data["key"], subkey = random.split(prop_data["key"])
-        xtau = jnp.einsum("sg,gia->sia", fields_x, tau) # (nslater,nocc,nvir)
-
-        return xtau
+        return xtaus
     
     @partial(jit, static_argnums=0)
     def _green(self, walker: jax.Array, slater: jax.Array) -> jax.Array:
@@ -844,9 +840,9 @@ class stoccsd4(stoccsd2):
         lci1g = oe.contract("gpq,pq->g", chol, cigp_g, backend="jax") # c_ia Gp_pa G_ir L_pr
         e2_1_2 = -2 * oe.contract("g,g->", lci1g, trgl, backend="jax") # c_ia Gp_pa G_ir G_qs L_pr L_qs
 
-        lci1 = oe.contract("gpa,ia->gpi", chol[:, :, nocc:], ci1, backend="jax")
+        # lci1 = oe.contract("gpa,ia->gpi", chol[:, :, nocc:], ci1, backend="jax")
         lg1 = oe.contract("gpr,qr->gpq", chol, green[:nocc,:], backend="jax")
-        lci1g = oe.contract("gri,pr->gip", lci1, green, backend="jax")
+        # lci1g = oe.contract("gri,pr->gip", lci1, green, backend="jax")
         glgpci1 = jnp.einsum("gpr,ir->gpi", gl, cigp, optimize="optimal")
         e2_1_3 = jnp.einsum("gpi,gpi->", glgpci1, lg1, optimize="optimal")
         e2_1 = e2_1_1 + 2 * (e2_1_2 + e2_1_3) # <exp(T1)HF|ci1 h2|walker> / <exp(T1)HF|walker>
@@ -892,7 +888,7 @@ class stoccsd4(stoccsd2):
         return overlap
     
     @partial(jit, static_argnums=0)
-    def _calc_numerator_xtau(self, walker, ham_data, wave_data, xtau):
+    def _calc_numerator_xtau(self, walker, xtau, ham_data, wave_data):
         # (<exp(xtau)|H|walker> - <1+xtau+(xtau)^2|H|walker>)
 
         o_exp, e_exp = self._calc_energy_exp_xtau(walker, ham_data, wave_data, xtau)
@@ -903,7 +899,7 @@ class stoccsd4(stoccsd2):
         return dnumerator
 
     @partial(jit, static_argnums=0)
-    def _calc_denominator_xtau(self, walker, wave_data, xtau):
+    def _calc_denominator_xtau(self, walker, xtau, wave_data):
         # (<exp(xtau)|walker> - <1+xtau+(xtau)^2|walker>)
 
         o_exp = self._calc_overlap_exp_xtau(walker, wave_data, xtau)
@@ -914,74 +910,88 @@ class stoccsd4(stoccsd2):
         return do
     
     @partial(jit, static_argnums=0)
-    def _calc_numerator(self, walker, ham_data, wave_data):
+    def _calc_numerator(self, walker, xtaus, ham_data, wave_data):
+        nslater = self.nslater
+        nocc, norb = self.nelec[0], self.norb
+        nvir = norb - nocc
+        assert xtaus.shape == (nslater, nocc, nvir)
 
         def _scan_xtaus(carry, xtau: jax.Array):
-            dnum = self._calc_numerator_xtau(walker, ham_data, wave_data, xtau)
+            dnum = self._calc_numerator_xtau(walker, xtau, ham_data, wave_data)
             return carry, dnum
 
         init_carry = 0.0
-        _, dnums = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
+        _, dnums = lax.scan(_scan_xtaus, init_carry, xtaus)
 
         # intermediately normalize stocc
-        dnumerator = jnp.sum(dnums) / wave_data['xtau'].shape[0]
+        dnumerator = jnp.sum(dnums) / xtaus.shape[0]
 
         return dnumerator
     
     @partial(jit, static_argnums=0)
-    def _calc_denominator(self, walker, wave_data):
+    def _calc_denominator(self, walker, xtaus, wave_data):
+        # xtaus shape (nslater, nocc, nvir)
 
         def _scan_xtaus(carry, xtau: jax.Array):
-            do = self._calc_denominator_xtau(walker, wave_data, xtau)
+            do = self._calc_denominator_xtau(walker, xtau, wave_data)
             return carry, do
 
         init_carry = 0.0
-        _, dos = lax.scan(_scan_xtaus, init_carry, wave_data['xtau'])
+        _, dos = lax.scan(_scan_xtaus, init_carry, xtaus)
 
-        do = jnp.sum(dos) / wave_data['xtau'].shape[0] # intermediately normalize stocc
+        do = jnp.sum(dos) / xtaus.shape[0] # intermediately normalize stocc
 
         return do
 
     @partial(jit, static_argnums=(0))
-    def calc_numerator(self, walkers, ham_data, wave_data):
+    def calc_numerator(self, walkers, xtaus, ham_data, wave_data):
+        # xtaus shape (nwalker, nslater, nocc, nvir)
+        nocc = self.nelec[0]
+        norb = self.norb
+        nvir = norb - nocc
         nwalker = walkers.shape[0]
         batch_size = nwalker // self.n_batch
+        nslater = self.nslater
+        assert xtaus.shape == (nwalker, nslater, nocc, nvir)
 
-        def scan_batch(carry, walker_batch):
-            dnumerator = vmap(self._calc_numerator, in_axes=(0, None, None))(
-                walker_batch, ham_data, wave_data
+        def scan_batch(carry, xs):
+            walker_batch, xtaus_batch = xs
+            dnumerator = vmap(self._calc_numerator, in_axes=(0, 0, None, None))(
+                walker_batch, xtaus_batch, ham_data, wave_data
             )
             return carry, dnumerator
 
         _, dnumerators = lax.scan(
-            scan_batch,
-            None, walkers.reshape(self.n_batch, batch_size, self.norb, -1),
+            scan_batch, None,
+            (walkers.reshape(self.n_batch, batch_size, norb, nocc),
+             xtaus.reshape(self.n_batch, batch_size, nslater, nocc, nvir))
             )
-        
-        # denergy = vmap(
-        #     self._calc_numerator,in_axes=(0, None, None))(
-        #     walkers, ham_data, wave_data)
         
         return dnumerators.reshape(nwalker)
 
     @partial(jit, static_argnums=(0))
-    def calc_denominator(self, walkers, wave_data):
+    def calc_denominator(self, walkers, xtaus, wave_data):
+        # xtaus shape (nwalker, nslater, nocc, nvir)
+        nocc = self.nelec[0]
+        norb = self.norb
+        nvir = norb - nocc
         nwalker = walkers.shape[0]
         batch_size = nwalker // self.n_batch
+        nslater = self.nslater
+        assert xtaus.shape == (nwalker, nslater, nocc, nvir)
 
-        def scan_batch(carry, walker_batch):
-            ddenominator = vmap(self._calc_denominator, in_axes=(0, None))(
-                walker_batch, wave_data
+        def scan_batch(carry, xs):
+            walker_batch, xtaus_batch = xs
+            ddenominator = vmap(self._calc_denominator, in_axes=(0, 0, None))(
+                walker_batch, xtaus_batch, wave_data
             )
             return carry, ddenominator
         
         _, ddenominators = lax.scan(
-            scan_batch,
-            None, walkers.reshape(self.n_batch, batch_size, self.norb, -1),
+            scan_batch, None,
+            (walkers.reshape(self.n_batch, batch_size, norb, nocc),
+             xtaus.reshape(self.n_batch, batch_size, nslater, nocc, nvir))
             )
-
-        # doverlap = vmap(
-        #     self._calc_denominator,in_axes=(0, None))(walkers, wave_data)
         
         return ddenominators.reshape(nwalker)
 

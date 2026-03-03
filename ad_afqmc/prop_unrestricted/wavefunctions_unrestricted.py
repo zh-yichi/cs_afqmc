@@ -196,6 +196,86 @@ class wave_function_unrestricted(ABC):
                 jnp.array([natorbs_dn + 0.0j] * n_walkers),
             ]
 
+    def decompose_t2(trial, t2, thresh=1e-8):
+        # adapted from Yann
+        norb = trial.norb
+        nocca, noccb = trial.nelec
+        nvira, nvirb = (norb - nocca, norb - noccb)
+
+        # Number of excitation pairs
+        nex_a = nocca * nvira
+        nex_b = noccb * nvirb
+
+        t2aa, t2ab, t2bb = t2
+
+        assert t2aa.shape == (nocca, nvira, nocca, nvira)
+        assert t2ab.shape == (nocca, nvira, noccb, nvirb)
+        assert t2bb.shape == (noccb, nvirb, noccb, nvirb)
+
+        print('# Decomposing Unrestricted T2 amplitudes')
+
+        t2aa = t2aa.reshape(nex_a, nex_a)
+        t2ab = t2ab.reshape(nex_a, nex_b)
+        t2bb = t2bb.reshape(nex_b, nex_b)
+
+        # Symmetric full t2 
+        # [[ t2aa/2  t2ab   ]]
+        # [[ t2ab^T  t2bb/2 ]]
+        t2full = np.zeros((nex_a + nex_b, nex_a + nex_b))
+        t2full[:nex_a, :nex_a] = 0.5 * t2aa
+        t2full[nex_a:, :nex_a] = t2ab.T
+        t2full[:nex_a, nex_a:] = t2ab
+        t2full[nex_a:, nex_a:] = 0.5 * t2bb
+        t2full = jnp.array(t2full)
+
+        # t2 = LL^T
+        e_val, e_vec = jnp.linalg.eigh(t2full)
+
+        # Keep only important modes
+        mask = jnp.abs(e_val) > thresh
+        e_val_trunc = e_val[mask]
+        e_vec_trunc = e_vec[:, mask]
+        
+        tau = e_vec_trunc @ jnp.diag(np.sqrt(e_val_trunc + 0.0j))
+        err = jnp.linalg.norm(t2full - tau @ tau.T)
+        assert err < 10 * thresh
+        print(f'# Throw {len(e_val)-len(e_val_trunc)} vectors in T2 deomposition')
+        print(f'# SVD cutoff = {thresh:.2e} | error = {err:.2e}')
+        print(f'# number of T2 decomposition vectors {len(e_val_trunc)}')
+
+        # alpha/beta operators for HS
+        # Summation on the left to have a list of operators
+        taua = tau.T[:,:nex_a]
+        taub = tau.T[:, nex_a:]
+        taua = taua.reshape(-1, nocca, nvira)
+        taub = taub.reshape(-1, noccb, nvirb)
+
+        return [taua, taub]
+    
+    @partial(jit, static_argnums=0)
+    def _thouless(self, slater, t):
+        # calculate |psi'> = exp(t_ia a+ i)|psi>
+        
+        slater_up, slater_dn = slater
+        ta, tb = t
+        
+        norb = self.norb
+        nocc_a, nocc_b = self.nelec
+        nvir_a = norb - nocc_a
+        nvir_b = norb - nocc_b
+        
+        assert ta.shape == (nocc_a, nvir_a)
+        assert tb.shape == (nocc_b, nvir_b)
+
+        ta_full = jnp.eye(norb, dtype=jnp.complex128)
+        tb_full = jnp.eye(norb, dtype=jnp.complex128)
+        exp_ta = ta_full.at[:nocc_a, nocc_a:].set(ta)
+        exp_tb = tb_full.at[:nocc_b, nocc_b:].set(tb)
+        # exp_tau = jsp.linalg.expm(t_full) 
+        slater_ta = exp_ta.T @ slater_up
+        slater_tb = exp_tb.T @ slater_dn
+        return [slater_ta, slater_tb]
+
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
 

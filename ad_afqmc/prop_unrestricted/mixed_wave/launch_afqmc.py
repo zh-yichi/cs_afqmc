@@ -4,7 +4,7 @@ from ad_afqmc import config
 
 def run_afqmc(options,
               option_file='options.bin',
-              script='run_stoccsd2_sampling.py'
+              script='run_ustoccsd2_sampling.py'
               ):
 
     with open(option_file, 'wb') as f:

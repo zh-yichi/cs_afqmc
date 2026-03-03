@@ -7,9 +7,9 @@ import jax.numpy as jnp
 from ad_afqmc import hamiltonian
 # from ad_afqmc import pyscf_interface
 from ad_afqmc.prop_unrestricted import propagation
-from ad_afqmc.prop_unrestricted.mixed_wave import wavefunctions_restricted
 from ad_afqmc.prop_unrestricted.mixed_wave import sampling
-# from ad_afqmc.prop_unrestricted.mixed_wave import wavefunctions_unrestricted
+from ad_afqmc.prop_unrestricted.mixed_wave import wavefunctions_restricted
+from ad_afqmc.prop_unrestricted.mixed_wave import wavefunctions_unrestricted
 from ad_afqmc.prop_unrestricted.prep import prep_afqmc
 from functools import partial
 print = partial(print, flush=True)
@@ -89,18 +89,11 @@ def _prep_afqmc(options=None,
                                       chol[1].reshape(chol[1].shape[0], -1)])
 
     wave_data = {}
-    mo_coeff = jnp.array([np.eye(norb),np.eye(norb)])
+    mo_coeff = jnp.array([np.eye(norb), np.eye(norb)])
 
-    if "stoccsd" in options["trial"]:
+    if "stoccsd" in options["trial"] and spin_type == 'restricted':
         if "2" in options["trial"]:
             trial = wavefunctions_restricted.stoccsd2(
-                norb,
-                nelec_sp,
-                n_batch = options["n_batch"],
-                nslater = options['nslater']
-                )
-        elif "3" in options["trial"]:
-            trial = wavefunctions_restricted.stoccsd3(
                 norb,
                 nelec_sp,
                 n_batch = options["n_batch"],
@@ -131,7 +124,42 @@ def _prep_afqmc(options=None,
         init_sd = jnp.eye(norb)[:,:nocc]
         mo_t = trial._thouless(init_sd, t1)
         wave_data['mo_t'] = mo_t
-        wave_data["mo_coeff"] = mo_coeff[0][:,:nelec_sp[0]]
+        wave_data['tau'] = trial.decompose_t2(t2)
+        wave_data["mo_coeff"] = mo_coeff[0][:,:nocc]
+
+    if "ustoccsd2" in options["trial"] and spin_type == 'unrestricted':
+        # if "2" in options["trial"]:
+        trial = wavefunctions_unrestricted.ustoccsd2(
+            norb,
+            nelec_sp,
+            n_batch = options["n_batch"],
+            nslater = options['nslater']
+            )
+        nocc_a, nocc_b = nelec_sp
+        amplitudes = np.load(amp_file)
+        t1a = jnp.array(amplitudes["t1a"])
+        t1b = jnp.array(amplitudes["t1b"])
+        # print(f' ### t1a shape {t1a.shape}| t1b shape {t1b.shape}')
+        t2aa = jnp.array(amplitudes["t2aa"])
+        t2ab = jnp.array(amplitudes["t2ab"])
+        t2bb = jnp.array(amplitudes["t2bb"])
+        mo = [mo_coeff[0][:,:nocc_a], mo_coeff[1][:,:nocc_b]]
+        mo_t = trial._thouless(mo, [t1a, t1b])
+        wave_data['mo_ta'] = mo_t[0]
+        wave_data['mo_tb'] = mo_t[1]
+        wave_data["t2aa"] = t2aa
+        wave_data["t2bb"] = t2bb
+        wave_data["t2ab"] = t2ab
+        wave_data['tau'] = trial.decompose_t2([t2aa,t2ab,t2bb])
+        wave_data["mo_coeff"] = [mo_coeff[0][:, : nocc_a], mo_coeff[1][:, : nocc_b]]
+
+        sampler = sampling.sampler_ustoccsd2(
+            options["n_prop_steps"],
+            options["n_ene_blocks"],
+            options["n_sr_blocks"],
+            options["n_blocks"],
+            nchol,
+            )
 
     if options["walker_type"] == "rhf":
         prop = propagation.propagator_restricted(

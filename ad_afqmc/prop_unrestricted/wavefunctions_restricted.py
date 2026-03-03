@@ -178,17 +178,12 @@ class wave_function_restricted(ABC):
                 jnp.array([natorbs_dn + 0.0j] * n_walkers),
             ]
         
-    def decompose_t2(self,
-                     wave_data: dict, 
-                     thresh: float = 1e-6
-                     ):
+    def decompose_t2(self, t2, thresh: float = 1e-8):
         # adapted from Yann
 
         nO = self.nelec[0]
         nV = self.norb - nO
         nex = nO * nV
-
-        t2 = wave_data['t2']
 
         assert t2.shape == (nO, nV, nO, nV)
         
