@@ -23,6 +23,7 @@ config.setup_jax()
 ham_data, ham, prop, trial, wave_data, sampler, options = (prep._prep_afqmc())
 
 print(f'# the sampler is: {sampler}')
+print(f'# the trial is: {trial}')
 
 init_walkers = None
 trial_rdm1 = trial.get_rdm1(wave_data)
@@ -59,14 +60,14 @@ print("# Equilibration sweeps:")
 print("# atom_time  energy_ci  numer_cr  denom_cr  e_stocc  Walltime")
 print(f"  {0.:.2f}  {eci_init.real:.6f}  {num_cr[0].real:.6f}  {den_cr[0].real:.6f}  {ecc_init.real:.6f}  {time.time() - init_time:.2f}")
 
-sampler_eq = sampling.sampler_ustoccsd2(
+sampler_eq = sampling.sampler_stoccsd2(
     n_prop_steps=50, 
-    n_ene_blocks=5, 
-    n_sr_blocks=10, 
+    # n_ene_blocks=1, 
+    n_sr_blocks=50, 
     n_chol = sampler.n_chol
     )
 
-block_time = prop.dt * sampler_eq.n_prop_steps * sampler_eq.n_ene_blocks * sampler_eq.n_sr_blocks
+block_time = prop.dt * sampler_eq.n_prop_steps * sampler_eq.n_sr_blocks
 
 for n in range(1,options["n_eql"]+1):
     prop_data, (whf, num_ci, den_ci, num_cr, den_cr) \

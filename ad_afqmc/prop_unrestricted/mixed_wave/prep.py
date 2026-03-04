@@ -91,28 +91,20 @@ def _prep_afqmc(options=None,
     wave_data = {}
     mo_coeff = jnp.array([np.eye(norb), np.eye(norb)])
 
-    if "stoccsd" in options["trial"] and spin_type == 'restricted':
-        if "2" in options["trial"]:
-            trial = wavefunctions_restricted.stoccsd2(
-                norb,
-                nelec_sp,
-                n_batch = options["n_batch"],
-                nslater = options['nslater']
-                )
-        elif "4" in options["trial"]:
-            trial = wavefunctions_restricted.stoccsd4(
-                norb,
-                nelec_sp,
-                n_batch = options["n_batch"],
-                nslater = options['nslater']
-                )
+    if options["trial"] == "stoccsd2":
+        # if "2" in options["trial"]:
+        trial = wavefunctions_restricted.stoccsd2(
+            norb,
+            nelec_sp,
+            n_batch = options["n_batch"],
+            nslater = options['nslater']
+            )
             
         sampler = sampling.sampler_stoccsd2(
-            options["n_prop_steps"],
-            options["n_ene_blocks"],
-            options["n_sr_blocks"],
-            options["n_blocks"],
-            nchol,
+            n_prop_steps = options["n_prop_steps"],
+            n_sr_blocks = options["n_sr_blocks"],
+            n_blocks = options["n_blocks"],
+            n_chol = nchol,
             )
         
         nocc = nelec_sp[0]
@@ -127,7 +119,7 @@ def _prep_afqmc(options=None,
         wave_data['tau'] = trial.decompose_t2(t2)
         wave_data["mo_coeff"] = mo_coeff[0][:,:nocc]
 
-    if "ustoccsd2" in options["trial"] and spin_type == 'unrestricted':
+    if options["trial"] == "ustoccsd2":
         # if "2" in options["trial"]:
         trial = wavefunctions_unrestricted.ustoccsd2(
             norb,
@@ -153,12 +145,11 @@ def _prep_afqmc(options=None,
         wave_data['tau'] = trial.decompose_t2([t2aa,t2ab,t2bb])
         wave_data["mo_coeff"] = [mo_coeff[0][:, : nocc_a], mo_coeff[1][:, : nocc_b]]
 
-        sampler = sampling.sampler_ustoccsd2(
-            options["n_prop_steps"],
-            options["n_ene_blocks"],
-            options["n_sr_blocks"],
-            options["n_blocks"],
-            nchol,
+        sampler = sampling.sampler_stoccsd2(
+            n_prop_steps = options["n_prop_steps"],
+            n_sr_blocks = options["n_sr_blocks"],
+            n_blocks = options["n_blocks"],
+            n_chol = nchol,
             )
 
     if options["walker_type"] == "rhf":
@@ -176,8 +167,9 @@ def _prep_afqmc(options=None,
             n_batch=options["n_batch"],
         )
 
-    print(f"# norb: {norb}")
     print(f"# nelec: {nelec_sp}")
+    print(f"# norb: {norb}")
+    print(f"# nchol: {nchol}")
     for op in options:
         if options[op] is not None:
             print(f"# {op}: {options[op]}")

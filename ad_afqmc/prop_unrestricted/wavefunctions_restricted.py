@@ -210,7 +210,7 @@ class wave_function_restricted(ABC):
         # t2_rec = jnp.einsum('gia,gjb->iajb', L, L)
         # assert jnp.abs(wave_data['t2'] - t2_rec).max() < 1e-12
 
-        return L, e_val_trunc
+        return L
     
     @partial(jit, static_argnums=0)
     def _thouless(self, init_slater, t):

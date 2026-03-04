@@ -141,13 +141,13 @@ class sampler_mixed(sampler):
 @dataclass
 class sampler_stoccsd2(sampler):
     n_prop_steps: int = 50
-    n_ene_blocks: int = 50
+    # n_ene_blocks: int = 50
     n_sr_blocks: int = 1
     n_blocks: int = 50
     n_chol: int = 0
 
     @partial(jit, static_argnums=(0,3,4))
-    def _block_scan(
+    def _block(
         self,
         prop_data: dict,
         ham_data: dict,
@@ -180,121 +180,6 @@ class sampler_stoccsd2(sampler):
         prop_data = prop.orthonormalize_walkers(prop_data)
         overlap_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
         prop_data["overlaps"] = overlap_hf
-        overlap_ci, energy_ci = trial.calc_energy_ci(prop_data["walkers"], ham_data, wave_data)
-        numerator_cr = trial.calc_numerator(prop_data["walkers"], xtaus, ham_data, wave_data)
-        denominator_cr = trial.calc_denominator(prop_data["walkers"], xtaus, wave_data)
-
-        num_ci = overlap_ci * energy_ci / overlap_hf
-        den_ci = overlap_ci / overlap_hf
-        num_cr = numerator_cr / overlap_hf
-        den_cr = denominator_cr / overlap_hf
-
-        whf = prop_data["weights"]
-
-        blk_whf = jnp.sum(whf)
-        blk_num_ci = jnp.sum(whf * num_ci) / blk_whf
-        blk_den_ci = jnp.sum(whf * den_ci) / blk_whf
-        blk_num_cr = jnp.sum(whf * num_cr) / blk_whf
-        blk_den_cr = jnp.sum(whf * den_cr) / blk_whf
-
-        return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
-
-    @partial(jit, static_argnums=(0,3,4))
-    def _sr_block_scan(
-        self,
-        prop_data: dict,
-        ham_data: dict,
-        prop: propagator,
-        trial,
-        wave_data: dict,
-    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-            
-        def _block_scan_wrapper(x,_):
-            return self._block_scan(x,ham_data,prop,trial,wave_data)
-        
-        prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr) \
-            = lax.scan(
-            _block_scan_wrapper, prop_data, None, length = self.n_ene_blocks
-        )
-        prop_data = prop.stochastic_reconfiguration_local(prop_data)
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
-    
-    @partial(jit, static_argnums=(0,3,4))
-    def propagate_phaseless(
-        self,
-        prop_data: dict,
-        ham_data: dict,
-        prop: propagator,
-        trial,
-        wave_data: dict,
-    ) -> Tuple[jax.Array, dict]:
-        def _sr_block_scan_wrapper(x,_):
-            return self._sr_block_scan(x, ham_data, prop, trial, wave_data)
-
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        prop_data["n_killed_walkers"] = 0
-        prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr) \
-            = lax.scan(
-            _sr_block_scan_wrapper, prop_data, None, length = self.n_sr_blocks
-        )
-        prop_data["n_killed_walkers"] /= (
-            self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
-        )
-        
-        whf = jnp.sum(blk_whf)
-        num_ci = jnp.sum(blk_whf * blk_num_ci) / whf
-        den_ci = jnp.sum(blk_whf * blk_den_ci) / whf
-        num_cr = jnp.sum(blk_whf * blk_num_cr) / whf
-        den_cr = jnp.sum(blk_whf * blk_den_cr) / whf
-
-        return prop_data, (whf, num_ci, den_ci, num_cr, den_cr)
-    
-    def __hash__(self) -> int:
-        return hash(tuple(self.__dict__.values()))
-    
-@dataclass
-class sampler_ustoccsd2(sampler_stoccsd2):
-    n_prop_steps: int = 50
-    n_ene_blocks: int = 50
-    n_sr_blocks: int = 1
-    n_blocks: int = 50
-    n_chol: int = 0
-
-    @partial(jit, static_argnums=(0,3,4))
-    def _block_scan(
-        self,
-        prop_data: dict,
-        ham_data: dict,
-        prop: propagator,
-        trial,
-        wave_data: dict,
-    ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-        """Block scan function. Propagation and energy calculation."""
-
-        prop_data["key"], subkey = random.split(prop_data["key"])
-        fields = random.normal(
-            subkey,
-            shape=(
-                self.n_prop_steps,
-                prop.n_walkers,
-                self.n_chol,
-            ),
-        )
-        _step_scan_wrapper = lambda x, y: self._step_scan(
-            x, y, ham_data, prop, trial, wave_data
-        )
-        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-
-        xtaus = trial.get_xtaus(prop_data, wave_data, prop)
-
-        prop_data = prop.orthonormalize_walkers(prop_data)
-        overlap_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
-        prop_data["overlaps"] = overlap_hf
         overlap_ci, energy_ci = trial.calc_energy_cid(prop_data["walkers"], ham_data, wave_data)
         numerator_cr, denominator_cr = trial.calc_correction(prop_data["walkers"], xtaus, ham_data, wave_data)
 
@@ -311,7 +196,124 @@ class sampler_ustoccsd2(sampler_stoccsd2):
         blk_num_cr = jnp.sum(whf * num_cr) / blk_whf
         blk_den_cr = jnp.sum(whf * den_cr) / blk_whf
 
+        prop_data = prop.stochastic_reconfiguration_local(prop_data)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
         return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
+
+    # @partial(jit, static_argnums=(0,3,4))
+    # def _sr_block_scan(
+    #     self,
+    #     prop_data: dict,
+    #     ham_data: dict,
+    #     prop: propagator,
+    #     trial,
+    #     wave_data: dict,
+    # ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+            
+    #     def _block_scan_wrapper(x,_):
+    #         return self._block_scan(x,ham_data,prop,trial,wave_data)
+        
+    #     prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr) \
+    #         = lax.scan(
+    #         _block_scan_wrapper, prop_data, None, length = self.n_ene_blocks
+    #     )
+    #     prop_data = prop.stochastic_reconfiguration_local(prop_data)
+    #     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    #     return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
+    
+    @partial(jit, static_argnums=(0,3,4))
+    def propagate_phaseless(
+        self,
+        prop_data: dict,
+        ham_data: dict,
+        prop: propagator,
+        trial,
+        wave_data: dict,
+    ) -> Tuple[jax.Array, dict]:
+        def _scan_blocks(x,_):
+            return self._block(x, ham_data, prop, trial, wave_data)
+
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["n_killed_walkers"] = 0
+        prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+        prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr) \
+            = lax.scan(
+            _scan_blocks, prop_data, None, length = self.n_sr_blocks
+        )
+        prop_data["n_killed_walkers"] /= (
+            self.n_sr_blocks * prop.n_walkers
+        )
+        
+        whf = jnp.sum(blk_whf)
+        num_ci = jnp.sum(blk_whf * blk_num_ci) / whf
+        den_ci = jnp.sum(blk_whf * blk_den_ci) / whf
+        num_cr = jnp.sum(blk_whf * blk_num_cr) / whf
+        den_cr = jnp.sum(blk_whf * blk_den_cr) / whf
+
+        return prop_data, (whf, num_ci, den_ci, num_cr, den_cr)
     
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
+    
+# @dataclass
+# class sampler_ustoccsd2(sampler_stoccsd2):
+#     n_prop_steps: int = 50
+#     n_ene_blocks: int = 50
+#     n_sr_blocks: int = 1
+#     n_blocks: int = 50
+#     n_chol: int = 0
+
+#     @partial(jit, static_argnums=(0,3,4))
+#     def _block_scan(
+#         self,
+#         prop_data: dict,
+#         ham_data: dict,
+#         prop: propagator,
+#         trial,
+#         wave_data: dict,
+#     ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
+#         """Block scan function. Propagation and energy calculation."""
+
+#         prop_data["key"], subkey = random.split(prop_data["key"])
+#         fields = random.normal(
+#             subkey,
+#             shape=(
+#                 self.n_prop_steps,
+#                 prop.n_walkers,
+#                 self.n_chol,
+#             ),
+#         )
+#         _step_scan_wrapper = lambda x, y: self._step_scan(
+#             x, y, ham_data, prop, trial, wave_data
+#         )
+#         prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+#         prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+#             prop_data["weights"]
+#         )
+
+#         xtaus = trial.get_xtaus(prop_data, wave_data, prop)
+
+#         prop_data = prop.orthonormalize_walkers(prop_data)
+#         overlap_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
+#         prop_data["overlaps"] = overlap_hf
+#         overlap_ci, energy_ci = trial.calc_energy_cid(prop_data["walkers"], ham_data, wave_data)
+#         numerator_cr, denominator_cr = trial.calc_correction(prop_data["walkers"], xtaus, ham_data, wave_data)
+
+#         num_ci = overlap_ci * energy_ci / overlap_hf
+#         den_ci = overlap_ci / overlap_hf
+#         num_cr = numerator_cr / overlap_hf
+#         den_cr = denominator_cr / overlap_hf
+
+#         whf = prop_data["weights"]
+
+#         blk_whf = jnp.sum(whf)
+#         blk_num_ci = jnp.sum(whf * num_ci) / blk_whf
+#         blk_den_ci = jnp.sum(whf * den_ci) / blk_whf
+#         blk_num_cr = jnp.sum(whf * num_cr) / blk_whf
+#         blk_den_cr = jnp.sum(whf * den_cr) / blk_whf
+
+#         return prop_data, (blk_whf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
+    
+#     def __hash__(self) -> int:
+#         return hash(tuple(self.__dict__.values()))

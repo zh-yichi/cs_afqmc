@@ -12,8 +12,8 @@ from ad_afqmc import sr, linalg_utils
 @dataclass
 class sampler:
     n_prop_steps: int = 50
-    n_ene_blocks: int = 50
-    n_sr_blocks: int = 1
+    n_ene_blocks: int = 1
+    n_sr_blocks: int = 10
     n_blocks: int = 50
     n_chol: int = 0
 
