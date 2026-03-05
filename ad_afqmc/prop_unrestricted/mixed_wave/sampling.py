@@ -1,4 +1,5 @@
 import jax
+import numpy as np
 import jax.numpy as jnp
 from jax import jit, lax, random
 from typing import Tuple
@@ -253,6 +254,56 @@ class sampler_stoccsd2(sampler):
 
         return prop_data, (whf, num_ci, den_ci, num_cr, den_cr)
     
+    def block_jackknife(self, weights, n_ci, n_cr, d_ci, d_cr, block_size):
+        """
+        Performs Block Jackknife on the ratio estimator E = (<N_ci> + <N_cr>) / (<D_ci> + <D_cr>)
+        """
+        # 1. Ensure all inputs are numpy arrays
+        w = np.array(weights)
+        n1, n2 = np.array(n_ci), np.array(n_cr)
+        d1, d2 = np.array(d_ci), np.array(d_cr)
+        
+        # 2. Calculate weighted components per sample
+        # (Total Numerator and Total Denominator contributions per sample)
+        num_samples = (len(w) // block_size) * block_size
+        # print(num_samples)
+        weighted_num = (w * (n1 + n2))[:num_samples]
+        weighted_den = (w * (d1 + d2))[:num_samples]
+        
+        # 3. Reshape and sum into Blocks
+        num_blocks = num_samples // block_size
+        # We sum the weighted values within each block
+        block_sums_num = weighted_num.reshape(num_blocks, block_size).sum(axis=1)
+        block_sums_den = weighted_den.reshape(num_blocks, block_size).sum(axis=1)
+        
+        # 4. Calculate Global Totals
+        total_num = np.sum(block_sums_num)
+        total_den = np.sum(block_sums_den)
+        
+        # 5. Generate Jackknife Estimates (Leave-One-Block-Out)
+        # e_jk[j] is the energy calculated excluding block j
+        e_jk = (total_num - block_sums_num) / (total_den - block_sums_den)
+        
+        # 6. Calculate Jackknife Statistics
+        m = num_blocks
+        mean_jk = np.mean(e_jk)
+        # The (m-1) factor is the standard Jackknife variance scaling
+        err_jk = np.sqrt((m - 1) / m * np.sum((e_jk - mean_jk)**2))
+        
+        return err_jk.real
+    
+    def blocking(self, whf_sp, numci_sp, numcr_sp, denci_sp, dencr_sp, nblk=None):
+        if nblk is None:
+            nblk = len(whf_sp) // 2
+        err = np.zeros(nblk)
+        thresh = 1.05
+        # print(f'b_size Energy_JK Error_JK')
+        for i in range(nblk):
+            err[i] = self.block_jackknife(whf_sp, numci_sp, numcr_sp, denci_sp, dencr_sp, block_size=i+1)
+            if err[i] < err[i-1]*thresh:
+                break
+        return err[i] # report the last error
+
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
     

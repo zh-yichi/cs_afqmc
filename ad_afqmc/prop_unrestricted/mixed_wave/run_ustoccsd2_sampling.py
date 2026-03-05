@@ -143,83 +143,46 @@ for n in range(sampler.n_blocks):
         covcc = np.cov([numci_sp[:n+1], numcr_sp[:n+1], denci_sp[:n+1], dencr_sp[:n+1]])
         ecc_err = np.sqrt(decc @ covcc @ decc) / np.sqrt((n))
 
-        print(f"  {n+1:4d}  {eci.real:.6f}  {eci_err.real:.6f}  {ecc.real:.6f}  {ecc_err.real:.6f}  {time.time() - init_time:.2f}")
+        ecc_err_jk = sampler.blocking(whf_sp[:n+1], numci_sp[:n+1], numcr_sp[:n+1], denci_sp[:n+1], dencr_sp[:n+1])
 
-# calculate variance by Jackknife
-whf_jk = whf - whf_sp[:n+1]
-numci_jk = (whf_numci - whf_sp[:n+1] * numci_sp[:n+1]) / whf_jk
-denci_jk = (whf_denci - whf_sp[:n+1] * denci_sp[:n+1]) / whf_jk
-numcr_jk = (whf_numcr - whf_sp[:n+1] * numcr_sp[:n+1]) / whf_jk
-dencr_jk = (whf_dencr - whf_sp[:n+1] * dencr_sp[:n+1]) / whf_jk
+        print(f"  {n+1:4d}  {eci.real:.6f}  {eci_err.real:.6f}  {ecc.real:.6f}  {ecc_err.real:.6f}  {ecc_err_jk.real:.6f}  {time.time() - init_time:.2f}")
+
+
+############################ done sampling ###########################
+nsample = len(whf_sp)
+whf = np.sum(whf_sp)
+whf_numci = np.sum(whf_sp * numci_sp)
+whf_denci = np.sum(whf_sp * denci_sp)
+whf_numcr = np.sum(whf_sp * numcr_sp)
+whf_dencr = np.sum(whf_sp * dencr_sp)
+
+numci = whf_numci / whf
+denci = whf_denci / whf
+numcr = whf_numcr / whf
+dencr = whf_dencr / whf
 
 # CISD
-eci_jk = numci_jk / denci_jk
-eci_jk_mean = np.sum(eci_jk) / (n+1)
-eci_jk_err = np.sqrt(np.sum((eci_jk-eci_jk_mean)**2) * n/(n+1))
+eci = numci / denci
+deci = [1/denci, -numci/denci**2]
+covci = np.cov([numci_sp, denci_sp])
+eci_err_cov = np.sqrt(deci @ covci @ deci) / np.sqrt((nsample))
+eci_err_jk = sampler.blocking(whf_sp, numci_sp, numcr_sp*0, denci_sp, dencr_sp*0)
 
 #CCSD
-ecc_jk = (numci_jk + numcr_jk) / (denci_jk + dencr_jk)
-# for i in range(len(whf_jk)):
-#     print(f'  {i+1}  {ecc_jk.real[i]:.6f}')
-ecc_jk_mean = np.sum(ecc_jk) / (n+1)
-ecc_jk_err = np.sqrt(np.sum((ecc_jk-ecc_jk_mean)**2) * n/(n+1))
-#print(f"  {n+1:4d}  {eci_jk_mean.real:.6f}  {eci_jk_err.real:.6f}  {ecc_jk_mean.real:.6f}  {ecc_jk_err.real:.6f}  {time.time() - init_time:.2f}")
+decc = [1/(denci+dencr), 
+        1/(denci+dencr), 
+        -(numci+numcr)/(denci+dencr)**2, 
+        -(numci+numcr)/(denci+dencr)**2,
+        ]
+covcc = np.cov([numci_sp, numcr_sp, denci_sp, dencr_sp])
+ecc_err_cov = np.sqrt(decc @ covcc @ decc) / np.sqrt((nsample))
 
-
-#         # eci, eci_err = \
-#         #     stat_utils.blocking_analysis(wci_sp[: n + 1], eci_sp[: n + 1])
-#         # ecc, ecc_err = \
-#         #     stat_utils.blocking_analysis(wcc_sp[: n + 1], ecc_sp[: n + 1])
-#         # if eci_err is not None and ecc_err is not None:
-#         #     print(f"  {n+1:4d} \t \t {eci:.6f} \t {eci_err:.6f} \t {ecc:.6f} \t {ecc_err:.6f} \t {time.time() - init_time:.2f}")
-#         #     if eci_err < options["max_error"] and ecc_err < options["max_error"]:
-#         #         break
-#         # else:
-#         #     print(f"  {n+1:4d} \t \t {eci:.6f} \t -------- \t {ecc:.6f} \t -------- \t {time.time() - init_time:.2f}")
-
-
-# nsamples = n + 1
-# print(f'# total number of samples {nsamples}')
-# whf_sp = whf_sp[:nsamples]
-# wci_sp = wci_sp[:nsamples]
-# eci_sp = eci_sp[:nsamples]
-# num_sp = num_sp[:nsamples]
-# don_sp = don_sp[:nsamples]
-# ecc_sp = ecc_sp[:nsamples]
-
-# ####### CISD ##########
-# samples_clean, idx = stat_utils.reject_outliers(np.stack((wci_sp, eci_sp)).T, 1)
-# print(f"# Number of outliers in CISD Trial post: {nsamples - samples_clean.shape[0]} ")
-
-# wci_sp = samples_clean[:, 0]
-# eci_sp = samples_clean[:, 1]
-
-# eci, eci_err = stat_utils.blocking_analysis(wci_sp, eci_sp, neql=0, printQ=True)
-
-# if eci_err is not None:
-#     eci_err = f"{eci_err:.6f}"
-# else:
-#     eci_err = f"  {eci_err}  "
-# eci = f"{eci:.6f}"
-
-# ####### sto-CCSD ##########
-# # samples_clean, idx = stat_utils.reject_outliers(np.stack((wcc_sp, ecc_sp)).T, 1)
-# # print(f"# Number of outliers in sto-CCSD Trial post: {nsamples - samples_clean.shape[0]} ")
-
-# # wcc_sp = samples_clean[:, 0]
-# # ecc_sp = samples_clean[:, 1]
-
-# # ecc, ecc_err = stat_utils.blocking_analysis(wcc_sp, ecc_sp, neql=0, printQ=True)
-
-# # if ecc_err is not None:
-# #     ecc_err = f"{ecc_err:.6f}"
-# # else:
-# #     ecc_err = f"  {ecc_err}  "
-# # ecc = f"{ecc:.6f}"
+ecc = (numci + numcr) / (denci + dencr)
+ecc_err_jk = sampler.blocking(whf_sp, numci_sp, numcr_sp, denci_sp, dencr_sp)
 
 print(f"Final Results:")
-print(f"AFQMC/CISD energy (covariance): {eci.real:.6f} +/- {eci_err.real:.6f}")
-print(f"AFQMC/CISD energy (Jackknife): {eci_jk_mean.real:.6f} +/- {eci_jk_err.real:.6f}")
-print(f"AFQMC/sto-CCSD energy (covariance): {ecc.real:.6f} +/- {ecc_err.real:.6f}")
-print(f"AFQMC/sto-CCSD energy (Jackknife): {ecc_jk_mean.real:.6f} +/- {ecc_jk_err.real:.6f}")
+print(f"AFQMC/CISD energy (covariance): {eci.real:.6f} +/- {eci_err_cov.real:.6f}")
+print(f"AFQMC/CISD energy (Jackknife): {eci.real:.6f} +/- {eci_err_jk.real:.6f}")
+print(f"AFQMC/sto-CCSD energy (covariance): {ecc.real:.6f} +/- {ecc_err_cov.real:.6f}")
+print(f"AFQMC/sto-CCSD energy (Jackknife): {ecc.real:.6f} +/- {ecc_err_jk.real:.6f}")
 print(f"total run time: {time.time() - init_time:.2f}")
