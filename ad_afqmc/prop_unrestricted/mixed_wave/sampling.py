@@ -254,7 +254,7 @@ class sampler_stoccsd2(sampler):
 
         return prop_data, (whf, num_ci, den_ci, num_cr, den_cr)
     
-    def block_jackknife(self, weights, n_ci, n_cr, d_ci, d_cr, block_size):
+    def jackknife(self, weights, n_ci, n_cr, d_ci, d_cr, block_size):
         """
         Performs Block Jackknife on the ratio estimator E = (<N_ci> + <N_cr>) / (<D_ci> + <D_cr>)
         """
@@ -292,7 +292,7 @@ class sampler_stoccsd2(sampler):
         
         return err_jk.real
     
-    def blocking(self, whf_sp, numci_sp, numcr_sp, denci_sp, dencr_sp, nblk=None):
+    def blocking_jackknife(self, whf_sp, numci_sp, numcr_sp, denci_sp, dencr_sp, nblk=None):
         if nblk is None:
             nblk = len(whf_sp) // 2
         err = np.zeros(nblk)
@@ -303,6 +303,58 @@ class sampler_stoccsd2(sampler):
             if err[i] < err[i-1]*thresh:
                 break
         return err[i] # report the last error
+    
+    def blk_average(self, wt_sp, num_sp, den_sp, max_size=None):
+        n_total = len(wt_sp)
+        if max_size is None:
+            max_size = n_total // 10
+        # block_size = np.zeros(size_max)
+        # energy = np.zeros(size_max)
+        err = np.zeros(max_size)
+        for i, block_size in enumerate(range(1,max_size+1)):
+            n_blocks = n_total // block_size
+
+            wt_truncated = wt_sp[:n_blocks * block_size]
+            num_truncated = num_sp[:n_blocks * block_size]
+            den_truncated = den_sp[:n_blocks * block_size]
+
+            wt_num = wt_truncated * num_truncated
+            wt_den = wt_truncated * den_truncated
+
+            wt_num = wt_num.reshape(n_blocks, block_size)
+            wt_den = wt_den.reshape(n_blocks, block_size)
+
+            block_num = np.sum(wt_num, axis=1)
+            block_den = np.sum(wt_den, axis=1)
+
+            block_energy = (block_num / block_den).real
+            block_mean = np.mean(block_energy)
+            block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
+            print(f'block size = {block_size} Nblocks = {n_blocks} total sample = {block_size*n_blocks}| '
+                  f'AFQMC Energy = {block_mean:.6f} +/- {block_error:.6f}')
+            # block_size[i] = b
+            # energy[i] = block_mean
+            err[i] = block_error
+        return err
+    
+    def filter_outliers(self, weights, num, den, zeta=5):
+
+        weights_mean = weights.mean()
+        sigma = np.std(weights)
+        lower_bound = weights_mean - zeta*sigma
+        upper_bound = weights_mean + zeta*sigma
+        mask = (weights >= lower_bound) & (weights <= upper_bound)
+        
+        w_filtered = weights[mask]
+        n_filtered = num[mask]
+        d_filtered = den[mask]
+        
+        n_removed = len(weights) - len(w_filtered)
+        print(f"Removed {n_removed} outliers")
+        print(f"Weight bounds: [{lower_bound:.4e}, {upper_bound:.4e}]")
+        
+        return w_filtered, n_filtered, d_filtered
+
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
