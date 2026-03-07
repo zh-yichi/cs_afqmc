@@ -201,8 +201,8 @@ class ustoccsd2(uhf):
             ),
         )
         # xtaus shape (nwalker, nslater, nocc, nvir)
-        xtaus_up = jnp.einsum("wsg,gia->wsia", fieldx, wave_data['tau'][0])
-        xtaus_dn = jnp.einsum("wsg,gia->wsia", fieldx, wave_data['tau'][1])
+        xtaus_up = oe.contract("wsg,gia->wsia", fieldx, wave_data['tau'][0], backend='jax')
+        xtaus_dn = oe.contract("wsg,gia->wsia", fieldx, wave_data['tau'][1], backend='jax')
 
         return [xtaus_up, xtaus_dn]
 
@@ -259,15 +259,29 @@ class ustoccsd2(uhf):
         hg_b = oe.contract("pq,pq->", h1_b, green_b, backend="jax")
         e1 = hg_a + hg_b
     
-        gl_a = oe.contract("pr,gqr->gpq", green_a, chol_a, backend="jax")
-        gl_b = oe.contract("pr,gqr->gpq", green_b, chol_b, backend="jax")
-        trgl_a = oe.contract('gpp->g', gl_a, backend="jax")
-        trgl_b = oe.contract('gpp->g', gl_b, backend="jax")
-        e2_1 = jnp.sum((trgl_a + trgl_b)**2) / 2
-        e2_2 = -(oe.contract('gpq,gqp->', gl_a, gl_a, backend="jax")
-                + oe.contract('gpq,gqp->', gl_b, gl_b, backend="jax")) / 2
-        e2 = e2_1 + e2_2
+        # gl_a = oe.contract("pr,gqr->gpq", green_a, chol_a, backend="jax")
+        # gl_b = oe.contract("pr,gqr->gpq", green_b, chol_b, backend="jax")
+        # trgl_a = oe.contract('gpp->g', gl_a, backend="jax")
+        # trgl_b = oe.contract('gpp->g', gl_b, backend="jax")
+        # e2_1 = jnp.sum((trgl_a + trgl_b)**2) / 2
+        # e2_2 = -(oe.contract('gpq,gqp->', gl_a, gl_a, backend="jax")
+        #         + oe.contract('gpq,gqp->', gl_b, gl_b, backend="jax")) / 2
+        # e2 = e2_1 + e2_2
 
+        def scan_chol(carry, x):
+            chol_a_i, chol_b_i = x
+            gl_a_i = oe.contract("pr,qr->pq", green_a, chol_a_i, backend="jax")
+            gl_b_i = oe.contract("pr,qr->pq", green_b, chol_b_i, backend="jax")
+            trgl_a_i = oe.contract('pp->', gl_a_i, backend="jax")
+            trgl_b_i = oe.contract('pp->', gl_b_i, backend="jax")
+            e2_c_i = (trgl_a_i + trgl_b_i)**2 / 2
+            e2_e_i = -(oe.contract('pq,qp->', gl_a_i, gl_a_i, backend="jax")
+                     + oe.contract('pq,qp->', gl_b_i, gl_b_i, backend="jax")) / 2
+            carry += e2_c_i + e2_e_i
+            return carry, 0.0
+        
+        e2, _ = lax.scan(scan_chol, 0.0, (chol_a, chol_b))
+        
         overlap = self._slater_olp(walker_up, walker_dn, slater_up, slater_dn)
         energy = h0 + e1 + e2
 

@@ -201,7 +201,7 @@ class stoccsd2(rhf):
             ),
         )
         # xtaus shape (nwalker, nslater, nocc, nvir)
-        xtaus = jnp.einsum("wsg,gia->wsia", fieldx, wave_data['tau'])
+        xtaus = oe.contract("wsg,gia->wsia", fieldx, wave_data['tau'], backend='jax')
 
         return xtaus
     
@@ -525,13 +525,23 @@ class stoccsd2(rhf):
         chol = chol.reshape(-1, norb, norb)
 
         green = self._green(walker, slater)
-        hg = oe.contract("pq,pq->", h1, green, backend="jax")
-        e1 = 2 * hg
-        lg = oe.contract("gpr,qr->gpq", chol, green, backend="jax")
-        e2_1 = 2 * jnp.sum(oe.contract('gpp->g', lg, backend="jax")**2)
-        e2_2 = -oe.contract('gpq,gqp->',lg,lg, backend="jax")
-        e2 = e2_1 + e2_2
+        gh = oe.contract("pq,pq->", green, h1, backend="jax")
+        e1 = 2 * gh
 
+        # lg = oe.contract("gpr,qr->gpq", chol, green, backend="jax")
+        # e2_1 = 2 * jnp.sum(oe.contract('gpp->g', lg, backend="jax")**2)
+        # e2_2 = -oe.contract('gpq,gqp->',lg,lg, backend="jax")
+        # e2 = e2_1 + e2_2
+
+        def scan_chol(carry, x):
+            chol_i = x
+            gl_i = oe.contract("pr,qr->pq", green, chol_i, backend="jax")
+            e2_c_i = 2 * oe.contract('pp->', gl_i, backend="jax")**2
+            e2_e_i = -oe.contract('pq,qp->', gl_i, gl_i, backend="jax")
+            carry += e2_c_i + e2_e_i
+            return carry, 0
+        
+        e2, _ = lax.scan(scan_chol, 0.0, chol)
         overlap = self._slater_olp(walker, slater)
         energy = h0 + e1 + e2
 
