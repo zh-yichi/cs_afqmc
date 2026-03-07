@@ -49,42 +49,72 @@ prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 e_init = prop_data["e_estimate"]
 
 oci, eci = trial.calc_energy_cid(prop_data["walkers"], ham_data, wave_data)
-num_cr, den_cr = trial.calc_correction(prop_data["walkers"], xtaus, ham_data, wave_data)
+numcr, dencr = trial.calc_correction(prop_data["walkers"], xtaus, ham_data, wave_data)
 # den_cr = trial.calc_denominator(prop_data["walkers"], xtaus, wave_data)
 
 eci_init = jnp.real(eci)[0]
-ecc_init = jnp.real((oci*eci + num_cr) / (oci + den_cr))[0]
+ecc_init = jnp.real((oci*eci + numcr) / (oci + dencr))[0]
+print(f'# initial AFQMC/CISD Energy is {eci_init:.6f}')
+print(f'# initial AFQMC/stoCCSD Energy is {ecc_init:.6f}')
+
+# print(f'# Propagating with {options["n_walkers"]} walkers')
+# print("# Equilibration sweeps:")
+# print("# atom_time  energy_ci  numer_cr  denom_cr  e_stocc  Walltime")
+# print(f"  {0.:.2f}  {eci_init.real:.6f}  {numcr[0].real:.6f}  {dencr[0].real:.6f}  {ecc_init.real:.6f}  {time.time() - init_time:.2f}")
+
+# sampler_eq = sampling.sampler_stoccsd2(
+#     n_prop_steps=50, 
+#     # n_ene_blocks=1, 
+#     n_sr_blocks=50, 
+#     n_chol = sampler.n_chol
+#     )
+
+# block_time = prop.dt * sampler_eq.n_prop_steps * sampler_eq.n_sr_blocks
+
+# for n in range(1,options["n_eql"]+1):
+#     prop_data, (whf, numci, denci, numcr, dencr) \
+#         = sampler_eq.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
+
+#     prop_data = prop.orthonormalize_walkers(prop_data)
+#     prop_data = prop.stochastic_reconfiguration_local(prop_data)
+
+#     eci = numci / denci
+#     ecc = (numci + numcr) / (denci + dencr)
+
+#     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * eci
+
+#     print(f" {n*block_time:.2f}  {eci.real:.6f}  {numcr.real:.6f}  {dencr.real:.6f}  {ecc.real:.6f}  {time.time() - init_time:.2f} ")
+
+ehf = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))[0]
 
 print(f'# Propagating with {options["n_walkers"]} walkers')
-print("# Equilibration sweeps:")
-print("# atom_time  energy_ci  numer_cr  denom_cr  e_stocc  Walltime")
-print(f"  {0.:.2f}  {eci_init.real:.6f}  {num_cr[0].real:.6f}  {den_cr[0].real:.6f}  {ecc_init.real:.6f}  {time.time() - init_time:.2f}")
+print("# Equilibration sweeps with AFQMC/HF: ")
+print("# atom_time \t energy \t Walltime")
+print(f"  {0.:.2f} \t \t {ehf:.6f} \t {time.time() - init_time:.2f}")
 
-sampler_eq = sampling.sampler_stoccsd2(
-    n_prop_steps=50, 
-    # n_ene_blocks=1, 
-    n_sr_blocks=50, 
+sampler_eq = sampling.sampler(
+    n_prop_steps = 50, 
+    n_ene_blocks = 1, 
+    n_sr_blocks = 50, 
     n_chol = sampler.n_chol
     )
 
-block_time = prop.dt * sampler_eq.n_prop_steps * sampler_eq.n_sr_blocks
+block_time = prop.dt * sampler_eq.n_prop_steps * sampler_eq.n_ene_blocks * sampler_eq.n_sr_blocks
 
 for n in range(1,options["n_eql"]+1):
-    prop_data, (whf, num_ci, den_ci, num_cr, den_cr) \
-        = sampler_eq.propagate_phaseless(prop_data, ham_data, prop, trial, wave_data)
-
+    prop_data, (wt, e) = \
+        sampler_eq.propagate_phaseless(
+            prop_data, ham_data, prop, trial, wave_data)
+    
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * e
 
-    eci = num_ci / den_ci
-    ecc = (num_ci + num_cr) / (den_ci + den_cr)
+    print(f"  {n * block_time:.2f} \t {e:.6f} \t {time.time() - init_time:.2f}")
 
-    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * eci
-
-    print(f" {n*block_time:.2f}  {eci.real:.6f}  {num_cr.real:.6f}  {den_cr.real:.6f}  {ecc.real:.6f}  {time.time() - init_time:.2f} ")
 
 print("# Sampling sweeps:")
-print("# nBlocks  energy_ci  error  energy_cc  error  Walltime")
+print("# nBlocks  <numci>  <denci>  <numcr>  <dencr>  energy_ci  error  energy_cc  error  Walltime")
 
 whf_sp = np.zeros(sampler.n_blocks, dtype="float64")
 numci_sp = np.zeros(sampler.n_blocks, dtype="complex128")
@@ -101,106 +131,133 @@ for n in range(sampler.n_blocks):
     whf_sp[n] = whf
     numci_sp[n] = numci
     denci_sp[n] = denci
-    numcr_sp[n] = num_cr
-    dencr_sp[n] = den_cr
-    # eci_sp[n] = jnp.real(numci / denci)
-    ecc_estimate = jnp.real((numci + numcr) / (denci + dencr))
+    numcr_sp[n] = numcr
+    dencr_sp[n] = dencr
+    eci_estimate = numci / denci
+    ecc_estimate = (numci + numcr) / (denci + dencr)
 
     prop_data = prop.orthonormalize_walkers(prop_data)
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * ecc_estimate
+    prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * eci_estimate.real
 
     if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
         # calculate variance by covariance
         # E(CISD) = <CISD|H|AF> / <CISD|AF>
 
-        # whf = np.sum(whf_sp[:n+1])
+        whf = np.sum(whf_sp[:n+1])
         whf_numci = whf_sp[:n+1] * numci_sp[:n+1]
         whf_denci = whf_sp[:n+1] * denci_sp[:n+1]
-        whf_numcc = whf_sp[:n+1] * (numci_sp[:n+1] + numcr_sp[:n+1])
-        whf_dencc = whf_sp[:n+1] * (denci_sp[:n+1] + dencr_sp[:n+1])
+        whf_numcr = whf_sp[:n+1] * numcr_sp[:n+1]
+        whf_dencr = whf_sp[:n+1] * dencr_sp[:n+1]
+        # whf_numcc = whf_sp[:n+1] * (numci_sp[:n+1] + numcr_sp[:n+1])
+        # whf_dencc = whf_sp[:n+1] * (denci_sp[:n+1] + dencr_sp[:n+1])
 
-        # numci = whf_numci / whf
-        # denci = whf_denci / whf
+        numci_avg = np.sum(whf_numci) / whf
+        denci_avg = np.sum(whf_denci) / whf
+        numcr_avg = np.sum(whf_numcr) / whf
+        dencr_avg = np.sum(whf_dencr) / whf
+        
+        # eci = (np.sum(whf_numci) / np.sum(whf_denci)).real
+        eci = (numci_avg / denci_avg).real
         eci_sp = (whf_numci / whf_denci).real
-        eci = (np.sum(whf_numci) / np.sum(whf_denci)).real
-        eci_err = np.std(eci_sp)/np.sqrt(len(eci_sp))
+        eci_sp_mean = eci_sp.mean().real
+        eci_sp_err = np.std(eci_sp) / np.sqrt(len(eci_sp))
 
-        ecc_sp = (whf_numcc / whf_dencc).real
-        ecc = (np.sum(whf_numcc) / np.sum(whf_dencc)).real
-        ecc_err = np.std(ecc_sp)/np.sqrt(len(ecc_sp))
+        ecc = ((numci_avg + numcr_avg) / (denci_avg + dencr_avg)).real
+        ecc_sp = ((whf_numci + whf_numcr) / (whf_denci + whf_dencr)).real
+        ecc_sp_mean = ecc_sp.mean().real
+        ecc_sp_err = np.std(ecc_sp) / np.sqrt(len(ecc_sp))
+
         # partial_eci/partial_num, partial_eci/partial_don
-        # deci = [1/denci, -numci/denci**2]
-        # covci = np.cov([numci_sp[:n+1], denci_sp[:n+1]])
-        # eci_err = np.sqrt(deci @ covci @ deci) / np.sqrt((n))
+        deci = [1/denci_avg, -numci_avg/denci_avg**2]
+        covci = np.cov([numci_sp[:n+1], denci_sp[:n+1]])
+        eci_cov_err = (np.sqrt(deci @ covci @ deci) / np.sqrt((n))).real
         
         # E(CCSD) = (<CISD|H|AF> + <stoCC-stoCI|H|AF>) / (<CISD|AF> + <stoCC-stoCI|AF>)
-        # numcr = whf_numcr / whf
-        # dencr = whf_dencr / whf
-        # ecc = (numci + numcr) / (denci + dencr)
+        # ecc2 = ((numci + numcr) / (denci + dencr)).real
 
         # partial_ecc...
-        # decc = [1/(denci+dencr), 
-        #         1/(denci+dencr), 
-        #         -(numci+numcr)/(denci+dencr)**2, 
-        #         -(numci+numcr)/(denci+dencr)**2,
-        #         ]
-        # covcc = np.cov([numci_sp[:n+1], numcr_sp[:n+1], denci_sp[:n+1], dencr_sp[:n+1]])
-        # ecc_err = np.sqrt(decc @ covcc @ decc) / np.sqrt((n))
+        decc = [1/(denci+dencr), 
+                1/(denci+dencr), 
+                -(numci+numcr)/(denci+dencr)**2, 
+                -(numci+numcr)/(denci+dencr)**2,
+                ]
+        covcc = np.cov([numci_sp[:n+1], numcr_sp[:n+1], denci_sp[:n+1], dencr_sp[:n+1]])
+        ecc_cov_err = (np.sqrt(decc @ covcc @ decc) / np.sqrt((n))).real
 
         # ecc_err_jk = sampler.blocking(whf_sp[:n+1], numci_sp[:n+1], numcr_sp[:n+1], denci_sp[:n+1], dencr_sp[:n+1])
 
-        print(f"  {n+1:4d}  {eci:.6f}  {eci_err:.6f}  {ecc:.6f}  {ecc_err:.6f}  {time.time() - init_time:.2f}")
-
+        print(f"(cov) {n+1:4d} {numci_avg.real:.6f} {denci_avg.real:.6f} {numcr_avg.real:.6f} {dencr_avg.real:.6f} {eci:.6f} {eci_cov_err:.6f} {ecc:.6f} {ecc_cov_err:.6f}  {time.time() - init_time:.2f}")
+        print(f"(smp) {n+1:4d} {numci_avg.real:.6f} {denci_avg.real:.6f} {numcr_avg.real:.6f} {dencr_avg.real:.6f} {eci_sp_mean:.6f} {eci_sp_err:.6f} {ecc_sp_mean:.6f} {ecc_sp_err:.6f}  {time.time() - init_time:.2f}")
 
 ############################ post sampling ###########################
-# nsample = len(whf_sp)
-# whf = np.sum(whf_sp)
-# whf_numci = np.sum(whf_sp * numci_sp)
-# whf_denci = np.sum(whf_sp * denci_sp)
-# whf_numcr = np.sum(whf_sp * numcr_sp)
-# whf_dencr = np.sum(whf_sp * dencr_sp)
+whf_clean, numci_clean, denci_clean = sampler.filter_outliers(whf_sp, numci_sp, denci_sp, zeta=5)
+whf_clean, numcr_clean, dencr_clean = sampler.filter_outliers(whf_sp, numcr_sp, dencr_sp, zeta=5)
 
-# numci = whf_numci / whf
-# denci = whf_denci / whf
-# numcr = whf_numcr / whf
-# dencr = whf_dencr / whf
+nsample = len(whf_clean)
+whf = np.sum(whf_clean)
+numci_avg = np.sum(whf_clean * numci_clean) / whf
+denci_avg = np.sum(whf_clean * denci_clean) / whf
+numcr_avg = np.sum(whf_clean * numcr_clean) / whf
+dencr_avg = np.sum(whf_clean * dencr_clean) / whf
+
+# numci_avg = whf_numci / whf
+# denci_avg = whf_denci / whf
+# numcr_avg = whf_numcr / whf
+# dencr_avg = whf_dencr / whf
 
 # CISD
-whf_clean, numci_clean, denci_clean = sampler.filter_outliers(whf_sp, numci_sp, denci_sp, zeta=5)
+# whf_clean, numci_clean, denci_clean = sampler.filter_outliers(whf_sp, numci_sp, denci_sp, zeta=5)
 
-whf_numci = whf_clean * numci_clean
-whf_denci = whf_clean * denci_clean
+# whf_numci = whf_clean * numci_clean
+# whf_denci = whf_clean * denci_clean
+print(f'# Post Processing AFQMC/CISD')
+eci = (numci_avg / denci_avg).real
+eci_blk_err = sampler.blk_average(whf_clean, numci_clean, denci_clean, max_size=20)
 
-eci = (np.sum(whf_numci) / np.sum(whf_denci)).real
-eci_err = sampler.blk_average(whf_clean, numci_clean, denci_clean, max_size=20)
-# deci = [1/denci, -numci/denci**2]
-# covci = np.cov([numci_sp, denci_sp])
-# eci_err_cov = np.sqrt(deci @ covci @ deci) / np.sqrt((nsample))
+for i, err in enumerate(eci_blk_err):
+    if np.abs((err - eci_blk_err[i-1]) / err) < 0.04:
+        break
+print(f'# autocorrelation eliminated at blocking {i+1} with estimate error {err:.6f}')
+eci_sp_err = err
+
+deci = [1/denci_avg, -numci_avg/denci_avg**2]
+covci = np.cov([numci_clean, denci_clean])
+eci_cov_err = (np.sqrt(deci @ covci @ deci) / np.sqrt((nsample))).real
+
 # eci_err_jk = sampler.blocking(whf_sp, numci_sp, numcr_sp*0, denci_sp, dencr_sp*0)
 
 #CCSD
-whf_clean, numcc_clean, dencc_clean = sampler.filter_outliers(whf_sp, (numci_sp+numcr_sp), (denci_sp+dencr_sp), zeta=5)
+# whf_clean, numcc_clean, dencc_clean = sampler.filter_outliers(whf_sp, (numci_sp+numcr_sp), (denci_sp+dencr_sp), zeta=5)
 
-whf_numcc = whf_clean * numcc_clean
-whf_dencc = whf_clean * dencc_clean
+# numcc = (numci_clean + numcr_clean)
+# dencc = (denci_clean + dencr_clean)
+print(f'# Post Processing AFQMC/stoCCSD')
+ecc = ((numci_avg + numcr_avg) / (denci_avg + dencr_avg)).real
+ecc_blk_err = sampler.blk_average(whf_clean, (numci_clean + numcr_clean), (denci_clean + dencr_clean), max_size=20)
 
-ecc = (np.sum(whf_numcc) / np.sum(whf_dencc)).real
-ecc_err = sampler.blk_average(whf_clean, numcc_clean, dencc_clean, max_size=20)
-# decc = [1/(denci+dencr), 
-#         1/(denci+dencr), 
-#         -(numci+numcr)/(denci+dencr)**2, 
-#         -(numci+numcr)/(denci+dencr)**2,
-#         ]
-# covcc = np.cov([numci_sp, numcr_sp, denci_sp, dencr_sp])
-# ecc_err_cov = np.sqrt(decc @ covcc @ decc) / np.sqrt((nsample))
+for i, err in enumerate(ecc_blk_err):
+    if np.abs((err - ecc_blk_err[i-1]) / err) < 0.04:
+        break
+print(f'# autocorrelation eliminated at blocking {i+1} with estimate error {err:.6f}')
+ecc_sp_err = err
+
+decc = [1/(denci_avg+dencr_avg), 
+        1/(denci_avg+dencr_avg), 
+        -(numci_avg+numcr_avg)/(denci_avg+dencr_avg)**2, 
+        -(numci_avg+numcr_avg)/(denci_avg+dencr_avg)**2,]
+
+covcc = np.cov([numci_clean, numcr_clean, denci_clean, dencr_clean])
+ecc_cov_err = (np.sqrt(decc @ covcc @ decc) / np.sqrt((nsample))).real
 
 # ecc = (numci + numcr) / (denci + dencr)
 # ecc_err_jk = sampler.blocking(whf_sp, numci_sp, numcr_sp, denci_sp, dencr_sp)
 
 print(f"Final Results:")
-print(f"AFQMC/CISD energy: {eci:.6f} +/- {eci_err.max():.6f}")
+print(f"AFQMC/CISD energy (covariance): {eci:.6f} +/- {eci_cov_err:.6f}")
+print(f"AFQMC/CISD energy (dir sample): {eci:.6f} +/- {eci_sp_err:.6f}")
 # print(f"AFQMC/CISD energy (Jackknife): {eci.real:.6f} +/- {eci_err_jk.real:.6f}")
-print(f"AFQMC/sto-CCSD energy: {ecc:.6f} +/- {ecc_err.max():.6f}")
+print(f"AFQMC/sto-CCSD energy (covariance): {ecc:.6f} +/- {ecc_cov_err:.6f}")
+print(f"AFQMC/sto-CCSD energy (dir sample): {ecc:.6f} +/- {ecc_sp_err:.6f}")
 # print(f"AFQMC/sto-CCSD energy (Jackknife): {ecc.real:.6f} +/- {ecc_err_jk.real:.6f}")
 print(f"total run time: {time.time() - init_time:.2f}")

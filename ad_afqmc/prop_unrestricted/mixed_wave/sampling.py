@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from ad_afqmc.prop_unrestricted.sampling import sampler
 from ad_afqmc.prop_unrestricted.propagation import propagator
 
+sampler = sampler
+
 @dataclass
 class sampler_mixed(sampler):
     n_prop_steps: int = 50
@@ -311,6 +313,7 @@ class sampler_stoccsd2(sampler):
         # block_size = np.zeros(size_max)
         # energy = np.zeros(size_max)
         err = np.zeros(max_size)
+        print('# Blk_SZ  NBlk  NSmp  Energy  Error')
         for i, block_size in enumerate(range(1,max_size+1)):
             n_blocks = n_total // block_size
 
@@ -330,8 +333,7 @@ class sampler_stoccsd2(sampler):
             block_energy = (block_num / block_den).real
             block_mean = np.mean(block_energy)
             block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-            print(f'block size = {block_size} Nblocks = {n_blocks} total sample = {block_size*n_blocks}| '
-                  f'AFQMC Energy = {block_mean:.6f} +/- {block_error:.6f}')
+            print(f' {block_size}  {n_blocks}  {block_size*n_blocks}  {block_mean:.6f}  {block_error:.6f}')
             # block_size[i] = b
             # energy[i] = block_mean
             err[i] = block_error
