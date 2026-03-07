@@ -196,7 +196,7 @@ class wave_function_unrestricted(ABC):
                 jnp.array([natorbs_dn + 0.0j] * n_walkers),
             ]
 
-    def decompose_t2(trial, t2, thresh=1e-10):
+    def decompose_t2(trial, t2, thresh=1e-8):
         # adapted from Yann
         norb = trial.norb
         nocca, noccb = trial.nelec

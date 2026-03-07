@@ -772,14 +772,14 @@ class ustoccsd2(uhf):
         trgh_b = oe.contract("pp->", gh_b, backend="jax")
         e1_0 = trgh_a + trgh_b
     
-        gl_a = oe.contract("pr,gqr->gpq", green_a, chol_a, backend="jax")
-        gl_b = oe.contract("pr,gqr->gpq", green_b, chol_b, backend="jax")
-        trgl_a = oe.contract('gpp->g', gl_a, backend="jax")
-        trgl_b = oe.contract('gpp->g', gl_b, backend="jax")
-        e2_0_1 = jnp.sum((trgl_a + trgl_b)**2) / 2
-        e2_0_2 = -(oe.contract('gpq,gqp->', gl_a, gl_a, backend="jax")
-                + oe.contract('gpq,gqp->', gl_b, gl_b, backend="jax")) / 2
-        e2_0 = e2_0_1 + e2_0_2
+        # gl_a = oe.contract("pr,gqr->gpq", green_a, chol_a, backend="jax")
+        # gl_b = oe.contract("pr,gqr->gpq", green_b, chol_b, backend="jax")
+        # trgl_a = oe.contract('gpp->g', gl_a, backend="jax")
+        # trgl_b = oe.contract('gpp->g', gl_b, backend="jax")
+        # e2_0_1 = jnp.sum((trgl_a + trgl_b)**2) / 2
+        # e2_0_2 = -(oe.contract('gpq,gqp->', gl_a, gl_a, backend="jax")
+        #         + oe.contract('gpq,gqp->', gl_b, gl_b, backend="jax")) / 2
+        # e2_0 = e2_0_1 + e2_0_2
 
         ############################ ci terms #############################
 
@@ -810,42 +810,92 @@ class ustoccsd2(uhf):
         e1_2 = e1_2_1 + e1_2_2  # <C2 psi|h1|walker>/<psi|walker>
 
         ###### two-body single excitations ######
-        e2_1_1 = o1 * e2_0
+        # e2_1_1 = o1 * e2_0
 
         # c_ia Gp_pa G_ir L_pr G_qs L_qs
-        lc1g_a = oe.contract("gpq,pq->g", chol_a, c1gpg_a, backend="jax")
-        lc1g_b = oe.contract("gpq,pq->g", chol_b, c1gpg_b, backend="jax")
-        e2_1_2 = -jnp.sum((lc1g_a + lc1g_b) * (trgl_a + trgl_b))
+        # lc1g_a = oe.contract("gpq,pq->g", chol_a, c1gpg_a, backend="jax")
+        # lc1g_b = oe.contract("gpq,pq->g", chol_b, c1gpg_b, backend="jax")
+        # e2_1_2 = -jnp.sum((lc1g_a + lc1g_b) * (trgl_a + trgl_b))
 
-        glc1gp_a = jnp.einsum("gpq,iq->gpi", gl_a, c1gp_a, optimize="optimal") # c_ia Gp_qa G_pr L_qr 
-        glc1gp_b = jnp.einsum("gpq,iq->gpi", gl_b, c1gp_b, optimize="optimal")
-        e2_1_3 = jnp.einsum("gpi,gip->", glc1gp_a, gl_a[:,:nocc_a,:], optimize="optimal") \
-                + jnp.einsum("gpi,gip->", glc1gp_b, gl_b[:,:nocc_b,:], optimize="optimal") # t_ia Gp_pa G_qr L_pr G_is L_qs
+        # glc1gp_a = jnp.einsum("gpq,iq->gpi", gl_a, c1gp_a, optimize="optimal") # c_ia Gp_qa G_pr L_qr 
+        # glc1gp_b = jnp.einsum("gpq,iq->gpi", gl_b, c1gp_b, optimize="optimal")
+        # e2_1_3 = jnp.einsum("gpi,gip->", glc1gp_a, gl_a[:,:nocc_a,:], optimize="optimal") \
+        #         + jnp.einsum("gpi,gip->", glc1gp_b, gl_b[:,:nocc_b,:], optimize="optimal") # t_ia Gp_pa G_qr L_pr G_is L_qs
         
-        e2_1 = e2_1_1 + e2_1_2 + e2_1_3 # <C1 psi|h2|walker> / <psi|walker>
+        # e2_1 = e2_1_1 + e2_1_2 + e2_1_3 # <C1 psi|h2|walker> / <psi|walker>
 
         ###### two-body double excitations ######
-        e2_2_1 = o2 * e2_0
+        # e2_2_1 = o2 * e2_0
 
         # ccGGGp G_qs L_ps
-        lc2ggg_a = oe.contract("gpr,qr->gpq", chol_a, 2*(c2ggg_aaa + c2ggg_aba), backend="jax")
-        lc2ggg_b = oe.contract("gpr,qr->gpq", chol_b, 2*(c2ggg_bbb + c2ggg_bab), backend="jax")
-        trlc2ggg_a = oe.contract("gpp->g", lc2ggg_a, backend="jax")
-        trlc2ggg_b = oe.contract("gpp->g", lc2ggg_b, backend="jax")
-        e2_2_2_c = -jnp.sum((trlc2ggg_a + trlc2ggg_b)*(trgl_a + trgl_b)) / 4
-        e2_2_2_e = (oe.contract("gpq,gpq->", gl_a, lc2ggg_a, backend="jax")
-                    + oe.contract("gpq,gpq->", gl_b, lc2ggg_b, backend="jax")) / 4
-        e2_2_2 = e2_2_2_c + e2_2_2_e
+        # lc2ggg_a = oe.contract("gpr,qr->gpq", chol_a, 2*(c2ggg_aaa + c2ggg_aba), backend="jax")
+        # lc2ggg_b = oe.contract("gpr,qr->gpq", chol_b, 2*(c2ggg_bbb + c2ggg_bab), backend="jax")
+        # trlc2ggg_a = oe.contract("gpp->g", lc2ggg_a, backend="jax")
+        # trlc2ggg_b = oe.contract("gpp->g", lc2ggg_b, backend="jax")
+        # e2_2_2_c = -jnp.sum((trlc2ggg_a + trlc2ggg_b)*(trgl_a + trgl_b)) / 4
+        # e2_2_2_e = (oe.contract("gpq,gpq->", gl_a, lc2ggg_a, backend="jax")
+        #             + oe.contract("gpq,gpq->", gl_b, lc2ggg_b, backend="jax")) / 4
+        # e2_2_2 = e2_2_2_c + e2_2_2_e
         
-        c1glgp_a = oe.contract("ip,gjp->gij", c1gp_a, gl_a[:,:nocc_a,:], backend="jax")
-        c1glgp_b = oe.contract("ip,gjp->gij", c1gp_b, gl_b[:,:nocc_b,:], backend="jax")
-        trc1glgp_a = oe.contract("gii->g", c1glgp_a, backend="jax")
-        trc1glgp_b = oe.contract("gii->g", c1glgp_b, backend="jax")
-        e2_2_3_c = jnp.sum((trc1glgp_a + trc1glgp_b)**2) / 2
-        e2_2_3_e = (oe.contract("gij,gji->", c1glgp_a, c1glgp_a, backend="jax")
-                    + oe.contract("gij,gji->", c1glgp_b, c1glgp_b, backend="jax")) / 2
-        e2_2_3 = e2_2_3_c - e2_2_3_e
+        # c1glgp_a = oe.contract("ip,gjp->gij", c1gp_a, gl_a[:,:nocc_a,:], backend="jax")
+        # c1glgp_b = oe.contract("ip,gjp->gij", c1gp_b, gl_b[:,:nocc_b,:], backend="jax")
+        # trc1glgp_a = oe.contract("gii->g", c1glgp_a, backend="jax")
+        # trc1glgp_b = oe.contract("gii->g", c1glgp_b, backend="jax")
+        # e2_2_3_c = jnp.sum((trc1glgp_a + trc1glgp_b)**2) / 2
+        # e2_2_3_e = (oe.contract("gij,gji->", c1glgp_a, c1glgp_a, backend="jax")
+        #             + oe.contract("gij,gji->", c1glgp_b, c1glgp_b, backend="jax")) / 2
+        # e2_2_3 = e2_2_3_c - e2_2_3_e
 
+        def scan_chol(carry, x):
+            chol_a_i, chol_b_i = x
+
+            gl_a_i = oe.contract("pr,qr->pq", green_a, chol_a_i, backend="jax")
+            gl_b_i = oe.contract("pr,qr->pq", green_b, chol_b_i, backend="jax")
+            trgl_a_i = oe.contract('pp->', gl_a_i, backend="jax")
+            trgl_b_i = oe.contract('pp->', gl_b_i, backend="jax")
+            e2_0_c_i = (trgl_a_i + trgl_b_i)**2 / 2
+            e2_0_e_i = -(oe.contract('pq,qp->', gl_a_i, gl_a_i, backend="jax")
+                        + oe.contract('pq,qp->', gl_b_i, gl_b_i, backend="jax")) / 2
+            e2_0_i = e2_0_c_i + e2_0_e_i
+            carry[0] += e2_0_i
+
+            c1gpgl_a = oe.contract("pr,qr->pq", c1gpg_a, chol_a_i, backend="jax")
+            c1gpgl_b = oe.contract("pr,qr->pq", c1gpg_b, chol_b_i, backend="jax")
+            trc1gpgl_a = oe.contract("pp->", c1gpgl_a, backend="jax")
+            trc1gpgl_b = oe.contract("pp->", c1gpgl_b, backend="jax")
+            e2_1_2_c_i = -(trc1gpgl_a + trc1gpgl_b) * (trgl_a_i + trgl_b_i)
+            e2_1_2_e_i = oe.contract("pq,qp->", c1gpgl_a, gl_a_i, backend="jax") \
+                    + oe.contract("pq,qp->", c1gpgl_b, gl_b_i, backend="jax") # t_ia Gp_pa G_is L_qs G_qr L_pr
+            e2_1_2_i =  e2_1_2_c_i + e2_1_2_e_i
+            carry[1] += e2_1_2_i
+
+            lc2ggg_a_i = oe.contract("pr,qr->pq", chol_a_i, 2*(c2ggg_aaa + c2ggg_aba), backend="jax")
+            lc2ggg_b_i = oe.contract("pr,qr->pq", chol_b_i, 2*(c2ggg_bbb + c2ggg_bab), backend="jax")
+            trlc2ggg_a_i = oe.contract("pp->", lc2ggg_a_i, backend="jax")
+            trlc2ggg_b_i = oe.contract("pp->", lc2ggg_b_i, backend="jax")
+            e2_2_2_c_i = -(trlc2ggg_a_i + trlc2ggg_b_i)*(trgl_a_i + trgl_b_i) / 4
+            e2_2_2_e_i = (oe.contract("pq,pq->", gl_a_i, lc2ggg_a_i, backend="jax")
+                        + oe.contract("pq,pq->", gl_b_i, lc2ggg_b_i, backend="jax")) / 4
+            e2_2_2_i = e2_2_2_c_i + e2_2_2_e_i
+            carry[2] += e2_2_2_i
+            
+            c1glgp_a_i = oe.contract("ip,jp->ij", c1gp_a, gl_a_i[:nocc_a,:], backend="jax")
+            c1glgp_b_i = oe.contract("ip,jp->ij", c1gp_b, gl_b_i[:nocc_b,:], backend="jax")
+            trc1glgp_a_i = oe.contract("ii->", c1glgp_a_i, backend="jax")
+            trc1glgp_b_i = oe.contract("ii->", c1glgp_b_i, backend="jax")
+            e2_2_3_c_i = (trc1glgp_a_i + trc1glgp_b_i)**2 / 2
+            e2_2_3_e_i = (oe.contract("ij,ji->", c1glgp_a_i, c1glgp_a_i, backend="jax")
+                        + oe.contract("ij,ji->", c1glgp_b_i, c1glgp_b_i, backend="jax")) / 2
+            e2_2_3_i = e2_2_3_c_i - e2_2_3_e_i
+            carry[3] += e2_2_3_i
+            return carry, 0.0
+
+        [e2_0, e2_1_2, e2_2_2, e2_2_3], _ = lax.scan(scan_chol, [0.0, 0.0, 0.0, 0.0], (chol_a, chol_b))
+
+        e2_1_1 = o1 * e2_0
+        e2_1 = e2_1_1 + e2_1_2
+
+        e2_2_1 = o2 * e2_0
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3 # <C2 psi|h2|walker>/<psi|walker>
 
         energy = h0 + (e1_0 + e2_0 + e1_1 + e2_1 + e1_2 + e2_2) / (1 + o1 + o2)
