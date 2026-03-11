@@ -483,8 +483,8 @@ class ustoccsd2(uhf):
         hg_b = oe.contract("pq,pq->", h1_b, green_b, backend="jax")
         e1_0 = hg_a + hg_b
 
-        gl_a = oe.contract("pr,gqr->gpq", green_a, chol_a, backend="jax")
-        gl_b = oe.contract("pr,gqr->gpq", green_b, chol_b, backend="jax")
+        # gl_a = oe.contract("pr,gqr->gpq", green_a, chol_a, backend="jax")
+        # gl_b = oe.contract("pr,gqr->gpq", green_b, chol_b, backend="jax")
         
         # reduce memory cost in scan_chol
         # trgl_a = oe.contract('gpp->g', gl_a, backend="jax")
@@ -527,7 +527,9 @@ class ustoccsd2(uhf):
         # e2_2_2 = e2_2_2_c + e2_2_2_e
 
         def scan_chol(carry, x):
-            chol_a_i, chol_b_i, gl_a_i, gl_b_i = x
+            chol_a_i, chol_b_i = x
+            gl_a_i = oe.contract("pr,qr->pq", green_a, chol_a_i, backend="jax")
+            gl_b_i = oe.contract("pr,qr->pq", green_b, chol_b_i, backend="jax")
             trgl_a_i = oe.contract('pp->', gl_a_i, backend="jax")
             trgl_b_i = oe.contract('pp->', gl_b_i, backend="jax")
 
@@ -556,7 +558,7 @@ class ustoccsd2(uhf):
             carry[2] += e2_2_3_i
             return carry, 0.0
 
-        [e2_0, e2_2_2, e2_2_3], _ = lax.scan(scan_chol, [0.0, 0.0, 0.0], (chol_a, chol_b, gl_a, gl_b))
+        [e2_0, e2_2_2, e2_2_3], _ = lax.scan(scan_chol, [0.0, 0.0, 0.0], (chol_a, chol_b))
 
         e2_2_1 = o2 * e2_0
         e2_2 = e2_2_1 + e2_2_2 + e2_2_3 # <C2 psi|h2|walker>/<psi|walker>

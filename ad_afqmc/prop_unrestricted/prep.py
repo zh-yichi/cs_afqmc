@@ -33,7 +33,7 @@ def prep_afqmc(
         if cc.frozen is not None:
             norb_frozen = cc.frozen
         if isinstance(cc, UCCSD):
-            spin_type = 'unrestricted'
+            # spin_type = 'unrestricted'
             t1a = np.array(cc.t1[0])
             t1b = np.array(cc.t1[1])
             t2aa, t2ab, t2bb = cc.t2
@@ -51,13 +51,18 @@ def prep_afqmc(
                 t2bb=t2bb,
             )
         elif isinstance(cc, CCSD):
-            spin_type = 'restricted'
+            # spin_type = 'restricted'
             t2 = cc.t2
             t2 = t2.transpose(0, 2, 1, 3)
             t1 = np.array(cc.t1)
             np.savez(amp_file, t1=t1, t2=t2)
     else:
         mf = mf_or_cc
+
+    if isinstance(mf, scf.rhf.RHF):
+        spin_type = 'restricted'
+    elif isinstance(mf, scf.uhf.UHF):
+        spin_type = 'unrestricted'
 
     mol = mf.mol
     # choose the orbital basis
