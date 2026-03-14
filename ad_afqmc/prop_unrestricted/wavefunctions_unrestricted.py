@@ -967,7 +967,7 @@ class uccsd_pt(uhf):
         e0 = h0 + e1_0 + e2_0 # h0 + <HF|h1+h2|walker>/<HF|walker>
         e1 = e1_1 + e1_2 + e2_1 + e2_2 # <HF|(T1+T2)(h1+h2)|walker>/<HF|walker>
 
-        return jnp.real(t), jnp.real(e0), jnp.real(e1)
+        return t, e0, e1
 
     def calc_energy_pt(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
         t, e0, e1 = vmap(
@@ -1304,7 +1304,7 @@ class uccsd_pt2(uhf):
         e0 = (e1_0 + e2_0) * t1 # <exp(T1)HF|h1+h2|walker>/<HF|walker>
         e1 = (e1_2 + e2_2) * t1 # <exp(T1)HF|T2 (h1+h2)|walker>/<HF|walker>
 
-        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
+        return t1, t2, e0, e1
 
     # @singledispatchmethod
     # def calc_energy_pt(self, walkers, ham_data: dict, wave_data: dict) -> jax.Array:
@@ -1440,7 +1440,7 @@ class uccsd_pt_ad(uhf):
         e0 = self._calc_energy(walker_up,walker_dn,ham_data,wave_data)
         e1 = (d_exp1 + d2_exp2)
 
-        return jnp.real(t), jnp.real(e0), jnp.real(e1)
+        return t, e0, e1
 
     def calc_energy_pt(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
         t, e0, e1 = vmap(
@@ -1654,7 +1654,7 @@ class uccsd_pt2_ad(uhf):
 
         e1 = d_exp1_1 + d2_exp2_1
         
-        return jnp.real(t1), jnp.real(t2), jnp.real(e0), jnp.real(e1)
+        return t1, t2, e0, e1
 
     def calc_energy_pt(self, walkers: list, ham_data: dict, wave_data: dict) -> jax.Array:
         t1, t2, e0, e1 = vmap(

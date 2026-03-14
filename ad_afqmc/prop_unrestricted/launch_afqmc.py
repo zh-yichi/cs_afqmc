@@ -4,7 +4,7 @@ from ad_afqmc import config
 
 def run_afqmc(options,
               option_file='options.bin',
-              script='run_afqmc_sampling_nompi.py'
+              script=None,
               ):
 
     with open(option_file, 'wb') as f:
@@ -22,23 +22,25 @@ def run_afqmc(options,
         # mpi_prefix = "mpirun "
         # if nproc is not None:
         #     mpi_prefix += f"-np {nproc} "
-
-    if  'pt' in options['trial']:
-        if '2' in options['trial']:
-            script='run_afqmc_ccsd_pt2_nompi.py'
+    if script is None:
+        if  'pt' in options['trial']:
+            if '2' in options['trial']:
+                script='run_afqmc_ccsd_pt2_nompi.py'
+            else:
+                script='run_afqmc_ccsd_pt_nompi.py'
         else:
-            script='run_afqmc_ccsd_pt_nompi.py'
+            script='run_afqmc_sampling_nompi.py'
 
-    if options["trial"] == 'cisd_hf':
-        script='run_afqmc_mixed_nompi.py'
+    # if options["trial"] == 'cisd_hf':
+    #     script='run_afqmc_mixed_nompi.py'
 
-    if options["group"]:
-        script='run_afqmc_group_sampling_nompi.py'
+    # if options["group"]:
+    #     script='run_afqmc_group_sampling_nompi.py'
 
-    if options["free_projection"]:
-        script = 'run_fp_afqmc_sampling_nompi.py'
-        if options['fp_abs']:
-            script = 'run_fpabs_afqmc_sampling_nompi.py'
+    # if options["free_projection"]:
+    #     script = 'run_fp_afqmc_sampling_nompi.py'
+    #     if options['fp_abs']:
+    #         script = 'run_fpabs_afqmc_sampling_nompi.py'
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)

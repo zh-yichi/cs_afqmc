@@ -889,12 +889,6 @@ class sampler_pt(sampler):
         t, e0, e1 = trial.calc_energy_pt(
             prop_data["walkers"],ham_data,wave_data)
         
-        # e0 = jnp.where(
-        #     jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-        #     prop_data["e_estimate"],
-        #     e0,
-        # )
-        
         wt = prop_data["weights"]
 
         blk_wt = jnp.sum(wt)
@@ -903,11 +897,6 @@ class sampler_pt(sampler):
         blk_e1 = jnp.sum(e1*wt)/blk_wt
 
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-
-        # blk_ept = blk_e0 + blk_e1 + blk_t * (blk_e0 - ham_data['h0'])
-        # prop_data["pop_control_ene_shift"] = (
-        #         0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
-        #     )
 
         return prop_data, (blk_wt, blk_t, blk_e0, blk_e1)
 
@@ -958,7 +947,7 @@ class sampler_pt(sampler):
         e0 = jnp.sum(blk_e0 * blk_wt) / wt
         e1 = jnp.sum(blk_e1 * blk_wt) / wt
 
-        return prop_data, (wt, t, e0, e1)
+        return prop_data, (wt, t, e0, e1) #(wt.real, t.real, e0.real, e1.real)
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
@@ -1002,8 +991,7 @@ class sampler_pt2(sampler):
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         t1, t2, e0, e1 = trial.calc_energy_pt(
             prop_data["walkers"],ham_data,wave_data)
-        # ehf = jnp.real(trial.calc_energy(
-        #      prop_data["walkers"],ham_data,wave_data))
+
         
         wt = prop_data["weights"]
 
@@ -1012,15 +1000,8 @@ class sampler_pt2(sampler):
         blk_t2 = jnp.sum(t2*wt)/blk_wt
         blk_e0 = jnp.sum(e0*wt)/blk_wt
         blk_e1 = jnp.sum(e1*wt)/blk_wt
-        # blk_ehf = jnp.sum(e_hf*wt)/blk_wt
 
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-
-        # blk_ept = (ham_data['h0'] + 1/blk_t1 * blk_e0 
-        #            + 1/blk_t1 * blk_e1 - 1/blk_t1**2 * blk_t2 * blk_e0)
-        # prop_data["pop_control_ene_shift"] = (
-        #         0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ept
-        #     )
 
         return prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1)
 
@@ -1071,7 +1052,6 @@ class sampler_pt2(sampler):
         t2 = jnp.sum(blk_t2 * blk_wt) / wt
         e0 = jnp.sum(blk_e0 * blk_wt) / wt
         e1 = jnp.sum(blk_e1 * blk_wt) / wt
-        # ehf = jnp.sum(blk_ehf * blk_wt) / wt
 
         return prop_data, (wt, t1, t2, e0, e1)
 

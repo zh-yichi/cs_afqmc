@@ -23,7 +23,7 @@ rank = comm.Get_rank()
 
 print = partial(print, flush=True)
 
-ham_data, ham, prop, trial, wave_data, sampler, observable, options = (prep._prep_afqmc())
+ham_data, ham, prop, trial, wave_data, sampler, options = (prep._prep_afqmc())
 
 init_time = time.time()
 comm = MPI.COMM_WORLD
@@ -52,9 +52,9 @@ prop_data["n_killed_walkers"] = 0
 t, e0, e1 = trial.calc_energy_pt(
     prop_data['walkers'], ham_data, wave_data)
 
-ept_sp = e0 + e1- t*(e0-h0)
-ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
-prop_data["e_estimate"] = ept
+ept = (e0 + e1- t*(e0-h0))[0]
+# ept = jnp.array(jnp.sum(ept_sp) / prop.n_walkers)
+prop_data["e_estimate"] = ept.real
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
 
 comm.Barrier()
@@ -62,7 +62,7 @@ if rank == 0:
     print(f'# Propagating with {options["n_walkers"]*size} walkers')
     print("# Equilibration sweeps:")
     print("#   Iter \t Energy_HF \t Energy_PT \t Walltime")
-    print(f"  {0:5d} \t {e0[0]:.6f} \t {ept:.6f} \t {time.time() - init_time:.2f}")
+    print(f"  {0:5d} \t {e0[0].real:.6f} \t {ept.real:.6f} \t {time.time() - init_time:.2f}")
 comm.Barrier()
 
 sampler_eq = sampling.sampler_pt(
