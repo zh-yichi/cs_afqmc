@@ -931,7 +931,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     for n, i in enumerate(run_frg_list):
         with open(f"lnoafqmc.out{i+1}", "r") as rf:
             for line in rf:
-                if "Ept (direct observation)" in line:
+                if "Energy (blocking)" in line:
                     eorb_pt2[n] = float(line.split()[-3])
                     eorb_pt2_err[n] = float(line.split()[-1])
                 if "total run time" in line:
@@ -944,7 +944,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     norb = (np.mean(norb_list[:,0]),np.mean(norb_list[:,1]))
     e_mp2 = sum(eorb_mp2_cc[:,0])
     e_ccsd = sum(eorb_mp2_cc[:,1])
-    e_ccsd_pt = sum(eorb_mp2_cc[:,2])
+    # e_ccsd_pt = sum(eorb_mp2_cc[:,2])
     e_afqmc_pt2 = sum(eorb_pt2)
     e_afqmc_pt2_err = np.sqrt(sum(eorb_pt2_err**2))
     tot_time = sum(run_time)
@@ -963,8 +963,8 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         print(f'# LNO Average Number of Basis: ({norb[0]:.1f},{norb[1]:.1f})',file=out_file)
         print(f'# LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
         print(f'# LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
-        print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
-        print(f'# LNO-AFQMC/CCSD_PT Energy: {e_afqmc_pt2:.6f} +/- {e_afqmc_pt2_err:.6f}',file=out_file)
+        # print(f'# LNO-CCSD(T) Energy: {e_ccsd_pt:.8f}',file=out_file)
+        print(f'# LNO-AFQMC/pt2CCSD Energy: {e_afqmc_pt2:.6f} +/- {e_afqmc_pt2_err:.6f}',file=out_file)
         print(f'# MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
         print(f"# total run time: {tot_time:.2f}",file=out_file)
 
