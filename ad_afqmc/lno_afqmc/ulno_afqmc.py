@@ -600,18 +600,6 @@ def _prep_afqmc(option_file="options.bin",
     options["n_batch"] = options.get("n_batch", 1)
     options['use_gpu'] = options.get("use_gpu", True)
 
-    # if options['use_gpu']:
-    #     config.afqmc_config["use_gpu"] = True
-
-    # config.setup_jax()
-    # MPI = config.setup_comm()
-    # comm = MPI.COMM_WORLD
-    # size = comm.Get_size()
-    # rank = comm.Get_rank()
-
-    # if rank == 0:
-    #     print(f"# Number of MPI ranks: {size}\n#")
-
     with h5py.File(chol_file, "r") as fh5:
         [nelec_a,nelec_b,nmo_a,nmo_b,nchol] = fh5["header"]
         h0 = jnp.array(fh5.get("energy_core"))
@@ -769,8 +757,10 @@ def _prep_afqmc(option_file="options.bin",
     return ham_data, prop, trial, wave_data, sampler, options
 
 import os
-def run_lnoafqmc(options,nproc=None,
-              option_file='options.bin'):
+def run_lnoafqmc(options,
+                 nproc = None,
+                 option_file ='options.bin',
+                 script = None):
 
     with open(option_file, 'wb') as f:
         pickle.dump(options, f)
@@ -788,13 +778,14 @@ def run_lnoafqmc(options,nproc=None,
         mpi_prefix = "mpirun "
         if nproc is not None:
             mpi_prefix += f"-np {nproc} "
-    # if  'cc' in options['trial'] and 'pt' in options['trial']:
-    if 'pt2' in options['trial']:
-        script='ccsd_pt2/run_uafqmc.py'
-    elif 'pt' in options['trial']:
-        script='ccsd_pt/run_uafqmc.py'
-    else:
-        raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
+    
+    if script is None:
+        if 'pt2' in options['trial']:
+            script='ccsd_pt2/run_uafqmc_nompi.py'
+        elif 'pt' in options['trial']:
+            script='ccsd_pt/run_uafqmc.py'
+        else:
+            raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
     
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
@@ -802,7 +793,7 @@ def run_lnoafqmc(options,nproc=None,
     print(f'# AFQMC script: {script}')
     
     os.system(
-        f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
+        #f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
         f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc.out"
     )
 

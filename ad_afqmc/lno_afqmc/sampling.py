@@ -298,26 +298,24 @@ class sampler_pt2(sampler):
             = trial.calc_eorb_pt2(prop_data["walkers"],ham_data,wave_data)
         
         e0 = jnp.real(e0)
-        e0 = jnp.where(
-            jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt), 
-            prop_data["e_estimate"], e0)
+        e0 = jnp.where(jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt), prop_data["e_estimate"], e0)
         
-        eorb = jnp.real(t1olp*eorb)
-        t2eorb = jnp.real(t1olp*t2eorb)
-        t2orb = jnp.real(t1olp*t2orb)
-        e0bar = jnp.real(t1olp*e0bar)
-        t1olp = jnp.real(t1olp)
+        eorb = t1olp * eorb
+        t2eorb = t1olp * t2eorb
+        t2orb = t1olp * t2orb
+        e0bar = t1olp * e0bar
+        # t1olp = t1olp
 
         # wt = prop_data["weights"] * t1olp
         wt = prop_data["weights"]
 
         blk_wt = jnp.sum(wt)
-        blk_e0 = jnp.sum(e0*wt)/blk_wt
-        blk_eorb = jnp.sum(eorb*wt)/blk_wt
-        blk_t2eorb = jnp.sum(t2eorb*wt)/blk_wt
-        blk_t2orb = jnp.sum(t2orb*wt)/blk_wt
-        blk_e0bar = jnp.sum(e0bar*wt)/blk_wt
-        blk_t1olp = jnp.sum(t1olp*wt)/blk_wt
+        blk_e0 = jnp.sum(e0 * wt) / blk_wt
+        blk_eorb = jnp.sum(eorb * wt) / blk_wt
+        blk_t2eorb = jnp.sum(t2eorb * wt) / blk_wt
+        blk_t2orb = jnp.sum(t2orb * wt) / blk_wt
+        blk_e0bar = jnp.sum(e0bar * wt) / blk_wt
+        blk_t1olp = jnp.sum(t1olp * wt) / blk_wt
 
         prop_data["pop_control_ene_shift"] = \
             0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_e0

@@ -285,21 +285,40 @@ class uhf(wave_function_unrestricted):
         rot_chola = ham_data["chol"][0].reshape(-1,norba,norba)[:,:nocca,nocca:]
         rot_cholb = ham_data["chol"][1].reshape(-1,norbb,norbb)[:,:noccb,noccb:]
         greena, greenb = self._calc_green(walker_up, walker_dn, wave_data)
-        lga = oe.contract('gia,ka->gik', rot_chola, greena[:nocca,nocca:], backend="jax")
-        lgb = oe.contract('gia,ka->gik', rot_cholb, greenb[:noccb,noccb:], backend="jax")
-        tr_lga = oe.contract('gii->g',lga, backend="jax")
-        tr_lgb = oe.contract('gii->g',lgb, backend="jax")
-        tr_lg = tr_lga + tr_lgb
-        e_col = oe.contract('g,g->', tr_lg, tr_lg, backend="jax") / 2
-        e_exc = (oe.contract('gij,gji->',lga,lga, backend="jax")
-                 + oe.contract('gij,gji->',lgb,lgb, backend="jax")) / 2
-        ecorr = e_col - e_exc
+
+        # lga = oe.contract('gia,ka->gik', rot_chola, greena[:nocca,nocca:], backend="jax")
+        # lgb = oe.contract('gia,ka->gik', rot_cholb, greenb[:noccb,noccb:], backend="jax")
+        # tr_lga = oe.contract('gii->g',lga, backend="jax")
+        # tr_lgb = oe.contract('gii->g',lgb, backend="jax")
+        # tr_lg = tr_lga + tr_lgb
+        # e_col = oe.contract('g,g->', tr_lg, tr_lg, backend="jax") / 2
+        # e_exc = (oe.contract('gij,gji->',lga,lga, backend="jax")
+        #          + oe.contract('gij,gji->',lgb,lgb, backend="jax")) / 2
+        # ecorr = e_col - e_exc
+
+        def scan_chol(carry,x):
+            rot_chola_i, rot_cholb_i = x
+            lga_i = oe.contract('ia,ka->ik', rot_chola_i, greena[:nocca,nocca:], backend="jax")
+            lgb_i = oe.contract('ia,ka->ik', rot_cholb_i, greenb[:noccb,noccb:], backend="jax")
+            tr_lga_i = oe.contract('ii->',lga_i, backend="jax")
+            tr_lgb_i = oe.contract('ii->',lgb_i, backend="jax")
+            tr_lg_i = tr_lga_i + tr_lgb_i
+            e_col_i = tr_lg_i**2 / 2
+            e_exc_i = (oe.contract('ij,ji->',lga_i,lga_i, backend="jax")
+                       + oe.contract('ij,ji->',lgb_i,lgb_i, backend="jax")) / 2
+            ecorr_i = e_col_i - e_exc_i
+            carry += ecorr_i
+            return carry, 0.0
+        
+        ecorr, _ = lax.scan(scan_chol, 0.0, (rot_chola, rot_cholb))
+
         # lglg_aa = oe.contract('g,g->',tr_lga,tr_lga, backend="jax") \
         #       - oe.contract('gij,gji->',lga,lga, backend="jax")
         # lglg_ab = oe.contract('g,g->',tr_lga,tr_lgb, backend="jax")*2
         # lglg_bb = oe.contract('g,g->',tr_lgb,tr_lgb, backend="jax") \
         #       - oe.contract('gij,gji->',lgb,lgb, backend="jax")
         # ecorr = 0.5*(lglg_aa + lglg_ab + lglg_bb)
+
         return e0 + ecorr
     
     @partial(jit, static_argnums=0)
@@ -1196,14 +1215,28 @@ class uccsd_pt2_alpha(uccsd_pt2):
         e1a = oe.contract('ia,ia->',gfa[:nocca,nocca:],rot_focka[:nocca,nocca:], backend="jax")
         e1 = e1a
         
-        lga = oe.contract('gia,ka->gik', rot_chola[:,:nocca,nocca:], gfa[:nocca,nocca:], backend="jax")
-        lgb = oe.contract('gia,ka->gik', rot_cholb[:,:noccb,noccb:], gfb[:noccb,noccb:], backend="jax")
-        e2aa = oe.contract('gik,ik,gjj->', lga, prjloa, lga, backend="jax") \
-            - oe.contract('gij,gjk,ik->',lga, lga, prjloa, backend="jax")
-        e2ab = oe.contract('gik,ik,gjj->', lga, prjloa, lgb, backend="jax")
-        e2 = 0.5 * (e2aa + e2ab)
+        # lga = oe.contract('gia,ka->gik', rot_chola[:,:nocca,nocca:], gfa[:nocca,nocca:], backend="jax")
+        # lgb = oe.contract('gia,ka->gik', rot_cholb[:,:noccb,noccb:], gfb[:noccb,noccb:], backend="jax")
+        # e2aa = oe.contract('gik,ik,gjj->', lga, prjloa, lga, backend="jax") \
+        #     - oe.contract('gij,gjk,ik->',lga, lga, prjloa, backend="jax")
+        # e2ab = oe.contract('gik,ik,gjj->', lga, prjloa, lgb, backend="jax")
+        # e2 = 0.5 * (e2aa + e2ab)
+
+        def scan_chol(carry, x):
+            rot_chola_i, rot_cholb_i = x
+            lga_i = oe.contract('ia,ka->ik', rot_chola_i[:nocca,nocca:], gfa[:nocca,nocca:], backend="jax")
+            lgb_i = oe.contract('ia,ka->ik', rot_cholb_i[:noccb,noccb:], gfb[:noccb,noccb:], backend="jax")
+            e2aa_i = oe.contract('ik,ik,jj->', lga_i, prjloa, lga_i, backend="jax") \
+                    - oe.contract('ij,jk,ik->', lga_i, lga_i, prjloa, backend="jax")
+            e2ab_i = oe.contract('ik,ik,jj->', lga_i, prjloa, lgb_i, backend="jax")
+            e2_i = 0.5 * (e2aa_i + e2ab_i)
+            carry += e2_i
+            return carry, 0.0
+        
+        e2, _ = lax.scan(scan_chol, 0.0, (rot_chola, rot_cholb))
         
         e_corr = e0 + e1 + e2
+
         return e_corr
 
     @partial(jit, static_argnums=0)
@@ -1371,14 +1404,29 @@ class uccsd_pt2_beta(uccsd_pt2):
         e1b = oe.contract('ia,ia->',gfb[:noccb,noccb:],rot_fockb[:noccb,noccb:], backend="jax")
         e1 = e1b
         
-        lga = oe.contract('gia,ka->gik', rot_chola[:,:nocca,nocca:], gfa[:nocca,nocca:], backend="jax")
-        lgb = oe.contract('gia,ka->gik', rot_cholb[:,:noccb,noccb:], gfb[:noccb,noccb:], backend="jax")
-        e2ba = oe.contract('gik,ik,gjj->', lgb, prjlob, lga, backend="jax")
-        e2bb = oe.contract('gik,ik,gjj->', lgb, prjlob, lgb, backend="jax") \
-            - oe.contract('gij,gjk,ik->',lgb, lgb, prjlob, backend="jax")
-        e2 = 0.5 * (e2ba + e2bb)
+        # never build a new 3-index integral for each walker!!
+        # lga = oe.contract('gia,ka->gik', rot_chola[:,:nocca,nocca:], gfa[:nocca,nocca:], backend="jax")
+        # lgb = oe.contract('gia,ka->gik', rot_cholb[:,:noccb,noccb:], gfb[:noccb,noccb:], backend="jax")
+        # e2ba = oe.contract('gik,ik,gjj->', lgb, prjlob, lga, backend="jax")
+        # e2bb = oe.contract('gik,ik,gjj->', lgb, prjlob, lgb, backend="jax") \
+        #     - oe.contract('gij,gjk,ik->',lgb, lgb, prjlob, backend="jax")
+        # e2 = 0.5 * (e2ba + e2bb)
+        
+        def scan_chol(carry, x):
+            rot_chola_i, rot_cholb_i = x
+            lga_i = oe.contract('ia,ka->ik', rot_chola_i[:nocca,nocca:], gfa[:nocca,nocca:], backend="jax")
+            lgb_i = oe.contract('ia,ka->ik', rot_cholb_i[:noccb,noccb:], gfb[:noccb,noccb:], backend="jax")
+            e2ba_i = oe.contract('ik,ik,jj->', lgb_i, prjlob, lga_i, backend="jax")
+            e2bb_i = oe.contract('ik,ik,jj->', lgb_i, prjlob, lgb_i, backend="jax") \
+                    - oe.contract('ij,jk,ik->',lgb_i, lgb_i, prjlob, backend="jax")
+            e2_i = 0.5 * (e2ba_i + e2bb_i)
+            carry += e2_i
+            return carry, 0.0
+        
+        e2, _ = lax.scan(scan_chol, 0.0, (rot_chola, rot_cholb))
         
         e_corr = e0 + e1 + e2
+
         return e_corr
 
     @partial(jit, static_argnums=0)

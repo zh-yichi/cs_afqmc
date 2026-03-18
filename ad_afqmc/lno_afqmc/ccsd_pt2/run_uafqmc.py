@@ -26,8 +26,7 @@ init_time = time.time()
 
 print = partial(print, flush=True)
 
-ham_data, prop, trial, wave_data, sampler, options = (
-    ulno_afqmc._prep_afqmc())
+ham_data, prop, trial, wave_data, sampler, options = (ulno_afqmc._prep_afqmc())
 
 if rank == 0:
     print(f"# norb: {trial.norb}")
