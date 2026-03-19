@@ -37,10 +37,10 @@ def run_afqmc(options,
     # if options["group"]:
     #     script='run_afqmc_group_sampling_nompi.py'
 
-    # if options["free_projection"]:
-    #     script = 'run_fp_afqmc_sampling_nompi.py'
-    #     if options['fp_abs']:
-    #         script = 'run_fpabs_afqmc_sampling_nompi.py'
+    if options["free_projection"]:
+        script = 'run_fp_afqmc_sampling.py'
+        # if options['fp_abs']:
+        #     script = 'run_fpabs_afqmc_sampling_nompi.py'
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)

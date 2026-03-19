@@ -532,6 +532,12 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
 
     write_dqmc(h1e,[h1mod_a,h1mod_b],[cderi_a, cderi_b],
                nelec,ncas,enuc,mf.e_tot,filename=chol_file)
+    
+    # Clean up all large arrays before returning
+    del cderi_clas, cderi_a, cderi_b
+    del h1e, h1mod_a, h1mod_b
+    del clas_coeff, a2c, b2c
+    del v0_a, v0_b
 
     return nelec, ncas
 
@@ -885,7 +891,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
             mcc = mcc.set(**mlno.kwargs_imp)
         time0 = time.perf_counter()
         eorb_mp2_cc[ifrag], t1, t2 =\
-            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t)
+            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t) # <<< this is on CPU
         time1 = time.perf_counter()
         
         prja = uocc_loc[0] @ uocc_loc[0].T.conj()
@@ -897,9 +903,9 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         print(f'# LNO-CCSD(T) Orbital Energy: {eorb_mp2_cc[ifrag][2]:.8f}')
         print(f"# LNO-CCSD time: {time1 - time0:.6f} s")
         
-        from mpi4py import MPI
-        if not MPI.Is_finalized():
-            MPI.Finalize()
+        # from mpi4py import MPI
+        # if not MPI.Is_finalized():
+        #     MPI.Finalize()
         
         options["trial"] = trial
         if 'ad' not in options["trial"]:
@@ -917,7 +923,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
             = prep_afqmc(mf,lno_coeff,t1,t2,frozen,prjlo,options,chol_cut=chol_cut,use_df=use_df)
-        run_lnoafqmc(options,nproc)
+        run_lnoafqmc(options,nproc) # <<< QMC propagation of a fragment
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
     # finish lno loop
