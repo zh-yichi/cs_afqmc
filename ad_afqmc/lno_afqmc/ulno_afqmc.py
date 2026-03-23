@@ -5,9 +5,9 @@ from jax import numpy as jnp
 from jax import random
 from pyscf.cc.ccsd import CCSD
 from pyscf.cc.uccsd import UCCSD
-from pyscf import lib, df, mp
+from pyscf import lib, mp
 from pyscf.lno import ulnoccsd
-from ad_afqmc import config, pyscf_interface
+from ad_afqmc import config
 from functools import partial
 from ad_afqmc.lno_afqmc import propagation, sampling
 from ad_afqmc.lno_afqmc import wavefunctions_unrestreicted as ulno_wavefunctions
@@ -15,9 +15,9 @@ from collections.abc import Iterable
 import opt_einsum as oe
 import time
 print = partial(print, flush=True)
-from functools import reduce
+# from functools import reduce
 
-def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact, ccsd_t=False):
+def ulno_ccsd(mcc, mo_coeff, uocc_loc, mo_occ, maskact): #, ccsd_t=False):
 
     occidxa = mo_occ[0]>1e-10
     occidxb = mo_occ[1]>1e-10
@@ -126,7 +126,7 @@ def jk_from_cderi(cderi, dm_a, dm_b):
 
     return vj, vk_a, vk_b
 
-def get_veff2(mf, dm):
+def get_veff_gpu(mf, dm):
     dm_a, dm_b = dm
     dm_a = jnp.array(dm_a)
     dm_b = jnp.array(dm_b)
@@ -175,7 +175,7 @@ def h1e_uas(mf, mo_coeff, ncas, ncore):
         # core_dm = (mo_core[0] @ mo_core[0].T, 
         #            mo_core[1] @ mo_core[1].T)
         time0 = time.perf_counter()
-        corevhf = get_veff2(mf, core_dm)
+        corevhf = get_veff_gpu(mf, core_dm)
         # corevhf = get_veff(mf, core_dm)
         time1 = time.perf_counter()
         energy_core += oe.contract('ij,ji', core_dm[0], hcore[0], backend='jax')
@@ -423,9 +423,10 @@ def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
             time4 = time.perf_counter()
             for cderi in mf.with_df.loop():
                 cderi = lib.unpack_tril(cderi, axis=-1)
-                cderi = cderi2mo_cpu(cderi, clas_coeff)
+                cderi = jnp.array(cderi)
+                cderi = cderi2mo_gpu(cderi, clas_coeff)
                 p0, p1 = p1, p1 + cderi.shape[0]
-                cderi_clas[p0:p1] = cderi
+                cderi_clas[p0:p1] = np.array(cderi)
                 # cderi1 = cderi2mo_cpu(cderi, mo_acta)
                 # cderi2 = cderi2mo_cpu(cderi, mo_actb)
                 # p0, p1 = p1, p1 + cderi.shape[0]
@@ -764,7 +765,7 @@ def _prep_afqmc(option_file="options.bin",
 
 import os
 def run_lnoafqmc(options,
-                 nproc = None,
+                #  nproc = None,
                  option_file ='options.bin',
                  script = None):
 
@@ -777,21 +778,21 @@ def run_lnoafqmc(options,
         config.afqmc_config = {"use_gpu": True}
         config.setup_jax()
         gpu_flag = "--use_gpu"
-        mpi_prefix = ""
+        # mpi_prefix = ""
     else:
         print(f'# running AFQMC on CPU')
         gpu_flag = ""
-        mpi_prefix = "mpirun "
-        if nproc is not None:
-            mpi_prefix += f"-np {nproc} "
+        # mpi_prefix = "mpirun "
+        # if nproc is not None:
+        #     mpi_prefix += f"-np {nproc} "
     
     if script is None:
         if 'pt2' in options['trial']:
             script='ccsd_pt2/run_uafqmc_nompi.py'
-        elif 'pt' in options['trial']:
-            script='ccsd_pt/run_uafqmc.py'
+        # elif 'pt' in options['trial']:
+        #     script='ccsd_pt/run_uafqmc.py'
         else:
-            raise NotImplementedError("Only support CCSD_pt and CCSD_pt2 trial.")
+            raise NotImplementedError("Only support pt2CCSD trial.")
     
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
@@ -799,14 +800,15 @@ def run_lnoafqmc(options,
     print(f'# AFQMC script: {script}')
     
     os.system(
+        f"python {script} {gpu_flag} |tee afqmc.out"
         #f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
-        f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc.out"
+        # f"{mpi_prefix} python {script} {gpu_flag} |tee afqmc.out"
     )
 
 def run_afqmc(mf, options, lo_coeff, frag_lolist,
               nfrozen = 0, thresh = 1e-6, chol_cut = 1e-5, emp2_tot = None,
               use_df = False, lno_type = ['1h']*2, run_frg_list = None, 
-              nproc = None, fast = False, ccsd_t=False):
+              fast = False, ccsd_t=False):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
@@ -883,7 +885,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
 
         mo_occ = mlno.mo_occ
         frozen, maskact = ulnoccsd.get_maskact(frozen, [mo_occ[0].size, mo_occ[1].size])
-        mcc = ulnoccsd.UCCSD(mf, mo_coeff=lno_coeff, frozen=frozen).set(verbose=4)
+        mcc = ulnoccsd.UCCSD(mf, mo_coeff=lno_coeff, frozen=frozen).set(verbose=3)
         mcc._s1e = mlno._s1e
         mcc._h1e = mlno._h1e
         mcc._vhf = mlno._vhf
@@ -891,7 +893,7 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
             mcc = mcc.set(**mlno.kwargs_imp)
         time0 = time.perf_counter()
         eorb_mp2_cc[ifrag], t1, t2 =\
-            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact, ccsd_t=ccsd_t) # <<< this is on CPU
+            ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact)#, ccsd_t=ccsd_t) # <<< this is on CPU
         time1 = time.perf_counter()
         
         prja = uocc_loc[0] @ uocc_loc[0].T.conj()
@@ -902,10 +904,6 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
         print(f'# LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
         print(f'# LNO-CCSD(T) Orbital Energy: {eorb_mp2_cc[ifrag][2]:.8f}')
         print(f"# LNO-CCSD time: {time1 - time0:.6f} s")
-        
-        # from mpi4py import MPI
-        # if not MPI.Is_finalized():
-        #     MPI.Finalize()
         
         options["trial"] = trial
         if 'ad' not in options["trial"]:
@@ -922,8 +920,9 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \
-            = prep_afqmc(mf,lno_coeff,t1,t2,frozen,prjlo,options,chol_cut=chol_cut,use_df=use_df)
-        run_lnoafqmc(options,nproc) # <<< QMC propagation of a fragment
+            = prep_afqmc(mf, lno_coeff, t1, t2, frozen, prjlo, 
+                         options, chol_cut=chol_cut, use_df=use_df)
+        run_lnoafqmc(options) # <<< QMC propagation of a fragment
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
 
     # finish lno loop
@@ -956,12 +955,11 @@ def run_afqmc(mf, options, lo_coeff, frag_lolist,
     tot_time = sum(run_time)
 
     with open(f'lno_result.out', 'w') as out_file:
-        print('# frag  eorb_mp2  eorb_ccsd  eorb_ccsd(t) ' \
-              '  eorb_afqmc/ccsd_pt2  nelec  norb  time',
+        print('# frag  eorb_mp2  eorb_ccsd  eorb_afqmc/pt2ccsd  nelec  norb  time',
                 file=out_file)
         for n, i in enumerate(run_frg_list):
             print(f'{i+1:3d}  '
-                    f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  {eorb_mp2_cc[n,2]:.8f}  '
+                    f'{eorb_mp2_cc[n,0]:.8f}  {eorb_mp2_cc[n,1]:.8f}  ' #  {eorb_mp2_cc[n,2]:.8f}  '
                     f'{eorb_pt2[n]:.6f} +/- {eorb_pt2_err[n]:.6f}  '
                     f'{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}', file=out_file)
         print(f'# LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)

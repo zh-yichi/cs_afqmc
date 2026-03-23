@@ -147,7 +147,7 @@ for n in range(sampler.n_blocks):
             t1olp_sp[:n+1]
             ])
         
-        eorb_pt_err = (np.sqrt(dE @ cov @ dE) / np.sqrt((n+1))).real
+        eorb_pt_err = ((np.sqrt(dE @ cov @ dE)) / np.sqrt(n+1)).real
         
         print(f"  {n+1:4d} \t \t {e0:.6f} \t {e0_err:.6f} \t"
               f"  {eorb_pt:.6f} \t {eorb_pt_err:.6f} \t"
@@ -196,8 +196,8 @@ cov = np.cov([
     t1olp_sp,
     ])
 
-eorb_pt_cov_err = (np.sqrt(dE @ cov @ dE)/np.sqrt(nsamples)).real
-eorb_pt_sp_err = (np.std(ept_sp)/np.sqrt(n)).real
+eorb_pt_cov_err = (np.sqrt(dE @ cov @ dE) / np.sqrt(nsamples)).real
+eorb_pt_sp_err = (np.std(ept_sp) / np.sqrt(nsamples)).real
 
 print(f"# Raw AFQMC/pt2CCSD Orbital Energy (covariance): {eorb_pt:.6f} +/- {eorb_pt_cov_err:.6f}")
 print(f"# Raw AFQMC/pt2CCSD Orbital Energy (direct obs): {eorb_pt:.6f} +/- {eorb_pt_sp_err:.6f}")
@@ -234,6 +234,8 @@ e0bar_sp = e0bar_sp[mask]
 t1olp_sp = t1olp_sp[mask]
 ept_sp = ept_sp[mask]
 
+nsamples = len(wt_sp)
+
 wt = np.sum(wt_sp)
 eorb = np.sum(wt_sp * eorb_sp) / wt
 t2eorb = np.sum(wt_sp * t2eorb_sp) / wt
@@ -247,7 +249,7 @@ dE = np.array([1/t1olp,
                1/t1olp,
                -e0bar/t1olp**2,
                -t2orb/t1olp**2,
-               -eorb/t1olp**2 - t2eorb/t1olp**2 + 2*t2orb*e0bar/t1olp**3
+               -eorb/t1olp**2 - t2eorb/t1olp**2 + 2*t2orb*e0bar/t1olp**3,
                ])
 cov = np.cov([
     eorb_sp,
@@ -257,8 +259,8 @@ cov = np.cov([
     t1olp_sp,
     ])
 
-eorb_pt_cov_err = (np.sqrt(dE @ cov @ dE)/np.sqrt(nsamples)).real
-eorb_pt_sp_err = (np.std(ept_sp)/np.sqrt(n)).real
+eorb_pt_cov_err = (np.sqrt(dE @ cov @ dE) / np.sqrt(nsamples)).real
+eorb_pt_sp_err = (np.std(ept_sp) / np.sqrt(nsamples)).real
 
 print(f"# Clean AFQMC/pt2CCSD Orbital Energy (covariance): {eorb_pt:.6f} +/- {eorb_pt_cov_err:.6f}")
 print(f"# Clean AFQMC/pt2CCSD Orbital Energy (direct obs): {eorb_pt:.6f} +/- {eorb_pt_sp_err:.6f}")
@@ -300,11 +302,11 @@ for i, block_size in enumerate(range(1,max_size+1)):
     wt_t1olp = wt_t1olp.reshape(n_blocks, block_size)
 
     # block_wt = np.sum(wt, axis=1)
-    block_eorb = np.sum(wt_eorb, axis=1)# / block_wt
-    block_t2eorb = np.sum(wt_t2eorb, axis=1)# / block_wt
-    block_t2orb = np.sum(wt_t2orb, axis=1)# / block_wt
-    block_e0bar = np.sum(wt_e0bar, axis=1)# / block_wt
-    block_t1olp = np.sum(wt_t1olp, axis=1)# / block_wt
+    block_eorb = np.sum(wt_eorb, axis=1)     # / block_wt
+    block_t2eorb = np.sum(wt_t2eorb, axis=1) # / block_wt
+    block_t2orb = np.sum(wt_t2orb, axis=1)   # / block_wt
+    block_e0bar = np.sum(wt_e0bar, axis=1)   # / block_wt
+    block_t1olp = np.sum(wt_t1olp, axis=1)   # / block_wt
 
     # eorb_pt = eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2
     block_energy = (block_eorb/block_t1olp + block_t2eorb/block_t1olp 
@@ -314,10 +316,16 @@ for i, block_size in enumerate(range(1,max_size+1)):
     print(f' {block_size:3d}  {n_blocks:3d}  {block_size*n_blocks:4d}  {block_mean:.6f}  {block_error:.6f}')
     block_errs[i] = block_error
 
+blocked = False
+
 for i, err in enumerate(block_errs):
-    if i > 1 and np.abs((err - block_errs[i-1]) / err) < 0.04:
+    if i > 1 and np.abs((err - block_errs[i-1]) / err) < 0.05:
+        blocked = True
         break
 
+if not blocked:
+    err = (block_errs).max()
+    
 print(f'# autocorrelation eliminated at blocking {i+1} with estimate error {err:.6f}')
 print(f"# Clean AFQMC/pt2CCSD Orbital Energy (blocking): {eorb_pt:.6f} +/- {err:.6f}")
 
