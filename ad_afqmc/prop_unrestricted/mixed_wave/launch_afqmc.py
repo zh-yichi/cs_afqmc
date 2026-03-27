@@ -4,7 +4,7 @@ from ad_afqmc import config
 
 def run_afqmc(options,
               option_file='options.bin',
-              script='run_ustoccsd2_sampling.py'
+              script=None,
               ):
 
     with open(option_file, 'wb') as f:
@@ -18,6 +18,11 @@ def run_afqmc(options,
     else:
         print(f'# running AFQMC on CPU')
         gpu_flag = ""
+
+    if options["trial"] == "stoccsd2":
+        script='run_stoccsd2_sampling.py'
+    elif options["trial"] == "stoccsd":
+        script='run_stoccsd_sampling.py'
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)

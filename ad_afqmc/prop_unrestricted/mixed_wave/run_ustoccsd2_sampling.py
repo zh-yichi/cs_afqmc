@@ -41,7 +41,7 @@ if jnp.abs(jnp.sum(prop_data["overlaps"])) < 1.0e-6:
 
 prop_data["key"] = random.PRNGKey(options["seed"])
 
-xtaus = trial.get_xtaus(prop_data, wave_data, prop)
+xtaus, prop_data = trial.get_xtaus(prop_data, wave_data, prop)
 
 prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 prop_data["n_killed_walkers"] = 0

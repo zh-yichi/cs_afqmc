@@ -91,21 +91,35 @@ def _prep_afqmc(options=None,
     wave_data = {}
     mo_coeff = jnp.array([np.eye(norb), np.eye(norb)])
 
-    if options["trial"] == "stoccsd2":
-        # if "2" in options["trial"]:
-        trial = wavefunctions_restricted.stoccsd2(
-            norb,
-            nelec_sp,
-            n_batch = options["n_batch"],
-            nslater = options['nslater']
-            )
-            
-        sampler = sampling.sampler_stoccsd2(
-            n_prop_steps = options["n_prop_steps"],
-            n_sr_blocks = options["n_sr_blocks"],
-            n_blocks = options["n_blocks"],
-            n_chol = nchol,
-            )
+    if "stoccsd" in options["trial"]:
+        if "2" in options["trial"]:
+            trial = wavefunctions_restricted.stoccsd2(
+                norb,
+                nelec_sp,
+                n_batch = options["n_batch"],
+                nslater = options['nslater']
+                )
+                
+            sampler = sampling.sampler_stoccsd2(
+                n_prop_steps = options["n_prop_steps"],
+                n_sr_blocks = options["n_sr_blocks"],
+                n_blocks = options["n_blocks"],
+                n_chol = nchol,
+                )
+        else:
+            trial = wavefunctions_restricted.stoccsd(
+                norb,
+                nelec_sp,
+                n_batch = options["n_batch"],
+                nslater = options['nslater']
+                )
+                
+            sampler = sampling.sampler_stoccsd(
+                n_prop_steps = options["n_prop_steps"],
+                n_sr_blocks = options["n_sr_blocks"],
+                n_blocks = options["n_blocks"],
+                n_chol = nchol,
+                )
         
         nocc = nelec_sp[0]
         amplitudes = np.load(amp_file)
@@ -119,38 +133,38 @@ def _prep_afqmc(options=None,
         wave_data['tau'] = trial.decompose_t2(t2)
         wave_data["mo_coeff"] = mo_coeff[0][:,:nocc]
 
-    if options["trial"] == "ustoccsd2":
-        # if "2" in options["trial"]:
-        trial = wavefunctions_unrestricted.ustoccsd2(
-            norb,
-            nelec_sp,
-            n_batch = options["n_batch"],
-            nslater = options['nslater']
-            )
-        nocc_a, nocc_b = nelec_sp
-        amplitudes = np.load(amp_file)
-        t1a = jnp.array(amplitudes["t1a"])
-        t1b = jnp.array(amplitudes["t1b"])
-        # print(f' ### t1a shape {t1a.shape}| t1b shape {t1b.shape}')
-        t2aa = jnp.array(amplitudes["t2aa"])
-        t2ab = jnp.array(amplitudes["t2ab"])
-        t2bb = jnp.array(amplitudes["t2bb"])
-        mo = [mo_coeff[0][:,:nocc_a], mo_coeff[1][:,:nocc_b]]
-        mo_t = trial._thouless(mo, [t1a, t1b])
-        wave_data['mo_ta'] = mo_t[0]
-        wave_data['mo_tb'] = mo_t[1]
-        wave_data["t2aa"] = t2aa
-        wave_data["t2bb"] = t2bb
-        wave_data["t2ab"] = t2ab
-        wave_data['tau'] = trial.decompose_t2([t2aa,t2ab,t2bb])
-        wave_data["mo_coeff"] = [mo_coeff[0][:, : nocc_a], mo_coeff[1][:, : nocc_b]]
+    # if options["trial"] == "ustoccsd2":
+    #     # if "2" in options["trial"]:
+    #     trial = wavefunctions_unrestricted.ustoccsd2(
+    #         norb,
+    #         nelec_sp,
+    #         n_batch = options["n_batch"],
+    #         nslater = options['nslater']
+    #         )
+    #     nocc_a, nocc_b = nelec_sp
+    #     amplitudes = np.load(amp_file)
+    #     t1a = jnp.array(amplitudes["t1a"])
+    #     t1b = jnp.array(amplitudes["t1b"])
+    #     # print(f' ### t1a shape {t1a.shape}| t1b shape {t1b.shape}')
+    #     t2aa = jnp.array(amplitudes["t2aa"])
+    #     t2ab = jnp.array(amplitudes["t2ab"])
+    #     t2bb = jnp.array(amplitudes["t2bb"])
+    #     mo = [mo_coeff[0][:,:nocc_a], mo_coeff[1][:,:nocc_b]]
+    #     mo_t = trial._thouless(mo, [t1a, t1b])
+    #     wave_data['mo_ta'] = mo_t[0]
+    #     wave_data['mo_tb'] = mo_t[1]
+    #     wave_data["t2aa"] = t2aa
+    #     wave_data["t2bb"] = t2bb
+    #     wave_data["t2ab"] = t2ab
+    #     wave_data['tau'] = trial.decompose_t2([t2aa,t2ab,t2bb])
+    #     wave_data["mo_coeff"] = [mo_coeff[0][:, : nocc_a], mo_coeff[1][:, : nocc_b]]
 
-        sampler = sampling.sampler_stoccsd2(
-            n_prop_steps = options["n_prop_steps"],
-            n_sr_blocks = options["n_sr_blocks"],
-            n_blocks = options["n_blocks"],
-            n_chol = nchol,
-            )
+    #     sampler = sampling.sampler_stoccsd2(
+    #         n_prop_steps = options["n_prop_steps"],
+    #         n_sr_blocks = options["n_sr_blocks"],
+    #         n_blocks = options["n_blocks"],
+    #         n_chol = nchol,
+    #         )
 
     if options["walker_type"] == "rhf":
         prop = propagation.propagator_restricted(

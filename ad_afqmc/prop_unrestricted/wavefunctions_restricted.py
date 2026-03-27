@@ -2164,37 +2164,6 @@ class stoccsd(rhf):
     n_batch: int = 1
     nslater: int = 1000
 
-    # @partial(jit, static_argnums=(0))
-    # def decompose_t2(self, wave_data: dict):
-    #     # adapted from Yann
-
-    #     nO = self.nelec[0]
-    #     nV = self.norb - nO
-    #     nex = nO * nV
-
-    #     t2 = wave_data['t2']
-
-    #     # assert t2.shape == (nO, nO, nV, nV)
-
-    #     # T2 = LL^T
-    #     # t2 = jnp.einsum("iajb->aibj", t2)
-    #     assert t2.shape == (nO, nV, nO, nV)
-        
-    #     t2 = t2.reshape(nex, nex)
-    #     e_val, e_vec = jnp.linalg.eigh(t2)
-    #     L = e_vec @ jnp.diag(jnp.sqrt(e_val + 0.0j))
-    #     assert jnp.abs(jnp.linalg.norm(t2 - L @ L.T)) < 1e-12
-
-    #     # Summation on the left
-    #     L = L.T.reshape(nex, nO, nV)
-    #     t2_rec = jnp.einsum('gia,gjb->iajb', L, L)
-    #     assert jnp.abs(wave_data['t2'] - t2_rec).max() < 1e-12
-
-    #     # wave_data["T2_L"] = L
-
-    #     return L, e_val
-
-    # @partial(jit, static_argnums=(0, 3))
     def get_stocc(self, wave_data: dict, prop_data: dict):
         nO = self.nelec[0]
         nslater = self.nslater
