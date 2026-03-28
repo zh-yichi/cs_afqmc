@@ -149,6 +149,114 @@ class sampler_stoccsd(sampler):
     n_chol: int = 0
 
     @partial(jit, static_argnums=(0,3,4))
+    def _block_froze(self, prop_data, ham_data, prop, trial, wave_data):
+        """Block scan function. Frozen walkers, no propagation, only energy calculation."""
+
+        # raondom fields_x for T2 decomposition
+        xtaus, prop_data = trial.get_xtaus(prop_data, wave_data, prop)
+        olp_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["overlaps"] = olp_hf
+        ene_hf = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))
+        olp_cc, ene_cc = trial.calc_energy_stoccsd(prop_data["walkers"], xtaus, ham_data, wave_data)
+        wt_hf = prop_data["weights"]
+
+        weight = jnp.sum(wt_hf)
+        ehf_avg = jnp.sum(wt_hf * ene_hf) / weight
+        ecc_avg = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
+        occ_avg = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
+        occ_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf)) / weight
+
+        return prop_data, (weight, ehf_avg, ecc_avg, occ_avg, occ_abs)
+
+    @partial(jit, static_argnums=(0,3,4))
+    def _block_same(self, prop_data, ham_data, prop, trial, wave_data):
+        """Block scan function. Propagation and energy calculation."""
+
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        fields = random.normal(
+            subkey,
+            shape=(
+                self.n_prop_steps,
+                prop.n_walkers,
+                self.n_chol,
+            ),
+        )
+        _step_scan_wrapper = lambda x, y: self._step_scan(
+            x, y, ham_data, prop, trial, wave_data
+        )
+        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+            prop_data["weights"]
+        )
+
+        # raondom fields_x for T2 decomposition
+        xtaus, prop_data = trial.get_same_xtaus(prop_data, wave_data)
+        prop_data = prop.orthonormalize_walkers(prop_data)
+        # prop_data = prop.stochastic_reconfiguration_local(prop_data)
+
+        olp_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["overlaps"] = olp_hf
+        ene_hf = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))
+        olp_cc, ene_cc = trial.calc_energy_same_stoccsd(prop_data["walkers"], xtaus, ham_data, wave_data)
+        wt_hf = prop_data["weights"]
+
+        weight = jnp.sum(wt_hf)
+        ehf_avg = jnp.sum(wt_hf * ene_hf) / weight
+        ecc_avg = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
+        occ_avg = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
+        occ_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf)) / weight
+
+        prop_data = prop.stochastic_reconfiguration_local(prop_data)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+        return prop_data, (weight, ehf_avg, ecc_avg, occ_avg, occ_abs)
+    
+
+    @partial(jit, static_argnums=(0,3,4))
+    def _block_get(self, prop_data, ham_data, prop, trial, wave_data):
+        """Block scan function. Propagation and energy calculation."""
+
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        fields = random.normal(
+            subkey,
+            shape=(
+                self.n_prop_steps,
+                prop.n_walkers,
+                self.n_chol,
+            ),
+        )
+        _step_scan_wrapper = lambda x, y: self._step_scan(
+            x, y, ham_data, prop, trial, wave_data
+        )
+        prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
+        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
+            prop_data["weights"]
+        )
+
+        # raondom fields_x for T2 decomposition
+        # xtaus, prop_data = trial.get_same_xtaus(prop_data, wave_data, prop)
+        prop_data = prop.orthonormalize_walkers(prop_data)
+        # prop_data = prop.stochastic_reconfiguration_local(prop_data)
+
+        olp_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["overlaps"] = olp_hf
+        ene_hf = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))
+        olp_cc, ene_cc = trial.calc_energy_get_stoccsd(prop_data["walkers"], ham_data, wave_data, prop_data)
+        wt_hf = prop_data["weights"]
+
+        weight = jnp.sum(wt_hf)
+        ehf_avg = jnp.sum(wt_hf * ene_hf) / weight
+        ecc_avg = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
+        occ_avg = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
+        occ_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf)) / weight
+
+        prop_data = prop.stochastic_reconfiguration_local(prop_data)
+        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+
+        return prop_data, (weight, ehf_avg, ecc_avg, occ_avg, occ_abs)
+
+
+    @partial(jit, static_argnums=(0,3,4))
     def _block(self, prop_data, ham_data, prop, trial, wave_data):
         """Block scan function. Propagation and energy calculation."""
 
@@ -181,14 +289,15 @@ class sampler_stoccsd(sampler):
         wt_hf = prop_data["weights"]
 
         weight = jnp.sum(wt_hf)
-        ehf = jnp.sum(wt_hf * ene_hf) / weight
-        num = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
-        den = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
+        ehf_avg = jnp.sum(wt_hf * ene_hf) / weight
+        ecc_avg = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
+        occ_avg = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
+        occ_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf)) / weight
 
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-        return prop_data, (weight, ehf, num, den)
+        return prop_data, (weight, ehf_avg, ecc_avg, occ_avg, occ_abs)
     
     @partial(jit, static_argnums=(0,3,4))
     def propagate_phaseless(

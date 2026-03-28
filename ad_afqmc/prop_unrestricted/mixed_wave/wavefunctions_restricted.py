@@ -39,7 +39,23 @@ class stoccsd(rhf):
         xtaus = oe.contract("wsg,gia->wsia", fieldx, wave_data['tau'], backend='jax')
 
         return xtaus, prop_data
+    
+    @partial(jit, static_argnums=(0))
+    def get_same_xtaus(self, prop_data, wave_data):
+        prop_data["key"], subkey = random.split(prop_data["key"])
+        
+        fieldx = random.normal(
+            subkey,
+            shape=(
+                self.nslater,
+                wave_data['tau'].shape[0],
+            ),
+        )
+        # xtaus shape (nslater, nocc, nvir)
+        xtaus = oe.contract("sg,gia->sia", fieldx, wave_data['tau'], backend='jax')
 
+        return xtaus, prop_data
+    
 
     @partial(jit, static_argnums=0)
     def _green(self, trial_slater: jax.Array, walker: jax.Array) -> jax.Array:
@@ -130,6 +146,32 @@ class stoccsd(rhf):
         return overlap_cc, energy_cc
     
 
+    @partial(jit, static_argnums=0)
+    def _calc_energy_get_xtaus(self, walker, ham_data, wave_data, prop_data):
+        # first get xtaus
+        # scan over xtaus (nslaters) for one walker
+
+        nslater = self.nslater
+        nocc, norb = self.nelec[0], self.norb
+        nvir = norb - nocc
+        xtaus, prop_data = self.get_same_xtaus(prop_data, wave_data)
+
+        assert xtaus.shape == (nslater, nocc, nvir)
+
+        def _scan_xtaus(carry, xtau: jax.Array):
+            overlap, energy = self._calc_energy_exp_xtau(xtau, walker, ham_data, wave_data)
+            return carry, (overlap, energy)
+
+        init_carry = 0.0
+        _, (overlaps, energies) = lax.scan(_scan_xtaus, init_carry, xtaus)
+
+        # intermediately normalize stocc
+        overlap_cc = jnp.sum(overlaps) # / nslater
+        energy_cc = jnp.sum(overlaps * energies) / overlap_cc # / nslater
+
+        return overlap_cc, energy_cc
+    
+
     @partial(jit, static_argnums=(0))
     def calc_energy_stoccsd(self, walkers, xtaus, ham_data, wave_data):
         # scan over walkers
@@ -155,6 +197,69 @@ class stoccsd(rhf):
             (walkers.reshape(self.n_batch, batch_size, norb, nocc),
              xtaus.reshape(self.n_batch, batch_size, nslater, nocc, nvir))
             )
+        
+        overlaps = overlaps.reshape(nwalker)
+        energies = energies.reshape(nwalker)
+        
+        return overlaps, energies
+    
+
+    @partial(jit, static_argnums=(0))
+    def calc_energy_same_stoccsd(self, walkers, xtaus, ham_data, wave_data):
+        # scan over walkers
+        # all walkers feel the same sto-sample of the CCSD trial during a step
+        # xtaus shape (nslater, nocc, nvir)
+
+        nocc = self.nelec[0]
+        norb = self.norb
+        nvir = norb - nocc
+        nwalker = walkers.shape[0]
+        batch_size = nwalker // self.n_batch
+        nslater = self.nslater
+
+        assert xtaus.shape == (nslater, nocc, nvir)
+
+        def scan_batch(carry, xs):
+            walker_batch = xs
+            overlap, energy = vmap(self._calc_energy_exp_xtaus, in_axes=(0, None, None, None))(
+                walker_batch, xtaus, ham_data, wave_data
+            )
+            return carry, (overlap, energy)
+
+        _, (overlaps, energies) = lax.scan(
+            scan_batch, None, walkers.reshape(self.n_batch, batch_size, norb, nocc))
+        
+        overlaps = overlaps.reshape(nwalker)
+        energies = energies.reshape(nwalker)
+        
+        return overlaps, energies
+    
+
+    @partial(jit, static_argnums=(0))
+    def calc_energy_get_stoccsd(self, walkers, ham_data, wave_data, prop_data):
+        # scan over walkers
+        # stocc sample generated inside
+        # all walkers feel the same sto-sample of the CCSD trial during a step
+        # xtaus shape (nslater, nocc, nvir)
+
+        nocc = self.nelec[0]
+        norb = self.norb
+        # nvir = norb - nocc
+        nwalker = walkers.shape[0]
+        batch_size = nwalker // self.n_batch
+        # nslater = self.nslater
+
+        # assert xtaus.shape == (nslater, nocc, nvir)
+
+        def scan_batch(carry, xs):
+            walker_batch = xs
+            overlap, energy = vmap(self._calc_energy_get_xtaus, in_axes=(0, None, None, None))(
+                walker_batch, ham_data, wave_data, prop_data
+            )
+            return carry, (overlap, energy)
+
+        _, (overlaps, energies) = lax.scan(
+            scan_batch, None, walkers.reshape(self.n_batch, batch_size, norb, nocc))
         
         overlaps = overlaps.reshape(nwalker)
         energies = energies.reshape(nwalker)

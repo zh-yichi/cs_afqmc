@@ -19,10 +19,11 @@ def run_afqmc(options,
         print(f'# running AFQMC on CPU')
         gpu_flag = ""
 
-    if options["trial"] == "stoccsd2":
-        script='run_stoccsd2_sampling.py'
-    elif options["trial"] == "stoccsd":
-        script='run_stoccsd_sampling.py'
+    if script is None:
+        if options["trial"] == "stoccsd2":
+            script='run_stoccsd2_sampling.py'
+        elif options["trial"] == "stoccsd":
+            script='run_stoccsd_sampling.py'
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
