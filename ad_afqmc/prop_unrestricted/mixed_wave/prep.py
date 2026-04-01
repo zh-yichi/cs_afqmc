@@ -181,11 +181,11 @@ def _prep_afqmc(options=None,
             n_batch=options["n_batch"],
         )
 
-    print(f"# nelec: {nelec_sp}")
-    print(f"# norb: {norb}")
-    print(f"# nchol: {nchol}")
+    print(f"nelec: {nelec_sp}")
+    print(f"norb: {norb}")
+    print(f"nchol: {nchol}")
     for op in options:
         if options[op] is not None:
-            print(f"# {op}: {options[op]}")
+            print(f"{op}: {options[op]}")
 
     return ham_data, ham, prop, trial, wave_data, sampler, options

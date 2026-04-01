@@ -163,10 +163,11 @@ class sampler_stoccsd(sampler):
         weight = jnp.sum(wt_hf)
         ehf_avg = jnp.sum(wt_hf * ene_hf) / weight
         ecc_avg = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
+        ecc_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf) * ene_cc) / weight
         occ_avg = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
         occ_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf)) / weight
 
-        return prop_data, (weight, ehf_avg, ecc_avg, occ_avg, occ_abs)
+        return prop_data, (weight, ehf_avg, ecc_avg, ecc_abs, occ_avg, occ_abs)
 
     @partial(jit, static_argnums=(0,3,4))
     def _block_same(self, prop_data, ham_data, prop, trial, wave_data):
@@ -288,16 +289,15 @@ class sampler_stoccsd(sampler):
         olp_cc, ene_cc = trial.calc_energy_stoccsd(prop_data["walkers"], xtaus, ham_data, wave_data)
         wt_hf = prop_data["weights"]
 
-        weight = jnp.sum(wt_hf)
-        ehf_avg = jnp.sum(wt_hf * ene_hf) / weight
-        ecc_avg = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / weight
-        occ_avg = jnp.sum(wt_hf * olp_cc / olp_hf) / weight
-        occ_abs = jnp.sum(wt_hf * jnp.abs(olp_cc / olp_hf)) / weight
+        blk_wt = jnp.sum(wt_hf)
+        blk_ehf = jnp.sum(wt_hf * ene_hf) / blk_wt
+        blk_num = jnp.sum(wt_hf * olp_cc / olp_hf * ene_cc) / blk_wt
+        blk_den = jnp.sum(wt_hf * olp_cc / olp_hf) / blk_wt
 
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
 
-        return prop_data, (weight, ehf_avg, ecc_avg, occ_avg, occ_abs)
+        return prop_data, (blk_wt, blk_ehf, blk_num, blk_den)
     
     @partial(jit, static_argnums=(0,3,4))
     def propagate_phaseless(
@@ -314,7 +314,7 @@ class sampler_stoccsd(sampler):
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         prop_data["n_killed_walkers"] = 0
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_whf, blk_ehf, blk_num, blk_den) \
+        prop_data, (blk_wt, blk_ehf, blk_num, blk_den) \
             = lax.scan(
             _scan_blocks, prop_data, None, length = self.n_sr_blocks
         )
@@ -322,21 +322,20 @@ class sampler_stoccsd(sampler):
             self.n_sr_blocks * prop.n_walkers
         )
         
-        whf = jnp.sum(blk_whf)
-        ehf = jnp.sum(blk_whf * blk_ehf) / whf
-        num = jnp.sum(blk_whf * blk_num) / whf
-        den = jnp.sum(blk_whf * blk_den) / whf
+        wt = jnp.sum(blk_wt)
+        ehf = jnp.sum(blk_wt * blk_ehf) / wt
+        num = jnp.sum(blk_wt * blk_num) / wt
+        den = jnp.sum(blk_wt * blk_den) / wt
 
-        return prop_data, (whf, ehf, num, den)
+        return prop_data, (wt, ehf, num, den)
     
-    def blk_average(self, wt_sp, num_sp, den_sp, max_size=None):
+    def blk_average(self, wt_sp, num_sp, den_sp, max_size=None, printE=False):
         n_total = len(wt_sp)
         if max_size is None:
             max_size = n_total // 10
-        # block_size = np.zeros(size_max)
-        # energy = np.zeros(size_max)
         err = np.zeros(max_size)
-        print('# Blk_SZ  NBlk  NSmp  Energy  Error')
+        if printE:
+            print(f"{'Blk_SZ':>6s}  {'NBlk':>6s}  {'NSmp':>6s}  {'Energy':>10s}  {'Error':>8s}")
         for i, block_size in enumerate(range(1,max_size+1)):
             n_blocks = n_total // block_size
 
@@ -356,9 +355,8 @@ class sampler_stoccsd(sampler):
             block_energy = (block_num / block_den).real
             block_mean = np.mean(block_energy)
             block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-            print(f' {block_size}  {n_blocks}  {block_size*n_blocks}  {block_mean:.6f}  {block_error:.6f}')
-            # block_size[i] = b
-            # energy[i] = block_mean
+            if printE:
+                print(f"{block_size:6d}  {n_blocks:6d}  {block_size*n_blocks:6d}  {block_mean:10.6f}  {block_error:10.6f}")
             err[i] = block_error
         return err
     

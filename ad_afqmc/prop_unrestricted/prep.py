@@ -516,13 +516,13 @@ def _prep_afqmc(options=None,
                 options["n_trj"],
                 nchol,
                 )
-        if options["fp_abs"]:
-            sampler = sampling.sampler_fpabs(
-                options["n_prop_steps"],
-                options["n_eql_blocks"],
-                options["n_trj"],
-                nchol,
-                )
+        # if options["fp_abs"]:
+        #     sampler = sampling.sampler_fpabs(
+        #         options["n_prop_steps"],
+        #         options["n_eql_blocks"],
+        #         options["n_trj"],
+        #         nchol,
+        #         )
             
     if options["group"]:
         sampler = sampling.sampler_group(

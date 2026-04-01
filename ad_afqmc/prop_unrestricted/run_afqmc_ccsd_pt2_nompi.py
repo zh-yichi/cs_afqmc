@@ -47,14 +47,14 @@ ept_sp = h0 + e0/t1 + e1/t1 - t2 * e0 / t1**2
 ept = jnp.real(jnp.sum(ept_sp) / prop.n_walkers)
 prop_data["e_estimate"] = ept
 prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-print(f'# initial AFQMC/pt2CCSD Energy is {ept:.6f}')
+print(f'initial AFQMC/pt2CCSD Energy is {ept:.6f}')
 
 ehf = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))[0]
 
-print(f'# Propagating with {options["n_walkers"]} walkers')
-print("# Equilibration sweeps with AFQMC/HF: ")
-print("# atom_time \t energy \t Walltime")
-print(f"  {0.:.2f} \t \t {ehf:.6f} \t {time.time() - init_time:.2f}")
+print(f'Propagating with {options["n_walkers"]} walkers')
+print("--------------------- Equilibration --------------------")
+print(f"{'inv_T':>5s}  {'energy':>10s}  {'runTime':>8s}")
+print(f"{0.:5.2f}  {ehf:10.6f}  {time.time() - init_time:8.2f}")
 
 sampler_eq = sampling.sampler(
     n_prop_steps = 50, 
@@ -74,16 +74,19 @@ for n in range(1,options["n_eql"]+1):
     prop_data = prop.stochastic_reconfiguration_local(prop_data)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * e
 
-    print(f"  {n * block_time:.2f} \t {e:.6f} \t {time.time() - init_time:.2f}")
+    print(f"{n*block_time:5.2f}  {e:10.6f}  {time.time() - init_time:8.2f}")
 
-print("# Sampling sweeps:")
-print("# blocks \t energy \t error \t \t Walltime")
+print("--------------------- Sampling Blocks ----------------------")
+print(f"{'blocks':>6s}  "
+      f"{'energy':>10s}  {'error':>8s}  "
+      f"{'olp_T/G':>10s}  {'error':>8s}  "
+      f"{'Walltime':>8s}")
 
 wt_sp = np.zeros(sampler.n_blocks, dtype="float64")
-t1_sp = np.zeros(sampler.n_blocks, dtype="complex128")# dtype="float64")
-t2_sp = np.zeros(sampler.n_blocks, dtype="complex128")# dtype="float64")
-e0_sp = np.zeros(sampler.n_blocks, dtype="complex128")# dtype="float64")
-e1_sp = np.zeros(sampler.n_blocks, dtype="complex128")# dtype="float64")
+t1_sp = np.zeros(sampler.n_blocks, dtype="complex128")
+t2_sp = np.zeros(sampler.n_blocks, dtype="complex128")
+e0_sp = np.zeros(sampler.n_blocks, dtype="complex128")
+e1_sp = np.zeros(sampler.n_blocks, dtype="complex128")
 ept_sp = np.zeros(sampler.n_blocks, dtype="float64")
 
 for n in range(sampler.n_blocks):
@@ -99,8 +102,6 @@ for n in range(sampler.n_blocks):
     ept = (h0 + 1/t1*e0 + 1/t1*e1 - 1/t1**2 * t2 * e0).real
     ept_sp[n] = ept
 
-    # prop_data = prop.orthonormalize_walkers(prop_data)
-    # prop_data = prop.stochastic_reconfiguration_local(prop_data)
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * ept
 
     if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
@@ -122,10 +123,18 @@ for n in range(sampler.n_blocks):
                             e1_sp[:n+1]]
                             )
         ept_err = (np.sqrt(dE @ cov_te0e1 @ dE)/np.sqrt((n+1))).real
-        print(f"  {n+1:4d} \t \t {ept:.6f} \t {ept_err:.6f} \t {time.time() - init_time:.2f}")
+
+        otg = t1.real
+        otg_err = np.sqrt(np.sum(wt_sp[:n+1] * (t1_sp[:n+1]-t1)**2) / wt / n).real
+
+        print(f"{n+1:6d}  "
+              f"{ept:10.6f}  {ept_err:8.6f}  "
+              f"{otg.real:10.6f}  {otg_err.real:8.6f}"
+              f"{time.time() - init_time:8.2f}")
         # if ept_err < options["max_error"] and n > 20:
         #     break
 
+print('------------- Post Propagation -----------------')
 nsamples = n + 1
 print(f'# total number of samples {nsamples}')
 wt_sp = wt_sp[:nsamples]
@@ -151,62 +160,30 @@ cov_te0e1 = np.cov([t1_sp, t2_sp, e0_sp, e1_sp])
 ept_cov_err = (np.sqrt(dE @ cov_te0e1 @ dE) / np.sqrt(len(wt_sp))).real
 
 ept_sp_err = np.std(ept_sp) / np.sqrt(nsamples)
+t1_err = np.sqrt(np.sum(wt_sp * (t1_sp - t1)**2) / wt / nsamples).real
 
-print(f"# Raw AFQMC/pt2CCSD energy (covariance): {ept:.6f} +/- {ept_cov_err:.6f}")
-print(f"# Raw AFQMC/pt2CCSD energy (dir sample): {ept:.6f} +/- {ept_sp_err:.6f}")
-
-# print(f'# Calculate Mahalanobis distance ')
-# t1_var = np.sum(t1_sp - t1)**2
-# if np.sqrt(t1_var) < 1e-12:
-#     print(f'# <exp(T1)> is not varying ({t1_var:.2e}) during the sampling, it might cause numerical in the variance')
-#     print(f'# <exp(T1)> is removed from the covariant matrix. Recommend using ptCCSD trial')
-#     x = np.vstack([t2_sp, e0_sp, e1_sp]).T
-#     mu = np.array([t2, e0, e1])
-#     d2 = np.zeros(nsamples)
-#     for i in range(nsamples):
-#         d2[i] = (x[i]-mu).T @ np.linalg.inv(cov_te0e1[1:,1:]) @ (x[i]-mu)
-#         # print(d2[i])
-
-# else:
-#     x = np.vstack([t1_sp, t2_sp, e0_sp, e1_sp]).T
-#     mu = np.array([t1, t2, e0, e1])
-#     d2 = np.zeros(nsamples)
-#     for i in range(nsamples):
-#         d2[i] = (x[i]-mu).T @ np.linalg.inv(cov_te0e1) @ (x[i]-mu)
-#         # print(d2[i], x[i])
-
-# mask = d2 < 20
-# print(f'# remove outliers {nsamples - np.sum(mask)}')
-
-# wt_sp = wt_sp[mask]
-# t1_sp = t1_sp[mask]
-# t2_sp = t2_sp[mask]
-# e0_sp = e0_sp[mask]
-# e1_sp = e1_sp[mask]
-
-# wt = np.sum(wt_sp)
-# t1 = np.sum(wt_sp * t1_sp) / wt
-# t2 = np.sum(wt_sp * t2_sp) / wt
-# e0 = np.sum(wt_sp * e0_sp) / wt
-# e1 = np.sum(wt_sp * e1_sp) / wt
-
-# ept = (h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0).real
-# # dE = (pE/pt1,pE/pt2,pE/pe0,pE/pe1)
-# dE = np.array([-1/t1**2 * (e0+e1) + 2/t1**3 * t2 * e0,
-#             -1/t1**2 * e0,
-#                 1/t1 - 1/t1**2 * t2,
-#                 1/t1])
-# cov_te0e1 = np.cov([t1_sp, t2_sp, e0_sp, e1_sp])
-# ept_err = (np.sqrt(dE @ cov_te0e1 @ dE) / np.sqrt(len(wt_sp))).real
-
-# print(f"# AFQMC/pt2CCSD energy (outliners removed): {ept:.6f} +/- {ept_err:.6f}")
+print(f"Raw AFQMC/pt2CCSD energy (covariance): {ept:.6f} ± {ept_cov_err:.6f}")
+print(f"Raw AFQMC/pt2CCSD energy (dir sample): {ept:.6f} ± {ept_sp_err:.6f}")
+print(f"Raw AFQMC/pt2CCSD overlap ratio: {t1.real:.6f} ± {t1_err:.6f}")
 
 print(f'# Clean Observation')
-d = np.abs(ept_sp-np.median(ept_sp))
-d_med = np.median(d) + 1e-7
-z = d/d_med
-mask = z < 30
-print(f'# the outliers zeta {z[~mask]} | energy {ept_sp[~mask]}')
+
+def filter_outliers(ept_sp, zeta=10):
+
+    median = np.median(ept_sp)
+    mad = 1.4826 * np.median(np.abs(ept_sp - median))
+    bound = zeta * mad
+    mask = np.abs(ept_sp - median) < bound
+    
+    print(f"Outlier energy bound [{median-bound:.6f}, {median+bound:.6f}]")
+    
+    return mask
+
+# d = np.abs(ept_sp - np.median(ept_sp))
+# d_med = np.median(d) + 1e-8
+# z = d/d_med
+# mask = z < 20
+mask = filter_outliers(ept_sp, zeta=20)
 
 wt_clean = wt_sp[mask]
 t1_clean = t1_sp[mask]
@@ -216,7 +193,9 @@ e1_clean = e1_sp[mask]
 ept_clean = ept_sp[mask]
 
 nclean = len(wt_clean)
-print('# remove outliers in direct sampling ', nsamples-nclean)
+nclean = len(wt_clean)
+
+print(f"Removed {nsamples-nclean} outliers with energies {ept_sp[~mask]}")
 
 wt = np.sum(wt_clean)
 t1 = np.sum(wt_clean * t1_clean) / wt
@@ -234,13 +213,15 @@ cov_te0e1 = np.cov([t1_clean, t2_clean, e0_clean, e1_clean])
 ept_cov_err = (np.sqrt(dE @ cov_te0e1 @ dE) / np.sqrt(nclean)).real
 ept_sp_err = np.std(ept_clean) / np.sqrt(nclean)
 
-print(f"# clean AFQMC/pt2CCSD energy (covariance): {ept:.6f} +/- {ept_cov_err:.6f}")
-print(f"# clean AFQMC/ptCCSD energy (dir sample): {ept:.6f} +/- {ept_sp_err:.6f}")
+t1_err = np.sqrt(np.sum(wt_clean * (t1_clean - t1)**2) / wt / nclean).real
 
+print(f"Clean AFQMC/pt2CCSD overlap ratio: {t1.real:.6f} ± {t1_err:.6f}")
+print(f"Clean AFQMC/pt2CCSD energy (covariance): {ept:.6f} ± {ept_cov_err:.6f}")
+print(f"Clean AFQMC/ptCCSD energy (dir sample): {ept:.6f} ± {ept_sp_err:.6f}")
 
 max_size = nclean // 10
 block_errs = np.zeros(max_size)
-print('# Blk_SZ  NBlk  NSmp  Energy  Error')
+print(f"{'Blk_SZ':>6s}  {'NBlk':>5s}  {'NSmp':>5s}  {'Energy':>10s}  {'Error':>8s}")
 for i, block_size in enumerate(range(1,max_size+1)):
     n_blocks = nclean // block_size
 
@@ -261,7 +242,6 @@ for i, block_size in enumerate(range(1,max_size+1)):
     wt_e0 = wt_e0.reshape(n_blocks, block_size)
     wt_e1 = wt_e1.reshape(n_blocks, block_size)
 
-    # block_wt = np.sum(wt, axis=1)
     block_t1 = np.sum(wt_t1, axis=1)# / block_wt
     block_t2 = np.sum(wt_t2, axis=1)# / block_wt
     block_e0 = np.sum(wt_e0, axis=1)# / block_wt
@@ -270,21 +250,27 @@ for i, block_size in enumerate(range(1,max_size+1)):
     block_energy = (h0 + block_e0/block_t1 + block_e1/block_t1 - (block_t2*block_e0)/block_t1**2).real #(block_num / block_den).real
     block_mean = np.mean(block_energy)
     block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-    print(f' {block_size:3d}  {n_blocks:3d}  {block_size*n_blocks:4d}  {block_mean:.6f}  {block_error:.6f}')
-    # block_size[i] = b
-    # energy[i] = block_mean
+    print(f'{block_size:6d}  {n_blocks:5d}  {block_size*n_blocks:5d}  {block_mean:10.6f}  {block_error:8.6f}')
     block_errs[i] = block_error
 
-for i, err in enumerate(block_errs):
-    if np.abs((err - block_errs[i-1]) / err) < 0.04:
-        break
-print(f'# autocorrelation eliminated at blocking {i+1} with estimate error {err:.6f}')
+from scipy.optimize import curve_fit
+block_sizes = np.arange(1, len(block_errs) + 1)
 
-# print(ept_sp)
+# Model: error(x) = A - B * exp(-x / tau)
+def model(x, a, b, tau):
+    return a - b * np.exp(-x / tau)
 
-# ept = np.mean(ept_clean)
-# ept_err = np.std(ept_clean) / np.sqrt(len(ept_clean))
+p0 = [block_errs[-1], block_errs[-1] - block_errs[0], 5.0]
+popt, pcov = curve_fit(model, block_sizes, block_errs, p0=p0, maxfev=10000)
+plateau_value = popt[0]
+perr = np.sqrt(np.diag(pcov))
 
-print(f"# Blocked clean AFQMC/pt2CCSD energy (dir sample): {ept:.6f} +/- {err:.6f}")
-
-print(f"# total run time: {time.time() - init_time:.2f}")
+print(f"Plateau error estimate: {plateau_value:.6f} ± {perr[0]:.6f}")
+print(f"Decay constant (tau):   {popt[2]:.2f} blocks")
+convergence_block = -popt[2] * np.log(0.05)
+print(f"~95% of plateau reached at block_size ≈ {convergence_block:.0f}")
+if convergence_block > nclean:
+    print(f"Plateau not reached within sampled blocks, use max error")
+    plateau_value = block_errs.max()
+print(f"Blocked clean AFQMC/pt2CCSD energy: {ept:.6f} ± {plateau_value:.6f}")
+print(f"Total run time: {time.time() - init_time:.2f}")
