@@ -176,7 +176,7 @@ print(f"Decay constant (tau):   {popt[2]:.2f} blocks")
 # find the block size where error reaches 95% of plateau
 convergence_block = -popt[2] * np.log(0.05)
 print(f"~95% of plateau reached at block_size ≈ {convergence_block:.0f}")
-if convergence_block > nclean:
+if convergence_block > nclean or convergence_block < 0:
     print(f"Plateau not reached within sampled blocks, use max error")
     plateau_value = block_errs.max()
 print(f'Clean AFQMC/stoCCSD Energy: {ecc_clean:.6f} +/- {plateau_value:.6f}')

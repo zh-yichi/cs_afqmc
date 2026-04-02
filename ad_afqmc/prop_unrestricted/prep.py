@@ -188,9 +188,7 @@ def _prep_afqmc(options=None,
     options["symmetry"] = options.get("symmetry", False)
     options["save_walkers"] = options.get("save_walkers", False)
     options["trial"] = options.get("trial", None)
-    # options["ene0"] = options.get("ene0", 0.0)
     options["free_projection"] = options.get("free_projection", False)
-    options["fp_abs"] = options.get("fp_abs", False)
     options["n_batch"] = options.get("n_batch", 1)
     options["max_error"] = options.get("max_error", 1e-3)
 
@@ -509,43 +507,36 @@ def _prep_afqmc(options=None,
                 options["n_blocks"],
                 nchol,)
     
-    elif options["free_projection"]:
+    if options["free_projection"]:
         sampler = sampling.sampler_fp(
                 options["n_prop_steps"],
                 options["n_eql_blocks"],
                 options["n_trj"],
                 nchol,
                 )
-        # if options["fp_abs"]:
-        #     sampler = sampling.sampler_fpabs(
-        #         options["n_prop_steps"],
-        #         options["n_eql_blocks"],
-        #         options["n_trj"],
-        #         nchol,
-        #         )
             
-    if options["group"]:
-        sampler = sampling.sampler_group(
-                options["group_size"],
-                options["n_prop_steps"],
-                options["n_ene_blocks"],
-                options["n_sr_blocks"],
-                options["n_blocks"],
-                nchol,
-                )
+    # if options["group"]:
+    #     sampler = sampling.sampler_group(
+    #             options["group_size"],
+    #             options["n_prop_steps"],
+    #             options["n_ene_blocks"],
+    #             options["n_sr_blocks"],
+    #             options["n_blocks"],
+    #             nchol,
+    #             )
 
-    if options['trial'] == 'cisd_hf':
-        sampler = sampling.sampler_mixed(
-            options["n_prop_steps"],
-            options["n_ene_blocks"],
-            options["n_sr_blocks"],
-            options["n_blocks"],
-            nchol,)
+    # if options['trial'] == 'cisd_hf':
+    #     sampler = sampling.sampler_mixed(
+    #         options["n_prop_steps"],
+    #         options["n_ene_blocks"],
+    #         options["n_sr_blocks"],
+    #         options["n_blocks"],
+    #         nchol,)
 
-    print(f"# norb: {norb}")
-    print(f"# nelec: {nelec_sp}")
+    print(f"norb: {norb}")
+    print(f"nelec: {nelec_sp}")
     for op in options:
         if options[op] is not None:
-            print(f"# {op}: {options[op]}")
+            print(f"{op}: {options[op]}")
 
     return ham_data, ham, prop, trial, wave_data, sampler, options

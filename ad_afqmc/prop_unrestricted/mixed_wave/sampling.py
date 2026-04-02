@@ -541,7 +541,8 @@ class sampler_stoccsd2(sampler):
         # block_size = np.zeros(size_max)
         # energy = np.zeros(size_max)
         err = np.zeros(max_size)
-        print('# Blk_SZ  NBlk  NSmp  Energy  Error')
+        print(f"{'Blk_SZ':>6s}  {'NBlk':>6s}  {'NSmp':>6s}  {'Energy':>10s}  {'Error':>8s}")
+        # print('# Blk_SZ  NBlk  NSmp  Energy  Error')
         for i, block_size in enumerate(range(1,max_size+1)):
             n_blocks = n_total // block_size
 
@@ -561,9 +562,8 @@ class sampler_stoccsd2(sampler):
             block_energy = (block_num / block_den).real
             block_mean = np.mean(block_energy)
             block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-            print(f' {block_size}  {n_blocks}  {block_size*n_blocks}  {block_mean:.6f}  {block_error:.6f}')
-            # block_size[i] = b
-            # energy[i] = block_mean
+            print(f"{block_size:6d}  {n_blocks:6d}  {block_size*n_blocks:6d}  {block_mean:10.6f}  {block_error:10.6f}")
+            # print(f' {block_size}  {n_blocks}  {block_size*n_blocks}  {block_mean:.6f}  {block_error:.6f}')
             err[i] = block_error
         return err
     

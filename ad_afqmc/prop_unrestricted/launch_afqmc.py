@@ -31,14 +31,8 @@ def run_afqmc(options,
         else:
             script='run_afqmc_sampling_nompi.py'
 
-    # if options["trial"] == 'cisd_hf':
-    #     script='run_afqmc_mixed_nompi.py'
-
-    # if options["group"]:
-    #     script='run_afqmc_group_sampling_nompi.py'
-
     if options["free_projection"]:
-        script = 'run_fp_afqmc_sampling.py'
+        script = 'run_fp_afqmc_sampling_nompi.py'
         # if options['fp_abs']:
         #     script = 'run_fpabs_afqmc_sampling_nompi.py'
 

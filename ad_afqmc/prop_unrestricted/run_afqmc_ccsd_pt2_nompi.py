@@ -193,7 +193,7 @@ e1_clean = e1_sp[mask]
 ept_clean = ept_sp[mask]
 
 nclean = len(wt_clean)
-nclean = len(wt_clean)
+# nclean = len(wt_clean)
 
 print(f"Removed {nsamples-nclean} outliers with energies {ept_sp[~mask]}")
 
@@ -269,7 +269,7 @@ print(f"Plateau error estimate: {plateau_value:.6f} ± {perr[0]:.6f}")
 print(f"Decay constant (tau):   {popt[2]:.2f} blocks")
 convergence_block = -popt[2] * np.log(0.05)
 print(f"~95% of plateau reached at block_size ≈ {convergence_block:.0f}")
-if convergence_block > nclean:
+if convergence_block > nclean or convergence_block < 0:
     print(f"Plateau not reached within sampled blocks, use max error")
     plateau_value = block_errs.max()
 print(f"Blocked clean AFQMC/pt2CCSD energy: {ept:.6f} ± {plateau_value:.6f}")
