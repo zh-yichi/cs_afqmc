@@ -325,30 +325,6 @@ class sampler_pt2(sampler):
 
         return prop_data, (blk_wt, blk_e0, blk_eorb, blk_t2eorb, blk_t2orb, blk_e0bar, blk_t1olp)
 
-    # @partial(jit, static_argnums=(0,3,4))
-    # def _sr_block_scan(
-    #     self,
-    #     prop_data: dict,
-    #     ham_data: dict,
-    #     prop: propagator,
-    #     trial,
-    #     wave_data: dict,
-    # ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-            
-    #     def _block_scan_wrapper(x,_):
-    #         return self._block_scan(x,ham_data,prop,trial,wave_data)
-        
-    #     prop_data, (blk_wt, blk_e0, 
-    #                 blk_eorb, blk_t2eorb, 
-    #                 blk_t2orb, blk_e0bar, blk_t1olp) \
-    #         = lax.scan(
-    #         _block_scan_wrapper, prop_data, None, length = self.n_ene_blocks
-    #     )
-    #     prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    #     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    #     return prop_data, (blk_wt, blk_e0, 
-    #                        blk_eorb, blk_t2eorb, 
-    #                        blk_t2orb, blk_e0bar, blk_t1olp)
 
     @partial(jit, static_argnums=(0,3,4))
     def propagate_phaseless(

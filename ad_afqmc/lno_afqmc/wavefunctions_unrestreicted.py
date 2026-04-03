@@ -351,7 +351,7 @@ class uhf(wave_function_unrestricted):
     @partial(jit, static_argnums=(0,))
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:
         ham_data["h1"] = [(ham_data["h1"][0] + ham_data["h1"][0].T) / 2.0,
-                          (ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0]
+                          (ham_data["h1"][1] + ham_data["h1"][1].T) / 2.0] 
         # ham_data["h1"] = [wave_data["mo_coeff"][0].T.conj() @ ham_data["h1"][0],
         #                       wave_data["mo_coeff"][1].T.conj() @ ham_data["h1"][1]]
         # ham_data["rot_chol"] = [oe.contract("ip,gqp->giq",
@@ -1154,7 +1154,7 @@ class uccsd_pt2(uhf):
         ham_data["h1bar"] = [h1bar_a, h1bar_b]
         chol_bar_a = oe.contract('pr,grs,sq->gpq', wave_data['exp_t1a'], chola, wave_data['exp_mt1a'], backend='jax')
         chol_bar_b = oe.contract('pr,grs,sq->gpq', wave_data['exp_t1b'], cholb, wave_data['exp_mt1b'], backend='jax')
-        ham_data["chol_bar"] = [chol_bar_a, chol_bar_b]        
+        ham_data["chol_bar"] = [chol_bar_a, chol_bar_b]
         # exp(T1^dagger) Fock exp(-T1^dagger)
         la = oe.contract('gjj->g', chol_bar_a[:,:nocca,:nocca], backend="jax")
         lb = oe.contract('gjj->g', chol_bar_b[:,:noccb,:noccb], backend="jax")
@@ -1168,9 +1168,9 @@ class uccsd_pt2(uhf):
         fock_bar_b = oe.contract('ip,ik->kp', fock_bar_b[:noccb, :], prjlob, backend="jax")
         ham_data['fock_bar'] = [fock_bar_a, fock_bar_b]
         
-        h1bar_a = chol_bar_a = la = jeff_a = keff_a = fock_bar_a = None
-        h1bar_b = chol_bar_b = lb = jeff_b = keff_b = fock_bar_b = None  
-        ham_data['h1_mod'] = None
+        del h1bar_a, chol_bar_a, la, jeff_a, keff_a, fock_bar_a
+        del h1bar_b, chol_bar_b, lb, jeff_b, keff_b, fock_bar_b
+        del ham_data['h1_mod']
         
         return ham_data
     
