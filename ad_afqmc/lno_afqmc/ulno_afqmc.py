@@ -567,29 +567,17 @@ def _prep_afqmc(option_file="options.bin",
     # try:
     with open(option_file, "rb") as f:
         options = pickle.load(f)
-    # except:
-    #     print('# Using default options')
-    #     options = {}
+
 
     options["dt"] = options.get("dt", 0.005)
     options["n_exp_terms"] = options.get("n_exp_terms",6)
     options["n_walkers"] = options.get("n_walkers", 50)
     options["n_prop_steps"] = options.get("n_prop_steps", 50)
-    options["n_ene_blocks"] = options.get("n_ene_blocks", 10)
-    options["n_sr_blocks"] = options.get("n_sr_blocks", 5)
     options["n_blocks"] = options.get("n_blocks", 50)
     options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
     options["n_eql"] = options.get("n_eql", 3)
-    options["ad_mode"] = options.get("ad_mode", None)
-    assert options["ad_mode"] in [None, "forward", "reverse", "2rdm"]
-    options["orbital_rotation"] = options.get("orbital_rotation", True)
-    options["do_sr"] = options.get("do_sr", True)
     options["walker_type"] = options.get("walker_type", "rhf")
-    options["symmetry"] = options.get("symmetry", False)
-    options["save_walkers"] = options.get("save_walkers", False)
     options["trial"] = options.get("trial", None)
-    options["ene0"] = options.get("ene0", 0.0)
-    options["free_projection"] = options.get("free_projection", False)
     options["n_batch"] = options.get("n_batch", 1)
     options['use_gpu'] = options.get("use_gpu", True)
 
@@ -615,7 +603,7 @@ def _prep_afqmc(option_file="options.bin",
     ham_data = {}
     ham_data["h0"] = h0
     ham_data["E0"] = emf
-    ham_data["ene0"] = options["ene0"]
+    # ham_data["ene0"] = options["ene0"]
 
     ham_data["h1"] = [jnp.array(h1_a), jnp.array(h1_b)]
     ham_data["h1_mod"] = [jnp.array(h1mod_a), jnp.array(h1mod_b)]
@@ -799,7 +787,8 @@ def run_afqmc(mf,
               use_df = False, 
               lno_type = ['1h']*2, 
               run_frg_list = None, 
-              fast = False
+              fast = False,
+              qmc_script = None,
               ):
     
     mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
@@ -916,7 +905,9 @@ def run_afqmc(mf,
                          options, chol_cut=chol_cut, use_df=use_df)
         jax.clear_caches()
         gc.collect()
-        run_lnoafqmc(options) # <<< QMC propagation of a fragment
+        # run_lnoafqmc(options, script=afqmc_script) # <<< QMC propagation of a fragment
+        run_lnoafqmc(options, script=qmc_script)
+        # run_lnoafqmc(options, script='ccsd_pt2/run_uafqmc_new.py')
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
         jax.clear_caches()
         gc.collect()

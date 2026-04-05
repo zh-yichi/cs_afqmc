@@ -10,8 +10,8 @@ import jax
 jax.config.update("jax_enable_x64", True)
 
 print = partial(print, flush=True)
-print(f'------------------- AFQMC Sampling Started -------------------')
 
+print(f'------------------- AFQMC Sampling Started -------------------')
 init_time = time.time()
 
 if __name__ == "__main__":
@@ -94,7 +94,7 @@ ept_sp = np.zeros(sampler.n_blocks, dtype="float64")
 
 for n in range(sampler.n_blocks):
     prop_data, (wt, t1, t2, e0, e1) =\
-        sampler.block_sample_sr(prop_data, ham_data, prop, trial, wave_data)
+        sampler.block_sample(prop_data, ham_data, prop, trial, wave_data)
     
     wt_sp[n] = wt
     t1_sp[n] = t1
@@ -284,7 +284,7 @@ def blocking_analysis(wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_
     block_err_errs = np.zeros(max_size)  # uncertainty on the error estimate
     block_means = np.zeros(max_size)
 
-    print(f"nclean = {nclean}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
+    print(f"nsample = {nclean}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
     print(f"{'Blk_SZ':>6s}  {'NBlk':>5s}  {'NSmp':>5s}  {'Energy':>10s}  {'Error':>8s}  {'dError':>8s}")
 
     for i, block_size in enumerate(block_sizes):
@@ -353,6 +353,13 @@ def blocking_analysis(wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_
 
 plateau_value = blocking_analysis(wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_nblocks=20)
 
+# print(f"Plateau error estimate: {plateau_value:.6f} ± {perr[0]:.6f}")
+# print(f"Decay constant (tau):   {popt[2]:.2f} blocks")
+# convergence_block = -popt[2] * np.log(0.05)
+# print(f"~95% of plateau reached at block_size ≈ {convergence_block:.0f}")
+# if convergence_block > nclean or convergence_block < 0:
+#     print(f"Plateau not reached within sampled blocks, use max error")
+#     plateau_value = block_errs.max()
 print(f"Blocked clean AFQMC/pt2CCSD energy: {ept:.6f} ± {plateau_value:.6f}")
 print(f"Total run time: {time.time() - init_time:.2f}")
 print(f'------------------ AFQMC Sampling Finished -------------------')

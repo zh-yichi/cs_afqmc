@@ -88,7 +88,7 @@ for n in range(options["n_eql"]):
 
 print("--------------------- Sampling Blocks -----------------------")
 print(f"Target Final Error ~ {options['max_error']:.6f}")
-print(f"{'N':>4s}  "
+print(f"{'blocks':>4s}  "
       f"{'E(Guide)':>12s}  {'Error':>8s}  "
       f"{'E(Orb)':>10s}  {'Error':>8s}  "
       f"{'Walltime':>8s}")
@@ -104,7 +104,7 @@ ept_sp = np.zeros(sampler.n_blocks,dtype="float64")
 
 for n in range(sampler.n_blocks):
     prop_data, (wt, e0, eorb, t2eorb, t2orb, e0bar, t1olp) = \
-        sampler.block_sample_sr(prop_data, ham_data, prop, trial, wave_data)
+        sampler.block_sample(prop_data, ham_data, prop, trial, wave_data)
     
     wt_sp[n] = wt
     e0_sp[n] = e0
