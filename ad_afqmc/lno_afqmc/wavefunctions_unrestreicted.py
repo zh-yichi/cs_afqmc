@@ -1560,7 +1560,264 @@ class uccsd_pt2_beta(uccsd_pt2):
     
     def __hash__(self):
         return hash(tuple(self.__dict__.values()))
+
+
+@dataclass
+class uccsd_pt2_alpha_chunk(uccsd_pt2_alpha):
+    nchol_chunk: int = 20
+    mix_precision: bool = False
+
+    @partial(jit, static_argnums=(0))
+    def _t2eorb_tc(self, walker_up, walker_dn, ham_data, wave_data):
+        """use chunked cholesky for two-body terms"""
+        nchol_chunk = self.nchol_chunk
+        norb_a, norb_b = self.norb
+        nocc_a, nocc_b = self.nelec
+        h1a, h1b = ham_data["h1bar"]
+        t2aa, t2ab = wave_data["t2aa"], wave_data["t2ab"]
+        chol_a, chol_b = ham_data["chol_bar"]
+        chol_a = chol_a.reshape(-1, norb_a, norb_a)
+        chol_b = chol_b.reshape(-1, norb_b, norb_b)
+        rot_chol_a = chol_a[:, :nocc_a, :]
+        rot_chol_b = chol_b[:, :nocc_b, :]
+
+        green_a = (walker_up.dot(jnp.linalg.inv(walker_up[:nocc_a, :]))).T
+        green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[:nocc_b, :]))).T
+        green_occ_a = green_a[:, nocc_a:]
+        green_occ_b = green_b[:, nocc_b:]
+        greenp_a = jnp.vstack((green_occ_a, -jnp.eye(norb_a - nocc_a)))
+        greenp_b = jnp.vstack((green_occ_b, -jnp.eye(norb_b - nocc_b)))
+
+        # 1 body energy
+        hg_a = oe.contract("pj,pj->", h1a[:nocc_a, :], green_a, backend="jax")
+        hg_b = oe.contract("pj,pj->", h1b[:nocc_b, :], green_b, backend="jax")
+        e1_0 = hg_a + hg_b
+
+        # double excitations
+        t2g_aa_a_c = oe.contract("iajb,ia->jb", t2aa, green_occ_a, backend="jax") / 4
+        t2g_aa_a_e = oe.contract("iajb,ja->ib", t2aa, green_occ_a, backend="jax") / 4
+        t2g_ab_a = oe.contract("iajb,ia->jb", t2ab, green_occ_a, backend="jax") / 2
+        t2g_ab_b = oe.contract("iajb,jb->ia", t2ab, green_occ_b, backend="jax") / 2
+        gt2g_aa = oe.contract("jb,jb->", t2g_aa_a_c, green_occ_a, backend="jax")
+        gt2g_ab = oe.contract("jb,jb->", t2g_ab_a, green_occ_b, backend="jax")
+        gt2g = 2 * gt2g_aa + gt2g_ab
+        e1_2_1 = gt2g * e1_0
+
+        t2_green_aaa_c = oe.contract('pb,jb,jq->pq', greenp_a, t2g_aa_a_c, green_a, backend="jax")
+        t2_green_aaa_e = oe.contract('pb,ib,iq->pq', greenp_a, t2g_aa_a_e, green_a, backend="jax")
+        t2_green_aba = oe.contract('pa,ia,iq->pq', greenp_a, t2g_ab_b, green_a, backend="jax")
+        t2_green_abb = oe.contract('pb,jb,jq->pq', greenp_b, t2g_ab_a, green_b, backend="jax")
+        t2_green_aaa = 2 * (t2_green_aaa_c - t2_green_aaa_e)
+        e1_2_2_a = -oe.contract("pq,pq->", t2_green_aaa + t2_green_aba, h1a, backend="jax")
+        e1_2_2_b = -oe.contract("pq,pq->", t2_green_abb, h1b, backend="jax")
+        e1_2_2 = e1_2_2_a + e1_2_2_b
+        e1_2 = e1_2_1 + e1_2_2
+
+        # two body energy — chunked over Cholesky auxiliary index
+        nchol = chol_a.shape[0]
+        npad = (-nchol) % nchol_chunk
+        if npad > 0:
+            chol_a = jnp.concatenate([chol_a, jnp.zeros((npad, norb_a, norb_a))], axis=0)
+            chol_b = jnp.concatenate([chol_b, jnp.zeros((npad, norb_b, norb_b))], axis=0)
+            rot_chol_a = jnp.concatenate([rot_chol_a, jnp.zeros((npad, nocc_a, norb_a))], axis=0)
+            rot_chol_b = jnp.concatenate([rot_chol_b, jnp.zeros((npad, nocc_b, norb_b))], axis=0)
+
+        nchunks = (nchol + npad) // nchol_chunk
+        chol_a = chol_a.reshape(nchunks, nchol_chunk, norb_a, norb_a)
+        chol_b = chol_b.reshape(nchunks, nchol_chunk, norb_b, norb_b)
+        rot_chol_a = rot_chol_a.reshape(nchunks, nchol_chunk, nocc_a, norb_a)
+        rot_chol_b = rot_chol_b.reshape(nchunks, nchol_chunk, nocc_b, norb_b)
+
+        def scan_chunk(carry, x):
+            chol_a_c, rot_chol_a_c, chol_b_c, rot_chol_b_c = x
+
+            gl_a = oe.contract("ir,gpr->gip", green_a, chol_a_c, backend="jax")
+            gl_b = oe.contract("ir,gpr->gip", green_b, chol_b_c, backend="jax")
+            tr_gl_a = oe.contract("gii->g", gl_a[:, :nocc_a, :nocc_a], backend="jax")
+            tr_gl_b = oe.contract("gii->g", gl_b[:, :nocc_b, :nocc_b], backend="jax")
+            gl_c = tr_gl_a + tr_gl_b
+            e2_0_c = oe.contract('g,g->', gl_c, gl_c) / 2.0
+            e2_0_e = -(oe.contract("gij,gji->", gl_a[:, :nocc_a, :nocc_a], gl_a[:, :nocc_a, :nocc_a], backend="jax")
+                    + oe.contract("gij,gji->", gl_b[:, :nocc_b, :nocc_b], gl_b[:, :nocc_b, :nocc_b], backend="jax")) / 2.0
+            carry[0] += e2_0_c + e2_0_e
+
+            # double excitations
+            lt2g_a = oe.contract("gpq,pq->g", chol_a_c, 2 * t2_green_aaa + 2 * t2_green_aba, backend="jax")
+            lt2g_b = oe.contract("gpq,pq->g", chol_b_c, 2 * t2_green_abb, backend="jax")
+            carry[1] += -oe.contract('g,g->', lt2g_a + lt2g_b, gl_c, backend="jax") / 2.0
+
+            lt2_green_a = oe.contract("gpi,ji->gpj", rot_chol_a_c, 2 * t2_green_aaa + 2 * t2_green_aba, backend="jax")
+            lt2_green_b = oe.contract("gpi,ji->gpj", rot_chol_b_c, 2 * t2_green_abb, backend="jax")
+            carry[2] += (oe.contract("gip,gip->", gl_a, lt2_green_a, backend="jax")
+                        + oe.contract("gip,gip->", gl_b, lt2_green_b, backend="jax")) / 2
+
+            glgp_a = oe.contract("gip,pa->gia", gl_a, greenp_a, backend="jax")
+            glgp_b = oe.contract("gip,pa->gia", gl_b, greenp_b, backend="jax")
+
+            if self.mix_precision:
+                glgp_a_mp = glgp_a.astype(jnp.complex64)
+                glgp_b_mp = glgp_b.astype(jnp.complex64)
+                t2aa_mp = t2aa.astype(jnp.float32)
+                t2ab_mp = t2ab.astype(jnp.float32)
+            else:                
+                glgp_a_mp = glgp_a
+                glgp_b_mp = glgp_b
+                t2aa_mp = t2aa
+                t2ab_mp = t2ab
+            
+            l2t2_aa_a = oe.contract("gia,iajb->gjb", glgp_a_mp, t2aa_mp, backend="jax")
+            l2t2_ab_a = oe.contract("gia,iajb->gjb", glgp_a_mp, t2ab_mp, backend="jax")
+            l2t2_aa = 0.5 * oe.contract("gjb,gjb->", l2t2_aa_a, glgp_a_mp, backend="jax")
+            l2t2_ab = 0.5 * oe.contract("gjb,gjb->", l2t2_ab_a, glgp_b_mp, backend="jax")
+            carry[3] += (l2t2_aa + l2t2_ab).astype(jnp.complex128)
+
+            return carry, 0.0
+
+        [e2_0, e2_2_2_1, e2_2_2_2, e2_2_3], _ \
+            = lax.scan(scan_chunk, [0.0, 0.0, 0.0, 0.0], (chol_a, rot_chol_a, chol_b, rot_chol_b))
+
+        e2_2_1 = e2_0 * gt2g
+        e2_2_2 = e2_2_2_1 + e2_2_2_2
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        t2orb = gt2g
+        e12bar = e1_0 + e2_0
+        t2eorb = e1_2 + e2_2
+
+        return t2eorb, t2orb, e12bar
+
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
     
+
+@dataclass
+class uccsd_pt2_beta_chunk(uccsd_pt2_beta):
+    nchol_chunk: int = 20
+    mix_precision: bool = False
+
+    @partial(jit, static_argnums=(0))
+    def _t2eorb_tc(self, walker_up, walker_dn, ham_data, wave_data):
+        """use chunked cholesky for two-body terms"""
+        nchol_chunk = self.nchol_chunk
+        norb_a, norb_b = self.norb
+        nocc_a, nocc_b = self.nelec
+        h1a, h1b = ham_data["h1bar"]
+        t2ba, t2bb = wave_data["t2ba"], wave_data["t2bb"]
+        chol_a, chol_b = ham_data["chol_bar"]
+        chol_a = chol_a.reshape(-1, norb_a, norb_a)
+        chol_b = chol_b.reshape(-1, norb_b, norb_b)
+        rot_chol_a = chol_a[:, :nocc_a, :]
+        rot_chol_b = chol_b[:, :nocc_b, :]
+
+        green_a = (walker_up.dot(jnp.linalg.inv(walker_up[:nocc_a, :]))).T
+        green_b = (walker_dn.dot(jnp.linalg.inv(walker_dn[:nocc_b, :]))).T
+        green_occ_a = green_a[:, nocc_a:]
+        green_occ_b = green_b[:, nocc_b:]
+        greenp_a = jnp.vstack((green_occ_a, -jnp.eye(norb_a - nocc_a)))
+        greenp_b = jnp.vstack((green_occ_b, -jnp.eye(norb_b - nocc_b)))
+
+        # 1 body energy    
+        hg_a = oe.contract("pj,pj->", h1a[:nocc_a, :], green_a, backend="jax")
+        hg_b = oe.contract("pj,pj->", h1b[:nocc_b, :], green_b, backend="jax")
+        e1_0 = hg_a + hg_b
+
+        # double excitations
+        t2g_bb_b_c = oe.contract("iajb,ia->jb", t2bb, green_occ_b, backend="jax") / 4
+        t2g_bb_b_e = oe.contract("iajb,ja->ib", t2bb, green_occ_b, backend="jax") / 4
+        t2g_ba_a = oe.contract("iajb,jb->ia", t2ba, green_occ_a, backend="jax") / 2
+        t2g_ba_b = oe.contract("iajb,ia->jb", t2ba, green_occ_b, backend="jax") / 2
+        gt2g_bb = oe.contract("jb,jb->", t2g_bb_b_c, green_occ_b, backend="jax")
+        gt2g_ba = oe.contract("jb,jb->", t2g_ba_b, green_occ_a, backend="jax")
+        gt2g = 2 * gt2g_bb + gt2g_ba
+        e1_2_1 = gt2g * e1_0
+
+        t2_green_bbb_c = oe.contract('pb,jb,jq->pq', greenp_b, t2g_bb_b_c, green_b, backend="jax")
+        t2_green_bbb_e = oe.contract('pb,ib,iq->pq', greenp_b, t2g_bb_b_e, green_b, backend="jax")
+        t2_green_baa = oe.contract('pb,jb,jq->pq', greenp_a, t2g_ba_b, green_a, backend="jax")
+        t2_green_bab = oe.contract('pa,ia,iq->pq', greenp_b, t2g_ba_a, green_b, backend="jax")
+        t2_green_bbb = 2 * (t2_green_bbb_c - t2_green_bbb_e)
+        e1_2_2_a = -oe.contract("pq,pq->", t2_green_baa, h1a, backend="jax")
+        e1_2_2_b = -oe.contract("pq,pq->", t2_green_bbb + t2_green_bab, h1b, backend="jax")
+        e1_2_2 = e1_2_2_a + e1_2_2_b
+        e1_2 = e1_2_1 + e1_2_2
+
+        # two body energy — chunked over Cholesky auxiliary index
+        nchol = chol_a.shape[0]
+        # pad to multiple of nchol_chunk
+        # chunks have to be the same size inside the scan
+        npad = (-nchol) % nchol_chunk
+        if npad > 0:
+            chol_a = jnp.concatenate([chol_a, jnp.zeros((npad, norb_a, norb_a))], axis=0)
+            chol_b = jnp.concatenate([chol_b, jnp.zeros((npad, norb_b, norb_b))], axis=0)
+            rot_chol_a = jnp.concatenate([rot_chol_a, jnp.zeros((npad, nocc_a, norb_a))], axis=0)
+            rot_chol_b = jnp.concatenate([rot_chol_b, jnp.zeros((npad, nocc_b, norb_b))], axis=0)
+
+        nchunks = (nchol + npad) // nchol_chunk
+        chol_a = chol_a.reshape(nchunks, nchol_chunk, norb_a, norb_a)
+        chol_b = chol_b.reshape(nchunks, nchol_chunk, norb_b, norb_b)
+        rot_chol_a = rot_chol_a.reshape(nchunks, nchol_chunk, nocc_a, norb_a)
+        rot_chol_b = rot_chol_b.reshape(nchunks, nchol_chunk, nocc_b, norb_b)
+
+        def scan_chunk(carry, x):
+            chol_a_c, rot_chol_a_c, chol_b_c, rot_chol_b_c = x
+            # explicit contraction within the chunk (g is chunk-local aux index)
+            gl_a = oe.contract("ir,gpr->gip", green_a, chol_a_c, backend="jax")
+            gl_b = oe.contract("ir,gpr->gip", green_b, chol_b_c, backend="jax")
+            tr_gl_a = oe.contract("gii->g", gl_a[:, :nocc_a, :nocc_a], backend="jax")
+            tr_gl_b = oe.contract("gii->g", gl_b[:, :nocc_b, :nocc_b], backend="jax")
+            gl_c = tr_gl_a + tr_gl_b
+            e2_0_c = oe.contract('g,g->', gl_c, gl_c) / 2.0
+            e2_0_e = -(oe.contract("gij,gji->", gl_a[:, :nocc_a, :nocc_a], gl_a[:, :nocc_a, :nocc_a], backend="jax")
+                    + oe.contract("gij,gji->", gl_b[:, :nocc_b, :nocc_b], gl_b[:, :nocc_b, :nocc_b], backend="jax")) / 2.0
+            carry[0] += e2_0_c + e2_0_e
+
+            # double excitations
+            lt2g_a = oe.contract("gpq,pq->g", chol_a_c, 2 * t2_green_baa, backend="jax")
+            lt2g_b = oe.contract("gpq,pq->g", chol_b_c, 2 * t2_green_bbb + 2 * t2_green_bab, backend="jax")
+            carry[1] += -oe.contract('g,g->', lt2g_a + lt2g_b, gl_c, backend="jax") / 2.0
+
+            lt2_green_a = oe.contract("gpi,ji->gpj", rot_chol_a_c, 2 * t2_green_baa, backend="jax")
+            lt2_green_b = oe.contract("gpi,ji->gpj", rot_chol_b_c, 2 * t2_green_bbb + 2 * t2_green_bab, backend="jax")
+            carry[2] += (oe.contract("gip,gip->", gl_a, lt2_green_a, backend="jax")
+                        + oe.contract("gip,gip->", gl_b, lt2_green_b, backend="jax")) / 2
+
+            glgp_a = oe.contract("gip,pa->gia", gl_a, greenp_a, backend="jax")
+            glgp_b = oe.contract("gip,pa->gia", gl_b, greenp_b, backend="jax")
+
+            if self.mix_precision:
+                glgp_a_mp = glgp_a.astype(jnp.complex64)
+                glgp_b_mp = glgp_b.astype(jnp.complex64)
+                t2ba_mp = t2ba.astype(jnp.float32)
+                t2bb_mp = t2bb.astype(jnp.float32)
+            else:
+                glgp_a_mp = glgp_a
+                glgp_b_mp = glgp_b
+                t2ba_mp = t2ba
+                t2bb_mp = t2bb
+            l2t2_ba_b = oe.contract("gia,iajb->gjb", glgp_b_mp, t2ba_mp, backend="jax")
+            l2t2_bb_b = oe.contract("gia,iajb->gjb", glgp_b_mp, t2bb_mp, backend="jax")
+            l2t2_ba = 0.5 * oe.contract("gjb,gjb->", l2t2_ba_b, glgp_a_mp, backend="jax")
+            l2t2_bb = 0.5 * oe.contract("gjb,gjb->", l2t2_bb_b, glgp_b_mp, backend="jax")
+            carry[3] += (l2t2_ba + l2t2_bb).astype(jnp.complex128)
+
+            return carry, 0.0
+
+        [e2_0, e2_2_2_1, e2_2_2_2, e2_2_3], _ \
+            = lax.scan(scan_chunk, [0.0, 0.0, 0.0, 0.0], (chol_a, rot_chol_a, chol_b, rot_chol_b))
+
+        e2_2_1 = e2_0 * gt2g
+        e2_2_2 = e2_2_2_1 + e2_2_2_2
+        e2_2 = e2_2_1 + e2_2_2 + e2_2_3
+
+        t2orb = gt2g
+        e12bar = e1_0 + e2_0
+        t2eorb = e1_2 + e2_2
+
+        return t2eorb, t2orb, e12bar
+    
+    def __hash__(self):
+        return hash(tuple(self.__dict__.values()))
+
 
 @dataclass
 class uccsd_pt2_alpha_fast(uccsd_pt2_alpha):

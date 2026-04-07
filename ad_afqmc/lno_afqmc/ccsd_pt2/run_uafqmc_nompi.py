@@ -27,8 +27,12 @@ config.setup_jax()
 
 ham_data, prop, trial, wave_data, sampler, options = (ulno_afqmc._prep_afqmc())
 
+print(f"Trial: {trial}")
+print(f"Sampler: {sampler}")
+
 print(f"norb: {trial.norb}")
 print(f"nelec: {trial.nelec}")
+print(f"nchol: {sampler.n_chol}")
 
 for op in options:
     if options[op] is not None:
@@ -91,7 +95,7 @@ print(f"Target Final Error ~ {options['max_error']:.6f}")
 print(f"{'N':>4s}  "
       f"{'E(Guide)':>12s}  {'Error':>8s}  "
       f"{'E(Orb)':>10s}  {'Error':>8s}  "
-      f"{'Walltime':>8s}")
+      f"{'Kill_WK':>7s}  {'Time':>8s}")
 
 wt_sp = np.zeros(sampler.n_blocks,dtype="float64")
 e0_sp = np.zeros(sampler.n_blocks,dtype="float64")
@@ -101,6 +105,7 @@ t2orb_sp = np.zeros(sampler.n_blocks,dtype="complex128") # "float64")
 e0bar_sp = np.zeros(sampler.n_blocks,dtype="complex128") # "float64")
 t1olp_sp = np.zeros(sampler.n_blocks,dtype="complex128") # "float64")
 ept_sp = np.zeros(sampler.n_blocks,dtype="float64")
+n_killed = 0
 
 for n in range(sampler.n_blocks):
     prop_data, (wt, e0, eorb, t2eorb, t2orb, e0bar, t1olp) = \
@@ -113,12 +118,14 @@ for n in range(sampler.n_blocks):
     t2orb_sp[n] = t2orb
     e0bar_sp[n] = e0bar
     t1olp_sp[n] = t1olp
+    n_killed += prop_data["n_killed_walkers"]
 
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * e0
     
     ept_sp[n] = (eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2).real
 
-    if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:                
+    # if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:
+    if (n+1) % (min(max(sampler.n_blocks // 10, 1), 20)) == 0 and n > 0:          
         wt = np.sum(wt_sp[:n+1])
         e0 = np.sum(wt_sp[:n+1] * e0_sp[:n+1]) / wt
         eorb = np.sum(wt_sp[:n+1] * eorb_sp[:n+1]) / wt
@@ -151,7 +158,7 @@ for n in range(sampler.n_blocks):
         print(f"{n+1:4d}  "
               f"{e0:12.6f}  {e0_err:8.6f}  "
               f"{eorb_pt:10.6f}  {eorb_pt_err:8.6f}  "
-              f"{time.time() - init_time:8.2f}")
+              f"{n_killed:7d}  {time.time() - init_time:8.2f}")
 
         if eorb_pt_err < 0.75 * options["max_error"] and n > 100:
             break

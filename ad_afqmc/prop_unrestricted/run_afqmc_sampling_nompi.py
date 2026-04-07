@@ -104,9 +104,7 @@ samples_clean, idx \
     = stat_utils.reject_outliers(
         np.stack((wt_sp, e_sp)).T, 1)
 
-print(
-    f"# Number of outliers in post: {nsamples - samples_clean.shape[0]} "
-    )
+print(f"# Number of outliers in post: {nsamples - samples_clean.shape[0]}")
 
 wt_sp = samples_clean[:, 0]
 e_sp = samples_clean[:, 1]
@@ -121,4 +119,81 @@ e = f"{e:.6f}"
 
 print(f"Final Results:")
 print(f"AFQMC energy: {e} +/- {e_err}")
+
+def blocking_analysis(
+        wt_sp, 
+        en_sp, 
+        min_nblocks=20
+        ):
+    import numpy as np
+    from scipy.optimize import curve_fit
+    
+    nsample = len(wt_sp)
+    max_size = nsample // min_nblocks
+    if max_size < 10:
+        min_nblocks = max(nsample // 10, 3)
+        max_size = nsample // min_nblocks
+        print(f"Warning: small dataset, relaxed min_nblocks to {min_nblocks}")
+    block_sizes = np.arange(1, max_size + 1)
+    block_vars = np.zeros(max_size)
+    block_var_errs = np.zeros(max_size)
+    block_means = np.zeros(max_size)
+    print(f"nsample = {nsample}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
+    print(f"{'B':>4s}  {'NB':>4s}  {'NS':>4s}  {'Energy':>10s}  {'Error':>8s}  {'dError':>8s}")
+    for i, block_size in enumerate(block_sizes):
+        n_blocks = nsample // block_size
+        sl = slice(0, n_blocks * block_size)
+        wt = (wt_sp[sl]).reshape(n_blocks, block_size)
+        wt_en = (wt_sp[sl] * en_sp[sl]).reshape(n_blocks, block_size)
+        block_weight = np.sum(wt, axis=1)
+        block_energy = np.sum(wt_en, axis=1) / block_weight
+        block_mean = np.mean(block_energy)
+        block_var = np.var(block_energy, ddof=1) / n_blocks  # variance of the mean
+        block_error = np.sqrt(block_var)
+        # Uncertainty on variance: var / sqrt((n_blocks - 1) / 2)
+        var_of_var = block_var * np.sqrt(2.0 / (n_blocks - 1))
+        err_of_err = block_error / np.sqrt(2.0 * (n_blocks - 1))
+        block_means[i] = block_mean
+        block_vars[i] = block_var
+        block_var_errs[i] = var_of_var
+        print(f'{block_size:4d}  {n_blocks:4d}  {block_size*n_blocks:4d}  '
+            f'{block_mean:10.6f}  {block_error:8.6f}  {err_of_err:8.6f}')
+
+    def model(x, a, b, tau):
+        return a - b * np.exp(-x / tau)
+    p0 = [block_vars.max(), block_vars.max() - block_vars[0], 5.0]
+    try:
+        popt, pcov = curve_fit(model, block_sizes, block_vars,
+                            sigma=block_var_errs, absolute_sigma=True,
+                            p0=p0, maxfev=10000)
+        plateau_var = popt[0]
+        plateau_var_unc = np.sqrt(pcov[0, 0])
+        plateau_value = np.sqrt(plateau_var)
+        # Error propagation: d(sqrt(v)) = dv / (2 sqrt(v))
+        plateau_uncertainty = plateau_var_unc / (2.0 * plateau_value)
+        tau = popt[2]
+        ratio = 0.01 * popt[0] / popt[1]
+        if ratio > 0:
+            plateau_block_size = int(np.ceil(-popt[2] * np.log(ratio)))
+        else:
+            plateau_block_size = 1
+        plateau_block_size = min(plateau_block_size, max_size)
+        print(f"Fit (variance): plateau_var = {plateau_var:.3e} ± {plateau_var_unc:.3e}")
+        print(f"Fit (error):    plateau = {plateau_value:.6f} ± {plateau_uncertainty:.6f}")
+        print(f"     autocorrelation length ~ {tau:.1f} blocks")
+        print(f"     plateau reached at block size ~ {plateau_block_size}")
+    except RuntimeError as e:
+        print(f"\nFit failed: {e}")
+        idx_max = np.argmax(block_vars)
+        plateau_value = np.sqrt(block_vars[idx_max])
+        plateau_uncertainty = block_var_errs[idx_max] / (2.0 * plateau_value)
+        plateau_block_size = block_sizes[idx_max]
+        popt, pcov = None, None
+        print(f"Fallback max error: {plateau_value:.6f} +/- {plateau_uncertainty:.6f}")
+        print(f"     plateau at block size ~ {plateau_block_size}")
+    return plateau_value
+
+plateau_value = blocking_analysis(wt_sp, e_sp, min_nblocks=20)
+print(f"My blocking AFQMC energy: {e} +/- {plateau_value:.6f}")
+
 print(f"total run time: {time.time() - init_time:.2f}")

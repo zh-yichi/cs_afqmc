@@ -314,12 +314,19 @@ def compress_cderi_gpu(cderi, thresh=1e-6):
 #     return cp_cderi_a, cp_cderi_b
 
 
-def prep_afqmc(mf_cc,mo_coeff,t1,t2,frozen,prjlo,
-               options,chol_cut=1e-5,use_df=False,
+def prep_afqmc(mf_cc,
+               mo_coeff,
+               t1,
+               t2,
+               frozen,prjlo,
+               options,
+               chol_cut=1e-5,
+               use_df=False,
                option_file='options.bin',
                mo_file="mo_coeff.npz",
                amp_file="amplitudes.npz",
-               chol_file="FCIDUMP_chol"):
+               chol_file="FCIDUMP_chol"
+               ):
     
     
     with open(option_file, 'wb') as f:
@@ -563,23 +570,25 @@ def _prep_afqmc(option_file="options.bin",
                 mo_file="mo_coeff.npz",
                 amp_file="amplitudes.npz",
                 chol_file="FCIDUMP_chol"):
-    
-    # try:
+
     with open(option_file, "rb") as f:
         options = pickle.load(f)
 
-
     options["dt"] = options.get("dt", 0.005)
-    options["n_exp_terms"] = options.get("n_exp_terms",6)
+    options["n_exp_terms"] = options.get("n_exp_terms", 6)
     options["n_walkers"] = options.get("n_walkers", 50)
     options["n_prop_steps"] = options.get("n_prop_steps", 50)
     options["n_blocks"] = options.get("n_blocks", 50)
     options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
     options["n_eql"] = options.get("n_eql", 3)
-    options["walker_type"] = options.get("walker_type", "rhf")
-    options["trial"] = options.get("trial", None)
+    options["walker_type"] = options.get("walker_type", "uhf")
+    options["trial"] = options.get("trial", "uccsd_pt2")
     options["n_batch"] = options.get("n_batch", 1)
     options['use_gpu'] = options.get("use_gpu", True)
+    options['mix_precision'] = options.get("mix_precision", False)
+
+    if "chunk" in options["trial"]:
+        options["nchol_chunk"] = options.get("nchol_chunk", 20)
 
     with h5py.File(chol_file, "r") as fh5:
         [nelec_a,nelec_b,nmo_a,nmo_b,nchol] = fh5["header"]
@@ -599,11 +608,9 @@ def _prep_afqmc(option_file="options.bin",
     nelec = (nelec_a, nelec_b)
     norb = (nmo_a, nmo_b)
 
-    # ham = hamiltonian.hamiltonian(norb) # FIX
     ham_data = {}
     ham_data["h0"] = h0
     ham_data["E0"] = emf
-    # ham_data["ene0"] = options["ene0"]
 
     ham_data["h1"] = [jnp.array(h1_a), jnp.array(h1_b)]
     ham_data["h1_mod"] = [jnp.array(h1mod_a), jnp.array(h1mod_b)]
@@ -619,7 +626,7 @@ def _prep_afqmc(option_file="options.bin",
     wave_data["mo_coeff"] = [
             mo_coeff_a[:, : nelec[0]],
             mo_coeff_b[:, : nelec[1]],
-        ]
+            ]
 
     if options["trial"] == "uhf":
         trial = ulno_wavefunctions.uhf(norb, nelec, n_batch=options["n_batch"])
@@ -691,12 +698,26 @@ def _prep_afqmc(option_file="options.bin",
             trial = ulno_wavefunctions.uccsd_pt2_alpha(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2aa"] = oe.contract('iajb,ik->kajb', t2aa, prja, backend='jax')
             wave_data["t2ab"] = oe.contract('iajb,ik->kajb', t2ab, prja, backend='jax')
+            if "chunk" in options["trial"]:
+                trial = ulno_wavefunctions.uccsd_pt2_alpha_chunk(norb, 
+                                                                 nelec, 
+                                                                 n_batch = options["n_batch"], 
+                                                                 nchol_chunk = options["nchol_chunk"],
+                                                                 mix_precision = options['mix_precision'],
+                                                                 )
             if "fast" in options["trial"]:
                 trial = ulno_wavefunctions.uccsd_pt2_alpha_fast(norb, nelec, n_batch = options["n_batch"])
         elif "beta" in options["trial"]:
             trial = ulno_wavefunctions.uccsd_pt2_beta(norb, nelec, n_batch = options["n_batch"])
             wave_data["t2ba"] = oe.contract('jbia,ik->kajb', t2ab, prjb, backend='jax')
             wave_data["t2bb"] = oe.contract('iajb,ik->kajb', t2bb, prjb, backend='jax')
+            if "chunk" in options["trial"]:
+                trial = ulno_wavefunctions.uccsd_pt2_beta_chunk(norb, 
+                                                                nelec, 
+                                                                n_batch = options["n_batch"], 
+                                                                nchol_chunk = options["nchol_chunk"],
+                                                                mix_precision = options['mix_precision']
+                                                                )
             if "fast" in options["trial"]:
                 trial = ulno_wavefunctions.uccsd_pt2_beta_fast(norb, nelec, n_batch = options["n_batch"])
         else:
@@ -788,6 +809,7 @@ def run_afqmc(mf,
               lno_type = ['1h']*2, 
               run_frg_list = None, 
               fast = False,
+              chunk_chol = False,
               qmc_script = None,
               ):
     
@@ -829,7 +851,7 @@ def run_afqmc(mf,
     # Loop over fragment
     for ifrag, loidx in enumerate(frag_lolist):
         print("\n")
-        print(f"------------ RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag_tot} -------------")
+        print(f"======================= RUNNING LNO-FRAGMENT {run_frg_list[ifrag]+1}/{nfrag_tot} ========================")
         if len(loidx) == 2 and isinstance(loidx[0], Iterable): # Unrestricted
             orbloc = [lo_coeff[0][:,loidx[0]], lo_coeff[1][:,loidx[1]]]
             lno_param = [
@@ -887,17 +909,18 @@ def run_afqmc(mf,
         print(f"LNO-CCSD time: {time1 - time0:.6f} s")
         
         options["trial"] = trial
+
         if 'ad' not in options["trial"]:
             if lno_elec_type == 'alpha':
-                if fast:
-                    options["trial"] += '_alpha_fast'
-                else:
-                    options["trial"] += '_alpha'
+                options["trial"] += '_alpha'
             elif lno_elec_type == 'beta':
-                if fast:
-                    options["trial"] += '_beta_fast'
-                else:
-                    options["trial"] += '_beta'
+                options["trial"] += '_beta'
+
+            if chunk_chol:
+                    options["trial"] += '_chunk'
+            elif fast:
+                    options["trial"] += '_fast'
+
 
         options["seed"] = seeds[ifrag]
         nelec_list[ifrag], norb_list[ifrag] \

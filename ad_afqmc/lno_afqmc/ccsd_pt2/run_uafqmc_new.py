@@ -88,10 +88,10 @@ for n in range(options["n_eql"]):
 
 print("--------------------- Sampling Blocks -----------------------")
 print(f"Target Final Error ~ {options['max_error']:.6f}")
-print(f"{'blocks':>4s}  "
+print(f"{'N':>4s}  "
       f"{'E(Guide)':>12s}  {'Error':>8s}  "
       f"{'E(Orb)':>10s}  {'Error':>8s}  "
-      f"{'Walltime':>8s}")
+      f"{'Kill_WK':>7s}  {'Walltime':>8s}")
 
 wt_sp = np.zeros(sampler.n_blocks,dtype="float64")
 e0_sp = np.zeros(sampler.n_blocks,dtype="float64")
@@ -101,6 +101,7 @@ t2orb_sp = np.zeros(sampler.n_blocks,dtype="complex128") # "float64")
 e0bar_sp = np.zeros(sampler.n_blocks,dtype="complex128") # "float64")
 t1olp_sp = np.zeros(sampler.n_blocks,dtype="complex128") # "float64")
 ept_sp = np.zeros(sampler.n_blocks,dtype="float64")
+n_killed = 0
 
 for n in range(sampler.n_blocks):
     prop_data, (wt, e0, eorb, t2eorb, t2orb, e0bar, t1olp) = \
@@ -115,10 +116,11 @@ for n in range(sampler.n_blocks):
     t1olp_sp[n] = t1olp
 
     prop_data["e_estimate"] = 0.9 * prop_data["e_estimate"] + 0.1 * e0
+    n_killed += prop_data["n_killed_walkers"]
     
     ept_sp[n] = (eorb/t1olp + t2eorb/t1olp - t2orb*e0bar/t1olp**2).real
 
-    if (n+1) % (max(sampler.n_blocks // 10, 1)) == 0 and n > 0:                
+    if (n+1) % (min(max(sampler.n_blocks // 10, 1), 20)) == 0 and n > 0:            
         wt = np.sum(wt_sp[:n+1])
         e0 = np.sum(wt_sp[:n+1] * e0_sp[:n+1]) / wt
         eorb = np.sum(wt_sp[:n+1] * eorb_sp[:n+1]) / wt
@@ -151,7 +153,7 @@ for n in range(sampler.n_blocks):
         print(f"{n+1:4d}  "
               f"{e0:12.6f}  {e0_err:8.6f}  "
               f"{eorb_pt:10.6f}  {eorb_pt_err:8.6f}  "
-              f"{time.time() - init_time:8.2f}")
+              f"{n_killed:7d}  {time.time() - init_time:8.2f}")
 
         if eorb_pt_err < 0.75 * options["max_error"] and n > 100:
             break
@@ -259,62 +261,6 @@ print(f"Clean AFQMC/pt2CCSD Orbital Energy (covariance): {eorb_pt:.6f} +/- {eorb
 print(f"Clean AFQMC/pt2CCSD Orbital Energy (direct obs): {eorb_pt:.6f} +/- {eorb_pt_sp_err:.6f}")
 
 print("--------------------- Blocking Analysis ---------------------")
-# nsample = len(wt_sp)
-# min_nblocks = 20
-# max_size = nsample // min_nblocks
-# if max_size < 10:
-#     min_nblocks = max(nsample // 10, 3)
-#     max_size = nsample // min_nblocks
-#     print(f"Warning: small dataset, relaxed min_nblocks to {min_nblocks}")
-
-# max_size = nsample // 4
-# block_errs = np.zeros(max_size)
-# print(f"{'B':>4s}  {'NB':>4s}  {'NS':>4s}  {'Energy':>10s}  {'Error':>8s}")
-# for i, block_size in enumerate(range(1,max_size+1)):
-#     n_blocks = nsample // block_size
-
-#     wt_truncated = wt_sp[:n_blocks * block_size]
-#     eorb_truncated = eorb_sp[:n_blocks * block_size]
-#     t2eorb_truncated = t2eorb_sp[:n_blocks * block_size]
-#     t2orb_truncated = t2orb_sp[:n_blocks * block_size]
-#     e0bar_truncated = e0bar_sp[:n_blocks * block_size]
-#     t1olp_truncated = t1olp_sp[:n_blocks * block_size]
-
-#     wt_eorb = wt_truncated * eorb_truncated
-#     wt_t2eorb = wt_truncated * t2eorb_truncated
-#     wt_t2orb = wt_truncated * t2orb_truncated
-#     wt_e0bar = wt_truncated * e0bar_truncated
-#     wt_t1olp = wt_truncated * t1olp_truncated
-
-#     wt = wt_truncated.reshape(n_blocks, block_size)
-#     wt_eorb = wt_eorb.reshape(n_blocks, block_size)
-#     wt_t2eorb = wt_t2eorb.reshape(n_blocks, block_size)
-#     wt_t2orb = wt_t2orb.reshape(n_blocks, block_size)
-#     wt_e0bar = wt_e0bar.reshape(n_blocks, block_size)
-#     wt_t1olp = wt_t1olp.reshape(n_blocks, block_size)
-
-#     block_eorb = np.sum(wt_eorb, axis=1)     # / block_wt
-#     block_t2eorb = np.sum(wt_t2eorb, axis=1) # / block_wt
-#     block_t2orb = np.sum(wt_t2orb, axis=1)   # / block_wt
-#     block_e0bar = np.sum(wt_e0bar, axis=1)   # / block_wt
-#     block_t1olp = np.sum(wt_t1olp, axis=1)   # / block_wt
-
-#     block_energy = (block_eorb/block_t1olp + block_t2eorb/block_t1olp 
-#                     - (block_t2orb*block_e0bar)/block_t1olp**2).real
-#     block_mean = np.mean(block_energy)
-#     block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-#     print(f'{block_size:4d}  {n_blocks:4d}  {block_size*n_blocks:4d}  {block_mean:10.6f}  {block_error:8.6f}')
-#     block_errs[i] = block_error
-
-# blocked = False
-
-# for i, err in enumerate(block_errs):
-#     if i > 1 and np.abs((err - block_errs[i-1]) / err) < 0.05:
-#         blocked = True
-#         break
-
-# if not blocked:
-#     err = (block_errs).max()
 
 def blocking_analysis(wt_sp, eorb_sp, t2eorb_sp, t2orb_sp, e0bar_sp, t1olp_sp, min_nblocks=20):
     nsample = len(wt_sp)

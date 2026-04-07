@@ -222,136 +222,16 @@ print(f"Clean AFQMC/pt2CCSD overlap ratio: {t1.real:.6f} ± {t1_err:.6f}")
 print(f"Clean AFQMC/pt2CCSD energy (covariance): {ept:.6f} ± {ept_cov_err:.6f}")
 print(f"Clean AFQMC/ptCCSD energy (dir sample): {ept:.6f} ± {ept_sp_err:.6f}")
 
-# max_size = nclean // 20
-# block_errs = np.zeros(max_size)
-# print(f"{'Blk_SZ':>6s}  {'NBlk':>5s}  {'NSmp':>5s}  {'Energy':>10s}  {'Error':>8s}")
-# for i, block_size in enumerate(range(1,max_size+1)):
-#     n_blocks = nclean // block_size
 
-#     wt_truncated = wt_clean[:n_blocks * block_size]
-#     t1_truncated = t1_clean[:n_blocks * block_size]
-#     t2_truncated = t2_clean[:n_blocks * block_size]
-#     e0_truncated = e0_clean[:n_blocks * block_size]
-#     e1_truncated = e1_clean[:n_blocks * block_size]
-
-#     wt_t1 = wt_truncated * t1_truncated
-#     wt_t2 = wt_truncated * t2_truncated
-#     wt_e0 = wt_truncated * e0_truncated
-#     wt_e1 = wt_truncated * e1_truncated
-
-#     wt = wt_truncated.reshape(n_blocks, block_size)
-#     wt_t1 = wt_t1.reshape(n_blocks, block_size)
-#     wt_t2 = wt_t2.reshape(n_blocks, block_size)
-#     wt_e0 = wt_e0.reshape(n_blocks, block_size)
-#     wt_e1 = wt_e1.reshape(n_blocks, block_size)
-
-#     block_t1 = np.sum(wt_t1, axis=1)# / block_wt
-#     block_t2 = np.sum(wt_t2, axis=1)# / block_wt
-#     block_e0 = np.sum(wt_e0, axis=1)# / block_wt
-#     block_e1 = np.sum(wt_e1, axis=1)# / block_wt
-
-#     block_energy = (h0 + block_e0/block_t1 + block_e1/block_t1 - (block_t2*block_e0)/block_t1**2).real #(block_num / block_den).real
-#     block_mean = np.mean(block_energy)
-#     block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-#     print(f'{block_size:6d}  {n_blocks:5d}  {block_size*n_blocks:5d}  {block_mean:10.6f}  {block_error:8.6f}')
-#     block_errs[i] = block_error
-
-# from scipy.optimize import curve_fit
-# block_sizes = np.arange(1, len(block_errs) + 1)
-
-# # Model: error(x) = A - B * exp(-x / tau)
-# def model(x, a, b, tau):
-#     return a - b * np.exp(-x / tau)
-
-# p0 = [block_errs.max(), block_errs.max() - block_errs[0], 5.0]
-# popt, pcov = curve_fit(model, block_sizes, block_errs, p0=p0, maxfev=10000)
-# plateau_value = popt[0]
-# perr = np.sqrt(np.diag(pcov))
 print("--------------------- Blocking Analysis ---------------------")
-def blocking_analysis(wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_nblocks=20):
-    nclean = len(wt_clean)
 
-    # Auto-determine max block size: ensure at least min_nblocks blocks,
-    # but also need enough block sizes for a reliable fit (at least 10 points)
-    max_size = nclean // min_nblocks
-    if max_size < 10:
-        min_nblocks = max(nclean // 10, 3)
-        max_size = nclean // min_nblocks
-        print(f"Warning: small dataset, relaxed min_nblocks to {min_nblocks}")
+plateau_value = sampler.blocking_analysis1(
+    wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_nblocks=20
+    )
 
-    block_sizes = np.arange(1, max_size + 1)
-    block_errs = np.zeros(max_size)
-    block_err_errs = np.zeros(max_size)  # uncertainty on the error estimate
-    block_means = np.zeros(max_size)
-
-    print(f"nclean = {nclean}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
-    print(f"{'Blk_SZ':>6s}  {'NBlk':>5s}  {'NSmp':>5s}  {'Energy':>10s}  {'Error':>8s}  {'dError':>8s}")
-
-    for i, block_size in enumerate(block_sizes):
-        n_blocks = nclean // block_size
-        sl = slice(0, n_blocks * block_size)
-        wt = (wt_clean[sl]).reshape(n_blocks, block_size)
-        wt_t1 = (wt_clean[sl] * t1_clean[sl]).reshape(n_blocks, block_size)
-        wt_t2 = (wt_clean[sl] * t2_clean[sl]).reshape(n_blocks, block_size)
-        wt_e0 = (wt_clean[sl] * e0_clean[sl]).reshape(n_blocks, block_size)
-        wt_e1 = (wt_clean[sl] * e1_clean[sl]).reshape(n_blocks, block_size)
-
-        block_t1 = np.sum(wt_t1, axis=1)
-        block_t2 = np.sum(wt_t2, axis=1)
-        block_e0 = np.sum(wt_e0, axis=1)
-        block_e1 = np.sum(wt_e1, axis=1)
-
-        block_energy = (h0 + block_e0/block_t1 + block_e1/block_t1
-                        - (block_t2 * block_e0) / block_t1**2).real
-
-        block_mean = np.mean(block_energy)
-        block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-        # Uncertainty on the error estimate: error_bar / sqrt(2(n_blocks - 1))
-        err_of_err = block_error / np.sqrt(2.0 * (n_blocks - 1))
-
-        block_means[i] = block_mean
-        block_errs[i] = block_error
-        block_err_errs[i] = err_of_err
-
-        print(f'{block_size:6d}  {n_blocks:5d}  {block_size*n_blocks:5d}  '
-              f'{block_mean:10.6f}  {block_error:8.6f}  {err_of_err:8.6f}')
-
-    # Weighted fit: error(B) = a - b * exp(-B / tau)
-    from scipy.optimize import curve_fit
-
-    def model(x, a, b, tau):
-        return a - b * np.exp(-x / tau)
-
-    p0 = [block_errs.max(), block_errs.max() - block_errs[0], 5.0]
-    try:
-        popt, pcov = curve_fit(model, block_sizes, block_errs,
-                               sigma=block_err_errs, absolute_sigma=True,
-                               p0=p0, maxfev=10000)
-        plateau_value = popt[0]
-        plateau_uncertainty = np.sqrt(pcov[0, 0])
-        tau = popt[2]
-        ratio = 0.01 * popt[0] / popt[1]
-        if ratio > 0:
-            plateau_block_size = int(np.ceil(-popt[2] * np.log(ratio)))
-        else:
-            plateau_block_size = 1
-        plateau_block_size = min(plateau_block_size, max_size)
-        print(f"Fit: plateau = {plateau_value:.6f} ± {plateau_uncertainty:.6f}")
-        print(f"     autocorrelation length ~ {tau:.1f} blocks")
-        print(f"     plateau reached at block size ~ {plateau_block_size}")
-    except RuntimeError as e:
-        print(f"\nFit failed: {e}")
-        idx_max = np.argmax(block_errs)
-        plateau_value = block_errs[idx_max]
-        plateau_uncertainty = block_err_errs[idx_max]
-        plateau_block_size = block_sizes[idx_max]
-        popt, pcov = None, None
-        print(f"Fallback max error: {plateau_value:.6f} +/- {plateau_uncertainty:.6f}")
-        print(f"     plateau at block size ~ {plateau_block_size}")
-
-    return plateau_value
-
-plateau_value = blocking_analysis(wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_nblocks=20)
+plateau_value = sampler.blocking_analysis2(
+    wt_clean, t1_clean, t2_clean, e0_clean, e1_clean, h0, min_nblocks=20
+    )
 
 print(f"Blocked clean AFQMC/pt2CCSD energy: {ept:.6f} ± {plateau_value:.6f}")
 print(f"Total run time: {time.time() - init_time:.2f}")

@@ -1052,33 +1052,211 @@ class sampler_pt2(sampler):
 
         return prop_data, (blk_wt, blk_t1, blk_t2, blk_e0, blk_e1)
 
-    @partial(jit, static_argnums=(0,3,4))
-    def propagate_phaseless(
+    # @partial(jit, static_argnums=(0,3,4))
+    # def propagate_phaseless(
+    #     self,
+    #     prop_data: dict,
+    #     ham_data: dict,
+    #     prop: propagator,
+    #     trial,
+    #     wave_data: dict,
+    # ) -> Tuple[jax.Array, dict]:
+    #     def _scan_blocks(x,_):
+    #         return self.block_sample_sr(x, ham_data, prop, trial, wave_data)
+
+    #     # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+    #     # prop_data["n_killed_walkers"] = 0
+    #     # prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
+    #     prop_data, (blk_wt,blk_t1,blk_t2,blk_e0,blk_e1) = lax.scan(
+    #         _scan_blocks, prop_data, None, length = self.n_sr_blocks
+    #     )
+
+    #     wt = jnp.sum(blk_wt)
+    #     t1 = jnp.sum(blk_t1 * blk_wt) / wt
+    #     t2 = jnp.sum(blk_t2 * blk_wt) / wt
+    #     e0 = jnp.sum(blk_e0 * blk_wt) / wt
+    #     e1 = jnp.sum(blk_e1 * blk_wt) / wt
+
+    #     return prop_data, (wt, t1, t2, e0, e1)
+    # @partial(jit, static_argnums=(0, 7))
+    def blocking_analysis1(
         self,
-        prop_data: dict,
-        ham_data: dict,
-        prop: propagator,
-        trial,
-        wave_data: dict,
-    ) -> Tuple[jax.Array, dict]:
-        def _scan_blocks(x,_):
-            return self.block_sample_sr(x, ham_data, prop, trial, wave_data)
+        wt_clean, 
+        t1_clean, 
+        t2_clean, 
+        e0_clean, 
+        e1_clean, 
+        h0, 
+        min_nblocks=20
+        ):
+        import numpy as np
+        from scipy.optimize import curve_fit
 
-        # prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        # prop_data["n_killed_walkers"] = 0
-        # prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_wt,blk_t1,blk_t2,blk_e0,blk_e1) = lax.scan(
-            _scan_blocks, prop_data, None, length = self.n_sr_blocks
-        )
+        nclean = len(wt_clean)
+        # Auto-determine max block size: ensure at least min_nblocks blocks,
+        # but also need enough block sizes for a reliable fit (at least 10 points)
+        max_size = nclean // min_nblocks
+        if max_size < 10:
+            min_nblocks = max(nclean // 10, 3)
+            max_size = nclean // min_nblocks
+            print(f"Warning: small dataset, relaxed min_nblocks to {min_nblocks}")
 
-        wt = jnp.sum(blk_wt)
-        t1 = jnp.sum(blk_t1 * blk_wt) / wt
-        t2 = jnp.sum(blk_t2 * blk_wt) / wt
-        e0 = jnp.sum(blk_e0 * blk_wt) / wt
-        e1 = jnp.sum(blk_e1 * blk_wt) / wt
+        block_sizes = np.arange(1, max_size + 1)
+        block_errs = np.zeros(max_size)
+        block_err_errs = np.zeros(max_size)  # uncertainty on the error estimate
+        block_means = np.zeros(max_size)
 
-        return prop_data, (wt, t1, t2, e0, e1)
+        print(f"nclean = {nclean}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
+        print(f"{'Blk_SZ':>6s}  {'NBlk':>5s}  {'NSmp':>5s}  {'Energy':>10s}  {'Error':>8s}  {'dError':>8s}")
 
+        for i, block_size in enumerate(block_sizes):
+            n_blocks = nclean // block_size
+            sl = slice(0, n_blocks * block_size)
+            wt = (wt_clean[sl]).reshape(n_blocks, block_size)
+            wt_t1 = (wt_clean[sl] * t1_clean[sl]).reshape(n_blocks, block_size)
+            wt_t2 = (wt_clean[sl] * t2_clean[sl]).reshape(n_blocks, block_size)
+            wt_e0 = (wt_clean[sl] * e0_clean[sl]).reshape(n_blocks, block_size)
+            wt_e1 = (wt_clean[sl] * e1_clean[sl]).reshape(n_blocks, block_size)
+
+            block_t1 = np.sum(wt_t1, axis=1)
+            block_t2 = np.sum(wt_t2, axis=1)
+            block_e0 = np.sum(wt_e0, axis=1)
+            block_e1 = np.sum(wt_e1, axis=1)
+
+            block_energy = (h0 + block_e0/block_t1 + block_e1/block_t1
+                            - (block_t2 * block_e0) / block_t1**2).real
+
+            block_mean = np.mean(block_energy)
+            block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
+            # Uncertainty on the error estimate: error_bar / sqrt(2(n_blocks - 1))
+            err_of_err = block_error / np.sqrt(2.0 * (n_blocks - 1))
+
+            block_means[i] = block_mean
+            block_errs[i] = block_error
+            block_err_errs[i] = err_of_err
+
+            print(f'{block_size:6d}  {n_blocks:5d}  {block_size*n_blocks:5d}  '
+                f'{block_mean:10.6f}  {block_error:8.6f}  {err_of_err:8.6f}')
+
+        # Weighted fit: error(B) = a - b * exp(-B / tau)
+
+        def model(x, a, b, tau):
+            return a - b * np.exp(-x / tau)
+
+        p0 = [block_errs.max(), block_errs.max() - block_errs[0], 5.0]
+        try:
+            popt, pcov = curve_fit(model, block_sizes, block_errs,
+                                sigma=block_err_errs, absolute_sigma=True,
+                                p0=p0, maxfev=10000)
+            plateau_value = popt[0]
+            plateau_uncertainty = np.sqrt(pcov[0, 0])
+            tau = popt[2]
+            ratio = 0.01 * popt[0] / popt[1]
+            if ratio > 0:
+                plateau_block_size = int(np.ceil(-popt[2] * np.log(ratio)))
+            else:
+                plateau_block_size = 1
+            plateau_block_size = min(plateau_block_size, max_size)
+            print(f"Fit: plateau = {plateau_value:.6f} ± {plateau_uncertainty:.6f}")
+            print(f"     autocorrelation length ~ {tau:.1f} blocks")
+            print(f"     plateau reached at block size ~ {plateau_block_size}")
+        except RuntimeError as e:
+            print(f"\nFit failed: {e}")
+            idx_max = np.argmax(block_errs)
+            plateau_value = block_errs[idx_max]
+            plateau_uncertainty = block_err_errs[idx_max]
+            plateau_block_size = block_sizes[idx_max]
+            popt, pcov = None, None
+            print(f"Fallback max error: {plateau_value:.6f} +/- {plateau_uncertainty:.6f}")
+            print(f"     plateau at block size ~ {plateau_block_size}")
+
+        return plateau_value
+    
+    # @partial(jit, static_argnums=(0))
+    def blocking_analysis2(
+            self,
+            wt_clean, 
+            t1_clean, 
+            t2_clean, 
+            e0_clean, 
+            e1_clean, 
+            h0, 
+            min_nblocks=20
+            ):
+        import numpy as np
+        from scipy.optimize import curve_fit
+        
+        nclean = len(wt_clean)
+        max_size = nclean // min_nblocks
+        if max_size < 10:
+            min_nblocks = max(nclean // 10, 3)
+            max_size = nclean // min_nblocks
+            print(f"Warning: small dataset, relaxed min_nblocks to {min_nblocks}")
+        block_sizes = np.arange(1, max_size + 1)
+        block_vars = np.zeros(max_size)
+        block_var_errs = np.zeros(max_size)
+        block_means = np.zeros(max_size)
+        print(f"nclean = {nclean}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
+        print(f"{'Blk_SZ':>6s}  {'NBlk':>5s}  {'NSmp':>5s}  {'Energy':>10s}  {'Error':>8s}  {'dError':>8s}")
+        for i, block_size in enumerate(block_sizes):
+            n_blocks = nclean // block_size
+            sl = slice(0, n_blocks * block_size)
+            wt = (wt_clean[sl]).reshape(n_blocks, block_size)
+            wt_t1 = (wt_clean[sl] * t1_clean[sl]).reshape(n_blocks, block_size)
+            wt_t2 = (wt_clean[sl] * t2_clean[sl]).reshape(n_blocks, block_size)
+            wt_e0 = (wt_clean[sl] * e0_clean[sl]).reshape(n_blocks, block_size)
+            wt_e1 = (wt_clean[sl] * e1_clean[sl]).reshape(n_blocks, block_size)
+            block_t1 = np.sum(wt_t1, axis=1)
+            block_t2 = np.sum(wt_t2, axis=1)
+            block_e0 = np.sum(wt_e0, axis=1)
+            block_e1 = np.sum(wt_e1, axis=1)
+            block_energy = (h0 + block_e0/block_t1 + block_e1/block_t1
+                            - (block_t2 * block_e0) / block_t1**2).real
+            block_mean = np.mean(block_energy)
+            block_var = np.var(block_energy, ddof=1) / n_blocks  # variance of the mean
+            block_error = np.sqrt(block_var)
+            # Uncertainty on variance: var / sqrt((n_blocks - 1) / 2)
+            var_of_var = block_var * np.sqrt(2.0 / (n_blocks - 1))
+            err_of_err = block_error / np.sqrt(2.0 * (n_blocks - 1))
+            block_means[i] = block_mean
+            block_vars[i] = block_var
+            block_var_errs[i] = var_of_var
+            print(f'{block_size:6d}  {n_blocks:5d}  {block_size*n_blocks:5d}  '
+                f'{block_mean:10.6f}  {block_error:8.6f}  {err_of_err:8.6f}')
+
+        def model(x, a, b, tau):
+            return a - b * np.exp(-x / tau)
+        p0 = [block_vars.max(), block_vars.max() - block_vars[0], 5.0]
+        try:
+            popt, pcov = curve_fit(model, block_sizes, block_vars,
+                                sigma=block_var_errs, absolute_sigma=True,
+                                p0=p0, maxfev=10000)
+            plateau_var = popt[0]
+            plateau_var_unc = np.sqrt(pcov[0, 0])
+            plateau_value = np.sqrt(plateau_var)
+            # Error propagation: d(sqrt(v)) = dv / (2 sqrt(v))
+            plateau_uncertainty = plateau_var_unc / (2.0 * plateau_value)
+            tau = popt[2]
+            ratio = 0.01 * popt[0] / popt[1]
+            if ratio > 0:
+                plateau_block_size = int(np.ceil(-popt[2] * np.log(ratio)))
+            else:
+                plateau_block_size = 1
+            plateau_block_size = min(plateau_block_size, max_size)
+            print(f"Fit (variance): plateau_var = {plateau_var:.6e} ± {plateau_var_unc:.6e}")
+            print(f"Fit (error):    plateau = {plateau_value:.6f} ± {plateau_uncertainty:.6f}")
+            print(f"     autocorrelation length ~ {tau:.1f} blocks")
+            print(f"     plateau reached at block size ~ {plateau_block_size}")
+        except RuntimeError as e:
+            print(f"\nFit failed: {e}")
+            idx_max = np.argmax(block_vars)
+            plateau_value = np.sqrt(block_vars[idx_max])
+            plateau_uncertainty = block_var_errs[idx_max] / (2.0 * plateau_value)
+            plateau_block_size = block_sizes[idx_max]
+            popt, pcov = None, None
+            print(f"Fallback max error: {plateau_value:.6f} +/- {plateau_uncertainty:.6f}")
+            print(f"     plateau at block size ~ {plateau_block_size}")
+        return plateau_value
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

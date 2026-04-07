@@ -318,18 +318,22 @@ class sampler_pt2(sampler):
         
         prop_data = prop.orthonormalize_walkers(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["n_killed_walkers"] = 0
         
-        wt = prop_data["weights"]
         e0, t1olp, eorb, t2eorb, t2orb, e0bar = trial.calc_eorb_pt2(prop_data["walkers"],ham_data,wave_data)
         
         e0 = jnp.real(e0)
-        e0 = jnp.where(jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt), prop_data["e_estimate"], e0)
+        outlier = jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt) # 20 Ha for dt = 0.005
+        e0 = jnp.where(outlier, prop_data["e_estimate"], e0)
+        prop_data["weights"] = jnp.where(outlier, 0.0, prop_data["weights"])
+        prop_data["n_killed_walkers"] = jnp.sum(outlier)
         
         eorb = t1olp * eorb
         t2eorb = t1olp * t2eorb
         t2orb = t1olp * t2orb
         e0bar = t1olp * e0bar
-
+        
+        wt = prop_data["weights"]
         blk_wt = jnp.sum(wt)
         blk_e0 = jnp.sum(e0 * wt) / blk_wt
         blk_eorb = jnp.sum(eorb * wt) / blk_wt
@@ -365,18 +369,19 @@ class sampler_pt2(sampler):
             x, y, ham_data, prop, trial, wave_data
         )
         prop_data, _ = lax.scan(_step_scan_wrapper, prop_data, fields)
-        prop_data["n_killed_walkers"] += prop_data["weights"].size - jnp.count_nonzero(
-            prop_data["weights"]
-        )
-
+        prop_data["n_killed_walkers"] = 0
         prop_data = prop.orthonormalize_walkers(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         e0, t1olp, eorb, t2eorb, t2orb, e0bar \
             = trial.calc_eorb_pt2(prop_data["walkers"],ham_data,wave_data)
         
         e0 = jnp.real(e0)
-        e0 = jnp.where(jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt), prop_data["e_estimate"], e0)
-        
+        # e0 = jnp.where(jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt), prop_data["e_estimate"], e0)
+        outlier = jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt) # 20 Ha for dt = 0.005
+        e0 = jnp.where(outlier, prop_data["e_estimate"], e0)
+        prop_data["weights"] = jnp.where(outlier, 0.0, prop_data["weights"])
+        prop_data["n_killed_walkers"] = jnp.sum(outlier)
+
         eorb = t1olp * eorb
         t2eorb = t1olp * t2eorb
         t2orb = t1olp * t2orb
@@ -391,11 +396,10 @@ class sampler_pt2(sampler):
         blk_t2orb = jnp.sum(t2orb * wt) / blk_wt
         blk_e0bar = jnp.sum(e0bar * wt) / blk_wt
         blk_t1olp = jnp.sum(t1olp * wt) / blk_wt
-
-        prop_data["pop_control_ene_shift"] = 0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_e0
     
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["pop_control_ene_shift"] = 0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_e0
 
         return prop_data, (blk_wt, blk_e0, blk_eorb, blk_t2eorb, blk_t2orb, blk_e0bar, blk_t1olp)
 
@@ -477,13 +481,15 @@ class sampler_eq(sampler):
         prop_data = prop.orthonormalize_walkers(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
         e0 = jnp.real(trial.calc_energy(prop_data["walkers"],ham_data,wave_data))
+        outlier = jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt) # 20 Ha for dt = 0.005
+        e0 = jnp.where(outlier, prop_data["e_estimate"], e0)
+        prop_data["weights"] = jnp.where(outlier, 0.0, prop_data["weights"])
         
-        e0 = jnp.where(
-            jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
-            prop_data["e_estimate"], e0
-            )
+        # e0 = jnp.where(
+        #     jnp.abs(e0 - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt),
+        #     prop_data["e_estimate"], e0
+        #     )
 
-        # wt = prop_data["weights"] * t1olp
         wt = prop_data["weights"]
 
         blk_wt = jnp.sum(wt)
