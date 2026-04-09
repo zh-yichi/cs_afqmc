@@ -269,13 +269,13 @@ class rhf(wave_function_restricted):
     def _calc_overlap_restricted(self, walker: jax.Array, wave_data: dict) -> jax.Array:
         return jnp.linalg.det(wave_data["mo_coeff"].T.conj() @ walker) ** 2
 
-    @partial(jit, static_argnums=0)
-    def _calc_overlap(
-        self, walker_up: jax.Array, walker_dn: jax.Array, wave_data: dict
-    ) -> jax.Array:
-        return jnp.linalg.det(
-            wave_data["mo_coeff"].T.conj() @ walker_up
-        ) * jnp.linalg.det(wave_data["mo_coeff"].T.conj() @ walker_dn)
+    # @partial(jit, static_argnums=0)
+    # def _calc_overlap(
+    #     self, walker_up: jax.Array, walker_dn: jax.Array, wave_data: dict
+    # ) -> jax.Array:
+    #     return jnp.linalg.det(
+    #         wave_data["mo_coeff"].T.conj() @ walker_up
+    #     ) * jnp.linalg.det(wave_data["mo_coeff"].T.conj() @ walker_dn)
 
     @partial(jit, static_argnums=0)
     def _calc_green(self, walker: jax.Array, wave_data: dict) -> jax.Array:
@@ -319,34 +319,41 @@ class rhf(wave_function_restricted):
         self, walker: jax.Array, ham_data: dict, wave_data: dict
     ) -> jax.Array:
         h0, rot_h1, rot_chol = ham_data["h0"], ham_data["rot_h1"], ham_data["rot_chol"]
-        ene0 = h0
-        green_walker = self._calc_green(walker, wave_data)
-        ene1 = 2.0 * jnp.sum(green_walker * rot_h1)
-        f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
-        c = vmap(jnp.trace)(f)
-        exc = jnp.sum(vmap(lambda x: x * x.T)(f))
-        ene2 = 2.0 * jnp.sum(c * c) - exc
-        return ene2 + ene1 + ene0
+        # green_walker = self._calc_green(walker, wave_data)
+        # ene1 = 2.0 * jnp.sum(green_walker * rot_h1)
+        # f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
+        # c = vmap(jnp.trace)(f)
+        # exc = jnp.sum(vmap(lambda x: x * x.T)(f))
+        # ene2 = 2.0 * jnp.sum(c * c) - exc
+        # return h0 + ene1 + ene2
+        green = self._calc_green(walker, wave_data)
+        hg = oe.contract("pq,pq->", rot_h1, green, backend="jax")
+        e1 = 2 * hg
+        lg = oe.contract("gpr,qr->gpq", rot_chol, green, backend="jax")
+        e2_1 = 2 * jnp.sum(oe.contract('gpp->g', lg, backend="jax")**2)
+        e2_2 = -oe.contract('gpq,gqp->',lg,lg, backend="jax")
+        e2 = e2_1 + e2_2
+        return h0 + e1 + e2
 
-    @partial(jit, static_argnums=0)
-    def _calc_energy(
-        self,
-        walker_up: jax.Array,
-        walker_dn: jax.Array,
-        ham_data: dict,
-        wave_data: dict,
-    ) -> jax.Array:
-        h0, rot_h1, rot_chol = ham_data["h0"], ham_data["rot_h1"], ham_data["rot_chol"]
-        ene0 = h0
-        green_walker_up = self._calc_green(walker_up, wave_data)
-        green_walker_dn = self._calc_green(walker_dn, wave_data)
-        green_walker = green_walker_up + green_walker_dn
-        ene1 = jnp.sum(green_walker * rot_h1)
-        f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
-        c = vmap(jnp.trace)(f)
-        exc = jnp.sum(vmap(lambda x: x * x.T)(f))
-        ene2 = jnp.sum(c * c) - exc
-        return ene2 + ene1 + ene0
+    # @partial(jit, static_argnums=0)
+    # def _calc_energy(
+    #     self,
+    #     walker_up: jax.Array,
+    #     walker_dn: jax.Array,
+    #     ham_data: dict,
+    #     wave_data: dict,
+    # ) -> jax.Array:
+    #     h0, rot_h1, rot_chol = ham_data["h0"], ham_data["rot_h1"], ham_data["rot_chol"]
+    #     ene0 = h0
+    #     green_walker_up = self._calc_green(walker_up, wave_data)
+    #     green_walker_dn = self._calc_green(walker_dn, wave_data)
+    #     green_walker = green_walker_up + green_walker_dn
+    #     ene1 = jnp.sum(green_walker * rot_h1)
+    #     f = oe.contract("gij,jk->gik", rot_chol, green_walker.T, backend="jax")
+    #     c = vmap(jnp.trace)(f)
+    #     exc = jnp.sum(vmap(lambda x: x * x.T)(f))
+    #     ene2 = jnp.sum(c * c) - exc
+    #     return ene2 + ene1 + ene0
 
     def _calc_rdm1(self, wave_data: dict) -> jax.Array:
         rdm1 = jnp.array([wave_data["mo_coeff"] @ wave_data["mo_coeff"].T] * 2)
@@ -1811,7 +1818,6 @@ class ccsd_pt2(rhf):
         lg = oe.contract("gpq,pq->g", chol, green, backend="jax")
 
         # double excitations
-        # e2_2_1 = e2_0 * gt2g
         lt2g = oe.contract("gij,ij->g", chol, t2_green, backend="jax")
         e2_2_2_1 = -lt2g @ lg
 

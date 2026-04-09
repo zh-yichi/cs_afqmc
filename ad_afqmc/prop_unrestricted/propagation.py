@@ -157,9 +157,7 @@ class propagator(ABC):
         imp_fun_phaseless = jnp.where(imp_fun_phaseless > 100.0, 0.0, imp_fun_phaseless)
         # prop_data["imp_fun"] = imp_fun_phaseless
         prop_data["weights"] = imp_fun_phaseless * prop_data["weights"]
-        prop_data["weights"] = jnp.array(
-            jnp.where(prop_data["weights"] > 100, 0.0, prop_data["weights"])
-        )
+        prop_data["weights"] = jnp.array(jnp.where(prop_data["weights"] > 100, 0.0, prop_data["weights"]))
         prop_data["pop_control_ene_shift"] = prop_data["e_estimate"] - 0.1 * jnp.array(
             jnp.log(jnp.sum(prop_data["weights"]) / self.n_walkers) / self.dt
         )

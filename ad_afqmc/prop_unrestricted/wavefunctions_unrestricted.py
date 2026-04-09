@@ -345,12 +345,8 @@ class uhf(wave_function_unrestricted):
         wave_data: dict,
     ) -> jax.Array:
         green_walker = self._calc_green(walker_up, walker_dn, wave_data)
-        fb_up = oe.contract(
-            "gij,ij->g", ham_data["rot_chol"][0], green_walker[0], backend="jax"
-        )
-        fb_dn = oe.contract(
-            "gij,ij->g", ham_data["rot_chol"][1], green_walker[1], backend="jax"
-        )
+        fb_up = oe.contract("gij,ij->g", ham_data["rot_chol"][0], green_walker[0], backend="jax")
+        fb_dn = oe.contract("gij,ij->g", ham_data["rot_chol"][1], green_walker[1], backend="jax")
         return fb_up + fb_dn
 
     @partial(jit, static_argnums=0)
@@ -386,72 +382,72 @@ class uhf(wave_function_unrestricted):
         dm_dn = wave_data["mo_coeff"][1] @ wave_data["mo_coeff"][1].T.conj()
         return jnp.array([dm_up, dm_dn])
 
-    @partial(jit, static_argnums=0)
-    def optimize(self, ham_data: dict, wave_data: dict) -> dict:
-        h1 = ham_data["h1"]
-        h1 = h1.at[0].set((h1[0] + h1[0].T) / 2.0)
-        h1 = h1.at[1].set((h1[1] + h1[1].T) / 2.0)
-        h2 = ham_data["chol"]
-        h2 = h2.reshape((h2.shape[0], h1.shape[1], h1.shape[1]))
-        nelec = self.nelec
+    # @partial(jit, static_argnums=0)
+    # def optimize(self, ham_data: dict, wave_data: dict) -> dict:
+    #     h1 = ham_data["h1"]
+    #     h1 = h1.at[0].set((h1[0] + h1[0].T) / 2.0)
+    #     h1 = h1.at[1].set((h1[1] + h1[1].T) / 2.0)
+    #     h2 = ham_data["chol"]
+    #     h2 = h2.reshape((h2.shape[0], h1.shape[1], h1.shape[1]))
+    #     nelec = self.nelec
 
-        def scanned_fun(carry, x):
-            dm = carry
-            f_up = oe.contract("gij,ik->gjk", h2, dm[0], backend="jax")
-            c_up = vmap(jnp.trace)(f_up)
-            vj_up = oe.contract("g,gij->ij", c_up, h2, backend="jax")
-            vk_up = oe.contract("glj,gjk->lk", f_up, h2, backend="jax")
-            f_dn = oe.contract("gij,ik->gjk", h2, dm[1], backend="jax")
-            c_dn = vmap(jnp.trace)(f_dn)
-            vj_dn = oe.contract("g,gij->ij", c_dn, h2, backend="jax")
-            vk_dn = oe.contract("glj,gjk->lk", f_dn, h2, backend="jax")
-            fock_up = h1[0] + vj_up + vj_dn - vk_up
-            fock_dn = h1[1] + vj_up + vj_dn - vk_dn
-            mo_energy_up, mo_coeff_up = linalg_utils._eigh(fock_up)
-            mo_energy_dn, mo_coeff_dn = linalg_utils._eigh(fock_dn)
+    #     def scanned_fun(carry, x):
+    #         dm = carry
+    #         f_up = oe.contract("gij,ik->gjk", h2, dm[0], backend="jax")
+    #         c_up = vmap(jnp.trace)(f_up)
+    #         vj_up = oe.contract("g,gij->ij", c_up, h2, backend="jax")
+    #         vk_up = oe.contract("glj,gjk->lk", f_up, h2, backend="jax")
+    #         f_dn = oe.contract("gij,ik->gjk", h2, dm[1], backend="jax")
+    #         c_dn = vmap(jnp.trace)(f_dn)
+    #         vj_dn = oe.contract("g,gij->ij", c_dn, h2, backend="jax")
+    #         vk_dn = oe.contract("glj,gjk->lk", f_dn, h2, backend="jax")
+    #         fock_up = h1[0] + vj_up + vj_dn - vk_up
+    #         fock_dn = h1[1] + vj_up + vj_dn - vk_dn
+    #         mo_energy_up, mo_coeff_up = linalg_utils._eigh(fock_up)
+    #         mo_energy_dn, mo_coeff_dn = linalg_utils._eigh(fock_dn)
 
-            nmo = mo_energy_up.size
+    #         nmo = mo_energy_up.size
 
-            idx_up = jnp.argmax(abs(mo_coeff_up.real), axis=0)
-            mo_coeff_up = jnp.where(
-                mo_coeff_up[idx_up, jnp.arange(len(mo_energy_up))].real < 0,
-                -mo_coeff_up,
-                mo_coeff_up,
-            )
-            e_idx_up = jnp.argsort(mo_energy_up)
-            mo_occ_up = jnp.zeros(nmo)
-            nocc_up = nelec[0]
-            mo_occ_up = mo_occ_up.at[e_idx_up[:nocc_up]].set(1)
-            mocc_up = mo_coeff_up[:, jnp.nonzero(mo_occ_up, size=nocc_up)[0]]
-            dm_up = (mocc_up * mo_occ_up[jnp.nonzero(mo_occ_up, size=nocc_up)[0]]).dot(
-                mocc_up.T
-            )
+    #         idx_up = jnp.argmax(abs(mo_coeff_up.real), axis=0)
+    #         mo_coeff_up = jnp.where(
+    #             mo_coeff_up[idx_up, jnp.arange(len(mo_energy_up))].real < 0,
+    #             -mo_coeff_up,
+    #             mo_coeff_up,
+    #         )
+    #         e_idx_up = jnp.argsort(mo_energy_up)
+    #         mo_occ_up = jnp.zeros(nmo)
+    #         nocc_up = nelec[0]
+    #         mo_occ_up = mo_occ_up.at[e_idx_up[:nocc_up]].set(1)
+    #         mocc_up = mo_coeff_up[:, jnp.nonzero(mo_occ_up, size=nocc_up)[0]]
+    #         dm_up = (mocc_up * mo_occ_up[jnp.nonzero(mo_occ_up, size=nocc_up)[0]]).dot(
+    #             mocc_up.T
+    #         )
 
-            idx_dn = jnp.argmax(abs(mo_coeff_dn.real), axis=0)
-            mo_coeff_dn = jnp.where(
-                mo_coeff_dn[idx_dn, jnp.arange(len(mo_energy_dn))].real < 0,
-                -mo_coeff_dn,
-                mo_coeff_dn,
-            )
-            e_idx_dn = jnp.argsort(mo_energy_dn)
-            mo_occ_dn = jnp.zeros(nmo)
-            nocc_dn = nelec[1]
-            mo_occ_dn = mo_occ_dn.at[e_idx_dn[:nocc_dn]].set(1)
-            mocc_dn = mo_coeff_dn[:, jnp.nonzero(mo_occ_dn, size=nocc_dn)[0]]
-            dm_dn = (mocc_dn * mo_occ_dn[jnp.nonzero(mo_occ_dn, size=nocc_dn)[0]]).dot(
-                mocc_dn.T
-            )
+    #         idx_dn = jnp.argmax(abs(mo_coeff_dn.real), axis=0)
+    #         mo_coeff_dn = jnp.where(
+    #             mo_coeff_dn[idx_dn, jnp.arange(len(mo_energy_dn))].real < 0,
+    #             -mo_coeff_dn,
+    #             mo_coeff_dn,
+    #         )
+    #         e_idx_dn = jnp.argsort(mo_energy_dn)
+    #         mo_occ_dn = jnp.zeros(nmo)
+    #         nocc_dn = nelec[1]
+    #         mo_occ_dn = mo_occ_dn.at[e_idx_dn[:nocc_dn]].set(1)
+    #         mocc_dn = mo_coeff_dn[:, jnp.nonzero(mo_occ_dn, size=nocc_dn)[0]]
+    #         dm_dn = (mocc_dn * mo_occ_dn[jnp.nonzero(mo_occ_dn, size=nocc_dn)[0]]).dot(
+    #             mocc_dn.T
+    #         )
 
-            return jnp.array([dm_up, dm_dn]), jnp.array([mo_coeff_up, mo_coeff_dn])
+    #         return jnp.array([dm_up, dm_dn]), jnp.array([mo_coeff_up, mo_coeff_dn])
 
-        dm0 = self._calc_rdm1(wave_data)
-        _, mo_coeff = lax.scan(scanned_fun, dm0, None, length=self.n_opt_iter)
+    #     dm0 = self._calc_rdm1(wave_data)
+    #     _, mo_coeff = lax.scan(scanned_fun, dm0, None, length=self.n_opt_iter)
 
-        wave_data["mo_coeff"] = [
-            mo_coeff[-1][0][:, : nelec[0]],
-            mo_coeff[-1][1][:, : nelec[1]],
-        ]
-        return wave_data
+    #     wave_data["mo_coeff"] = [
+    #         mo_coeff[-1][0][:, : nelec[0]],
+    #         mo_coeff[-1][1][:, : nelec[1]],
+    #     ]
+    #     return wave_data
 
     @partial(jit, static_argnums=(0,))
     def _build_measurement_intermediates(self, ham_data: dict, wave_data: dict) -> dict:

@@ -11,7 +11,7 @@ from pyscf import lib, mp
 from pyscf.lno import ulnoccsd
 from ad_afqmc import config
 from functools import partial
-from ad_afqmc.lno_afqmc import propagation, sampling
+from ad_afqmc.lno_afqmc import propagation, sampling, cholesky
 from ad_afqmc.lno_afqmc import wavefunctions_unrestreicted as ulno_wavefunctions
 from collections.abc import Iterable
 import h5py, pickle, time, gc
@@ -448,7 +448,7 @@ def prep_afqmc(mf_cc,
             # print(f"# Raw CDERI Alpha shape: {cderi_a.shape}")
             # print(f"# Raw CDERI Beta shape: {cderi_b.shape}")
             # print("# Finish Composing cLAS CDERIs")
-            print("Compress CDERI into Cholesky Vectors")
+            # print("Compress CDERI into Cholesky Vectors")
             # print("# Compress CDERI Alpha and Beta into Cholesky Vectors")
             # print("# Tighter Chol_cutoff is recommended for LNO")
             print(f"Cholesky cutoff is: {chol_cut}")
@@ -458,7 +458,12 @@ def prep_afqmc(mf_cc,
             # cderi_clas = compress_cderi_cpu(cderi_clas, thresh=chol_cut)
             cderi_clas = jnp.array(cderi_clas)
             cderi_clas = compress_cderi_gpu(cderi_clas, thresh=chol_cut)
+            print("Compress CDERI into Cholesky Vectors by SVD")
             cderi_clas = np.array(cderi_clas)
+            cderi_clas = lib.unpack_tril(cderi_clas, axis=-1)
+            # print("Compress CDERI into Cholesky Vectors by DF2CD")
+            # cderi_clas = cholesky.df2chol_faster(cderi_clas, max_error=chol_cut)
+            # cderi_clas = np.array(cderi_clas)
             # cderi_a = jnp.array(cderi_a)
             # cderi_b = jnp.array(cderi_b)
             # cderi_a, cderi_b = compress_cderi_AB_gpu(cderi_a, cderi_b, thresh=1e-6)
@@ -470,7 +475,7 @@ def prep_afqmc(mf_cc,
             # chol_clas = jnp.array(chol_clas)
             # chol_clas = unpack_symmetric(chol_clas, nclas)
             # print(f"# Compressed Cholesky Vectors in cLAS shape: {cderi_clas.shape}")
-            cderi_clas = lib.unpack_tril(cderi_clas, axis=-1)
+            # cderi_clas = lib.unpack_tril(cderi_clas, axis=-1)
             # cbola = oe.contract('pr,grs,sq->gpq', a2c.T, chol_clas, a2c, backend='jax')
             # cholb = oe.contract('pr,grs,sq->gpq', b2c.T, chol_clas, b2c, backend='jax')
             cderi_a = cderi2mo_cpu(cderi_clas, a2c)
@@ -576,19 +581,21 @@ def _prep_afqmc(option_file="options.bin",
 
     options["dt"] = options.get("dt", 0.005)
     options["n_exp_terms"] = options.get("n_exp_terms", 6)
-    options["n_walkers"] = options.get("n_walkers", 50)
+    options["n_walkers"] = options.get("n_walkers", 300)
     options["n_prop_steps"] = options.get("n_prop_steps", 50)
-    options["n_blocks"] = options.get("n_blocks", 50)
+    options["n_sr_blocks"] = options.get("n_sr_blocks", 1)
+    options["n_ene_blocks"] = options.get("n_ene_blocks", 1)
+    options["n_blocks"] = options.get("n_blocks", 500)
     options["seed"] = options.get("seed", np.random.randint(1, int(1e6)))
     options["n_eql"] = options.get("n_eql", 3)
     options["walker_type"] = options.get("walker_type", "uhf")
     options["trial"] = options.get("trial", "uccsd_pt2")
     options["n_batch"] = options.get("n_batch", 1)
     options['use_gpu'] = options.get("use_gpu", True)
-    options['mix_precision'] = options.get("mix_precision", False)
+    options['mix_precision'] = options.get("mix_precision", True)
 
     if "chunk" in options["trial"]:
-        options["nchol_chunk"] = options.get("nchol_chunk", 20)
+        options["nchol_chunk"] = options.get("nchol_chunk", 50)
 
     with h5py.File(chol_file, "r") as fh5:
         [nelec_a,nelec_b,nmo_a,nmo_b,nchol] = fh5["header"]
@@ -813,7 +820,7 @@ def run_afqmc(mf,
               qmc_script = None,
               ):
     
-    mlno = ulnoccsd.ULNOCCSD_T(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
+    mlno = ulnoccsd.ULNOCCSD(mf, lo_coeff, frag_lolist, frozen=nfrozen).set(verbose=0)
     mlno.lno_thresh = [thresh*10,thresh]
     lno_thresh = mlno.lno_thresh
     lno_type = ['1h','1h'] if lno_type is None else lno_type
@@ -928,9 +935,7 @@ def run_afqmc(mf,
                          options, chol_cut=chol_cut, use_df=use_df)
         jax.clear_caches()
         gc.collect()
-        # run_lnoafqmc(options, script=afqmc_script) # <<< QMC propagation of a fragment
         run_lnoafqmc(options, script=qmc_script)
-        # run_lnoafqmc(options, script='ccsd_pt2/run_uafqmc_new.py')
         os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
         jax.clear_caches()
         gc.collect()

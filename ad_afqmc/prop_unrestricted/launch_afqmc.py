@@ -13,15 +13,12 @@ def run_afqmc(options,
     if options["use_gpu"]:
         config.afqmc_config["use_gpu"] = True
         config.setup_jax()
-        print(f'# running AFQMC on GPU')
+        print(f'running AFQMC on GPU')
         gpu_flag = "--use_gpu"
-        # mpi_prefix = ""
     else:
-        print(f'# running AFQMC on CPU')
+        print(f'running AFQMC on CPU')
         gpu_flag = ""
-        # mpi_prefix = "mpirun "
-        # if nproc is not None:
-        #     mpi_prefix += f"-np {nproc} "
+
     if script is None:
         if  'pt' in options['trial']:
             if '2' in options['trial']:
@@ -33,13 +30,11 @@ def run_afqmc(options,
 
     if options["free_projection"]:
         script = 'run_fp_afqmc_sampling_nompi.py'
-        # if options['fp_abs']:
-        #     script = 'run_fpabs_afqmc_sampling_nompi.py'
 
     path = os.path.abspath(__file__)
     dir_path = os.path.dirname(path)
     script = f"{dir_path}/{script}"
-    print(f'# AFQMC script: {script}')
+    print(f'QMC script: {script}')
 
     os.system(
         # f"export OMP_NUM_THREADS=1; export MKL_NUM_THREADS=1;"
