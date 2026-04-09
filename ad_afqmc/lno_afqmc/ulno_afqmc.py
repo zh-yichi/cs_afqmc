@@ -172,9 +172,9 @@ def h1e_uas(mf, mo_coeff, ncas, ncore):
     h1eff = [jnp.array(mo_cas[0].T @ (hcore[0]+corevhf[0]) @ mo_cas[0]),
              jnp.array(mo_cas[1].T @ (hcore[1]+corevhf[1]) @ mo_cas[1])]
     time3 = time.perf_counter()
-    print(f"# build JK time: {time1 - time0:.6f} s")
-    print(f"# build ecore time: {time2 - time1:.6f} s")
-    print(f"# build h1eff time: {time3 - time0:.6f} s")
+    print(f"build JK time: {time1 - time0:.6f} s")
+    print(f"build ecore time: {time2 - time1:.6f} s")
+    print(f"build h1eff time: {time3 - time0:.6f} s")
     return h1eff, energy_core
 
 def prjmo(prj,s1e,mo):
@@ -185,7 +185,7 @@ def prjmo(prj,s1e,mo):
     return mo_rec
 
 def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
-    print("# Constracting cLAS that span both Alpha and Beta active space")
+    print("Constracting cLAS that span both Alpha and Beta active space")
     # time0 = time.perf_counter()
     s1e = mf.get_ovlp()
     lno_acta = lno_coeff[0][:,ncore[0]:ncore[0]+ncas[0]]
@@ -193,12 +193,12 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     lno_actaa = lno_coeff[0].T @ s1e @ lno_acta # proj to the complete
     lno_actba = lno_coeff[0].T @ s1e @ lno_actb # alpha basis for orthogonal
     clno_act = np.hstack([lno_actaa,lno_actba]) # common active lno
-    print('# Naive cLAS Shape: ', clno_act.shape)
+    print('Naive cLAS Shape: ', clno_act.shape)
     # full_matrices = False gives u that just span the space of clno_act
     u, s, _ = np.linalg.svd(clno_act, full_matrices=False)
-    print(f'# Orthonormalize cLAS shape: {u.shape}')
-    print(f'# Smallest cLAS SVD Singular values: {s[-1]}')
-    print(f"# cLAS projection torr: {torr}")
+    print(f'Orthonormalize cLAS shape: {u.shape}')
+    print(f'Smallest cLAS SVD Singular values: {s[-1]}')
+    print(f"cLAS projection torr: {torr}")
     for idx in range(lno_acta.shape[1],u.shape[1]+1):
         prj = lno_coeff[0] @ u[:,:idx]
         prj_acta = prjmo(prj,s1e,lno_actb)
@@ -208,11 +208,11 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
         # print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
         if losa < torr and losb < torr:
             break
-    print(f"# Minimum size of cLAS to span both Alpha and Beta LAS: {idx}")
-    print(f"# cLAS projection loss: ({losa:.2e}, {losb:.2e})")
+    print(f"Minimum size of cLAS to span both Alpha and Beta LAS: {idx}")
+    print(f"cLAS projection loss: ({losa:.2e}, {losb:.2e})")
     # span{|C>} = span{|A>} U span{|B>}
     clas_coeff = lno_coeff[0] @ u[:,:idx] # in ao
-    print('# True Common LAS Shape: ', clas_coeff.shape)
+    print('True Common LAS Shape: ', clas_coeff.shape)
     a2c = clas_coeff.T @ s1e @ lno_acta # <C|A>
     b2c = clas_coeff.T @ s1e @ lno_actb # <C|B>
     # time1 = time.perf_counter()
