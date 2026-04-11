@@ -16,6 +16,7 @@ from ad_afqmc.lno_afqmc import wavefunctions_unrestreicted as ulno_wavefunctions
 from collections.abc import Iterable
 import h5py, pickle, time, gc
 import opt_einsum as oe
+import re
 
 print = partial(print, flush=True)
 
@@ -851,9 +852,9 @@ def run_afqmc(mf,
     seeds = random.randint(random.PRNGKey(options["seed"]), shape=(nfrag,), minval=0, maxval=100*nfrag)
     options["max_error"] = options["max_error"]/np.sqrt(nfrag)
 
-    nelec_list = [None] * nfrag
-    norb_list = [None] * nfrag
-    eorb_mp2_cc = [None] * nfrag
+    # nelec_list = [None] * nfrag
+    # norb_list = [None] * nfrag
+    # eorb_mp2_cc = [None] * nfrag
 
     # Loop over fragment
     for ifrag, loidx in enumerate(frag_lolist):
@@ -903,17 +904,18 @@ def run_afqmc(mf,
         if mlno.kwargs_imp is not None:
             mcc = mcc.set(**mlno.kwargs_imp)
         time0 = time.perf_counter()
-        eorb_mp2_cc[ifrag], t1, t2 =\
+        (eorb_mp2, eorb_ccsd), t1, t2 =\
             ulno_ccsd(mcc, lno_coeff, uocc_loc, mo_occ, maskact)#, ccsd_t=ccsd_t) # <<< this is on CPU
         time1 = time.perf_counter()
         
         prja = uocc_loc[0] @ uocc_loc[0].T.conj()
         prjb = uocc_loc[1] @ uocc_loc[1].T.conj()
         prjlo = [prja, prjb]
+        lnoccsdtime = time1 - time0
 
-        print(f'LNO-MP2 Orbital Energy: {eorb_mp2_cc[ifrag][0]:.8f}')
-        print(f'LNO-CCSD Orbital Energy: {eorb_mp2_cc[ifrag][1]:.8f}')
-        print(f"LNO-CCSD time: {time1 - time0:.6f} s")
+        print(f'LNO-MP2 Orbital Energy: {eorb_mp2:.8f}')
+        print(f'LNO-CCSD Orbital Energy: {eorb_ccsd:.8f}')
+        print(f"LNO-CCSD time: {lnoccsdtime:.6f} s")
         
         options["trial"] = trial
 
@@ -922,21 +924,49 @@ def run_afqmc(mf,
                 options["trial"] += '_alpha'
             elif lno_elec_type == 'beta':
                 options["trial"] += '_beta'
-
             if chunk_chol:
                     options["trial"] += '_chunk'
             elif fast:
                     options["trial"] += '_fast'
 
-
         options["seed"] = seeds[ifrag]
-        nelec_list[ifrag], norb_list[ifrag] \
-            = prep_afqmc(mf, lno_coeff, t1, t2, frozen, prjlo, 
-                         options, chol_cut=chol_cut, use_df=use_df)
+        nelec, norb = prep_afqmc(
+            mf, 
+            lno_coeff, 
+            t1, 
+            t2, 
+            frozen, 
+            prjlo, 
+            options, 
+            chol_cut=chol_cut, 
+            use_df=use_df
+            )
+        
         jax.clear_caches()
         gc.collect()
-        run_lnoafqmc(options, script=qmc_script)
-        os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
+        run_lnoafqmc(options, script=qmc_script) # >> afqmc.out
+        # os.system(f'mv afqmc.out lnoafqmc.out{run_frg_list[ifrag]+1}')
+        outfile = f'fragment.out{run_frg_list[ifrag]+1}'
+        os.system(f'mv afqmc.out {outfile}')
+        with open(outfile, "r") as f:
+            for line in f:
+                if "Energy (blocking)" in line:
+                    eorb_afqmc = float(line.split()[-3])
+                    eorb_afqmc_err = float(line.split()[-1])
+                if "total run time" in line:
+                    lnoafqmctime = float(line.split()[-1])
+        header = f' Fragment{run_frg_list[ifrag]+1} Results '
+        width = 80  # pick a consistent total width
+        with open(outfile, 'a') as f:
+            f.write('\n')
+            f.write(f'{header:=^{width}}\n')
+            f.write(f'\t LNO-Active Space electrons: {nelec} | orbitals: {norb} \n')
+            f.write(f'\t LNO-MP2 Orbital Energy:   {eorb_mp2:.8f} \n')
+            f.write(f'\t LNO-CCSD Orbital Energy:  {eorb_ccsd:.8f} \n')
+            f.write(f'\t LNO-AFQMC Orbital Energy: {eorb_afqmc:.6f} +/- {eorb_afqmc_err:.6f} \n')
+            f.write(f'\t LNO-CCSD Time:  {lnoccsdtime:.2f} \n')
+            f.write(f'\t LNO-AFQMC Time: {lnoafqmctime:.2f} \n')
+            f.write('=' * width + '\n')
         jax.clear_caches()
         gc.collect()
 
@@ -945,49 +975,100 @@ def run_afqmc(mf,
         mmp = mp.MP2(mf, frozen=nfrozen)
         emp2_tot = mmp.kernel()[0]
 
-    eorb_pt2 = np.empty(nfrag,dtype='float64')
-    eorb_pt2_err = np.empty(nfrag,dtype='float64')
-    run_time = np.empty(nfrag,dtype='float64')
+    nelec = np.zeros((nfrag,2),dtype='int32')
+    norb = np.zeros((nfrag,2),dtype='int32')
+    eorb_mp2 = np.zeros(nfrag,dtype='float64')
+    eorb_mp2 = np.zeros(nfrag,dtype='float64')
+    eorb_ccsd = np.zeros(nfrag,dtype='float64')
+    eorb_qmc = np.zeros(nfrag,dtype='float64')
+    eorb_qmc_err = np.zeros(nfrag,dtype='float64')
+    ccsd_time = np.zeros(nfrag,dtype='float64')
+    qmc_time = np.zeros(nfrag,dtype='float64')
     for n, i in enumerate(run_frg_list):
-        with open(f"lnoafqmc.out{i+1}", "r") as rf:
+        with open(f"fragment.out{i+1}", "r") as rf:
             for line in rf:
-                if "Energy (blocking)" in line:
-                    eorb_pt2[n] = float(line.split()[-3])
-                    eorb_pt2_err[n] = float(line.split()[-1])
-                if "total run time" in line:
-                    run_time[n] = float(line.split()[-1])
+                if 'LNO-Active Space' in line:
+                    # nums = re.findall(r'[-\d]+', line)
+                    nums = re.findall(r'\d+', line)
+                    nelec[n] = np.array([int(nums[0]),int(nums[1])])
+                    norb[n] = np.array([int(nums[2]),int(nums[3])])
+                if "LNO-MP2 Orbital Energy" in line:
+                    eorb_mp2[n] = float(line.split()[-1])
+                if "LNO-CCSD Orbital Energy" in line:
+                    eorb_ccsd[n] = float(line.split()[-1])
+                if "LNO-AFQMC Orbital Energy" in line:
+                    eorb_qmc[n] = float(line.split()[-3])
+                    eorb_qmc_err[n] = float(line.split()[-1])
+                if "LNO-CCSD Time" in line:
+                    ccsd_time[n] = float(line.split()[-1])
+                if "LNO-AFQMC Time" in line:
+                    qmc_time[n] = float(line.split()[-1])
 
-    nelec_list = np.array(nelec_list)
-    norb_list = np.array(norb_list)
-    eorb_mp2_cc = np.array(eorb_mp2_cc)
-    nelec = (np.mean(nelec_list[:,0]), np.mean(nelec_list[:,1]))
-    norb = (np.mean(norb_list[:,0]), np.mean(norb_list[:,1]))
-    e_mp2 = sum(eorb_mp2_cc[:,0])
-    e_ccsd = sum(eorb_mp2_cc[:,1])
-    e_afqmc_pt2 = sum(eorb_pt2)
-    e_afqmc_pt2_err = np.sqrt(sum(eorb_pt2_err**2))
-    tot_time = sum(run_time)
+    nelec_avg = (np.mean(nelec[:,0]), np.mean(nelec[:,1]))
+    norb_avg = (np.mean(norb[:,0]), np.mean(norb[:,1]))
+    e_mp2 = np.sum(eorb_mp2)
+    e_ccsd = np.sum(eorb_ccsd)
+    e_afqmc = np.sum(eorb_qmc)
+    e_afqmc_err = np.sqrt(np.sum(eorb_qmc_err**2))
+    tot_ccsd_time = np.sum(ccsd_time)
+    tot_qmc_time = np.sum(qmc_time)
 
-    with open(f'lno_result.out', 'w') as out_file:
-        print(f"{'frag':>4s}  "
-              f"{'eorb_mp2':>10s}  {'eorb_ccsd':>10s}  "
-              f"{'eorb_afqmc':>10s}  {'error':>8s}  "
-              f"{'nelec':>5s}  {'norb':>5s}  "
-              f"{'time':8s}",
-              file=out_file)
+    # with open(f'lno_result.out', 'w') as out_file:
+    #     print(f"{'frag':>4s}  "
+    #           f"{'E(MP2)':>10s}  {'E(CCSD)':>10s}  "
+    #           f"{'E(AFQMC)':>10s}  {'Error':>8s}  "
+    #           f"{'nelec':>5s}  {'norb':>5s}  "
+    #           f"{'t(CCSD)':8s}  {'t(AFQMC)':8s}",
+    #           file=out_file)
+    #     for n, i in enumerate(run_frg_list):
+    #         print(f"{i+1:4d}  "
+    #               f"{eorb_mp2[n]:10.8f}  {eorb_ccsd[n]:10.8f}  "
+    #               f"{eorb_qmc[n]:.6f}  {eorb_qmc_err[n]:.6f}  "
+    #               f"{nelec[n]}  {norb[n]}  "
+    #               f"{ccsd_time[n]:.2f}  {qmc_time[n]:.2f}", 
+    #               file=out_file)
+    #     print(f'LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)
+    #     print(f'LNO Average Number of Electrons: ({nelec_avg[0]:.1f},{nelec_avg[1]:.1f})',file=out_file)
+    #     print(f'LNO Average Number of Obitals: ({norb_avg[0]:.1f},{norb_avg[1]:.1f})',file=out_file)
+    #     print(f'LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
+    #     print(f'LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
+    #     print(f'LNO-AFQMC Energy: {e_afqmc:.6f} +/- {e_afqmc_err:.6f}',file=out_file)
+    #     print(f'MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
+    #     print(f"total CCSD time: {tot_ccsd_time:.2f}",file=out_file)
+    #     print(f"total AFQMC time: {tot_qmc_time:.2f}",file=out_file)
+    with open(f'lno_result.out', 'w') as f:
+        w = 100
+        f.write('=' * w + '\n')
+        f.write(f'{"LNO-AFQMC Results":^{w}}\n')
+        f.write('=' * w + '\n')
+        
+        # Header
+        f.write(f'{"Frag":>4s}  {"E(MP2)":>10s}  {"E(CCSD)":>10s}  '
+                f'{"E(AFQMC)":>10s}  {"Error":>8s}  '
+                f'{"nelec":>9s}  {"norb":>9s}  '
+                f'{"t(CCSD)":>8s}  {"t(AFQMC)":>8s}\n')
+        f.write('-' * w + '\n')
+        
+        # Per-fragment rows
         for n, i in enumerate(run_frg_list):
-            print(f"{i+1:4d}  "
-                  f"{eorb_mp2_cc[n,0]:10.8f}  {eorb_mp2_cc[n,1]:10.8f}  "
-                  f"{eorb_pt2[n]:.6f}  {eorb_pt2_err[n]:.6f}  "
-                  f"{nelec_list[n]}  {norb_list[n]}  {run_time[n]:.2f}", 
-                  file=out_file)
-        print(f'LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)
-        print(f'LNO Average Number of Electrons: ({nelec[0]:.1f},{nelec[1]:.1f})',file=out_file)
-        print(f'LNO Average Number of Basis: ({norb[0]:.1f},{norb[1]:.1f})',file=out_file)
-        print(f'LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
-        print(f'LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
-        print(f'LNO-AFQMC/pt2CCSD Energy: {e_afqmc_pt2:.6f} +/- {e_afqmc_pt2_err:.6f}',file=out_file)
-        print(f'MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
-        print(f"total run time: {tot_time:.2f}",file=out_file)
+            f.write(f"{i+1:4d}  {eorb_mp2[n]:10.8f}  {eorb_ccsd[n]:10.8f}  "
+                    f"{eorb_qmc[n]:10.6f}  {eorb_qmc_err[n]:8.6f}  "
+                    f"{str(nelec[n]):>9s}  {str(norb[n]):>9s}  "
+                    f"{ccsd_time[n]:8.2f}  {qmc_time[n]:8.2f}\n")
+        
+        f.write('-' * w + '\n')
+        
+        # Totals
+        f.write(f'{"Sum":>4s}  {e_mp2:10.8f}  {e_ccsd:10.8f}  '
+                f'{e_afqmc:10.6f}  {e_afqmc_err:8.6f}  '
+                f'{"":>9s}  {"":>9s}  '
+                f'{tot_ccsd_time:8.2f}  {tot_qmc_time:8.2f}\n')
+        f.write('=' * w + '\n\n')
+        
+        # Summary
+        f.write(f'LNO Threshold:          ({lno_thresh[0]:.2e}, {lno_thresh[1]:.2e})\n')
+        f.write(f'Avg. Electrons:         ({nelec_avg[0]:.1f}, {nelec_avg[1]:.1f})\n')
+        f.write(f'Avg. Orbitals:          ({norb_avg[0]:.1f}, {norb_avg[1]:.1f})\n')
+        f.write(f'MP2 Correction:         {emp2_tot - e_mp2:12.8f}\n')
 
     return None
