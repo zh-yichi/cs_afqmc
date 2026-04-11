@@ -360,23 +360,23 @@ class sampler_stoccsd(sampler):
             err[i] = block_error
         return err
     
-    def filter_outliers(self, weights, num, den, zeta=5):
+    # def filter_outliers(self, weights, num, den, zeta=5):
 
-        weights_mean = weights.mean()
-        sigma = np.std(weights)
-        lower_bound = weights_mean - zeta*sigma
-        upper_bound = weights_mean + zeta*sigma
-        mask = (weights >= lower_bound) & (weights <= upper_bound)
+    #     weights_mean = weights.mean()
+    #     sigma = np.std(weights)
+    #     lower_bound = weights_mean - zeta*sigma
+    #     upper_bound = weights_mean + zeta*sigma
+    #     mask = (weights >= lower_bound) & (weights <= upper_bound)
         
-        w_filtered = weights[mask]
-        n_filtered = num[mask]
-        d_filtered = den[mask]
+    #     w_filtered = weights[mask]
+    #     n_filtered = num[mask]
+    #     d_filtered = den[mask]
         
-        n_removed = len(weights) - len(w_filtered)
-        print(f"Removed {n_removed} outliers")
-        print(f"Weight bounds: [{lower_bound:.4e}, {upper_bound:.4e}]")
+    #     n_removed = len(weights) - len(w_filtered)
+    #     print(f"Removed {n_removed} outliers")
+    #     print(f"Weight bounds: [{lower_bound:.4e}, {upper_bound:.4e}]")
         
-        return w_filtered, n_filtered, d_filtered
+    #     return w_filtered, n_filtered, d_filtered
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))
@@ -385,13 +385,12 @@ class sampler_stoccsd(sampler):
 @dataclass
 class sampler_stoccsd2(sampler):
     n_prop_steps: int = 50
-    # n_ene_blocks: int = 50
     n_sr_blocks: int = 1
     n_blocks: int = 50
     n_chol: int = 0
 
     @partial(jit, static_argnums=(0,3,4))
-    def _block(
+    def block_sample(
         self,
         prop_data: dict,
         ham_data: dict,
@@ -423,9 +422,12 @@ class sampler_stoccsd2(sampler):
 
         prop_data = prop.orthonormalize_walkers(prop_data)
         
-        olp_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
-        prop_data["overlaps"] = olp_hf
         ene_hf = jnp.real(trial.calc_energy(prop_data["walkers"], ham_data, wave_data))
+        outlier = jnp.abs(ene_hf - prop_data["e_estimate"]) > jnp.sqrt(2.0 / prop.dt) # 20 Ha for dt = 0.005
+        ene_hf = jnp.where(outlier, prop_data["e_estimate"], ene_hf)
+        prop_data["weights"] = jnp.where(outlier, 0.0, prop_data["weights"])
+
+        olp_hf = trial.calc_overlap(prop_data["walkers"], wave_data)
         olp_ci, ene_ci = trial.calc_energy_cid(prop_data["walkers"], ham_data, wave_data)
         num_cr, den_cr = trial.calc_correction(prop_data["walkers"], xtaus, ham_data, wave_data)
 
@@ -445,40 +447,10 @@ class sampler_stoccsd2(sampler):
 
         prop_data = prop.stochastic_reconfiguration_local(prop_data)
         prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
+        prop_data["pop_control_ene_shift"] = 0.9 * prop_data["pop_control_ene_shift"] + 0.1 * blk_ehf
+        prop_data["n_killed_walkers"] = prop_data["weights"].size - jnp.count_nonzero(prop_data["weights"])
 
         return prop_data, (blk_whf, blk_ehf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr)
-    
-    @partial(jit, static_argnums=(0,3,4))
-    def propagate_phaseless(
-        self,
-        prop_data: dict,
-        ham_data: dict,
-        prop: propagator,
-        trial,
-        wave_data: dict,
-    ) -> Tuple[jax.Array, dict]:
-        def _scan_blocks(x,_):
-            return self._block(x, ham_data, prop, trial, wave_data)
-
-        prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-        prop_data["n_killed_walkers"] = 0
-        prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-        prop_data, (blk_whf, blk_ehf, blk_num_ci, blk_den_ci, blk_num_cr, blk_den_cr) \
-            = lax.scan(
-            _scan_blocks, prop_data, None, length = self.n_sr_blocks
-        )
-        prop_data["n_killed_walkers"] /= (
-            self.n_sr_blocks * prop.n_walkers
-        )
-        
-        whf = jnp.sum(blk_whf)
-        ehf = jnp.sum(blk_whf * blk_ehf) / whf
-        num_ci = jnp.sum(blk_whf * blk_num_ci) / whf
-        den_ci = jnp.sum(blk_whf * blk_den_ci) / whf
-        num_cr = jnp.sum(blk_whf * blk_num_cr) / whf
-        den_cr = jnp.sum(blk_whf * blk_den_cr) / whf
-
-        return prop_data, (whf, ehf, num_ci, den_ci, num_cr, den_cr)
     
     def jackknife(self, weights, n_ci, n_cr, d_ci, d_cr, block_size):
         """
@@ -530,60 +502,120 @@ class sampler_stoccsd2(sampler):
                 break
         return err[i] # report the last error
     
-    def blk_average(self, wt_sp, num_sp, den_sp, max_size=None):
-        n_total = len(wt_sp)
+    def sto_blocking_analysis(self, wt_sp, num_sp, den_sp, min_nblocks=20, final=False,):
+        import numpy as np
         
-        if max_size > n_total:
-            max_size = n_total // 10
-
-        if max_size is None:
-            max_size = n_total // 10
-        # block_size = np.zeros(size_max)
-        # energy = np.zeros(size_max)
-        err = np.zeros(max_size)
-        print(f"{'Blk_SZ':>6s}  {'NBlk':>6s}  {'NSmp':>6s}  {'Energy':>10s}  {'Error':>8s}")
-        # print('# Blk_SZ  NBlk  NSmp  Energy  Error')
-        for i, block_size in enumerate(range(1,max_size+1)):
-            n_blocks = n_total // block_size
-
-            wt_truncated = wt_sp[:n_blocks * block_size]
-            num_truncated = num_sp[:n_blocks * block_size]
-            den_truncated = den_sp[:n_blocks * block_size]
-
-            wt_num = wt_truncated * num_truncated
-            wt_den = wt_truncated * den_truncated
-
-            wt_num = wt_num.reshape(n_blocks, block_size)
-            wt_den = wt_den.reshape(n_blocks, block_size)
-
-            block_num = np.sum(wt_num, axis=1)
-            block_den = np.sum(wt_den, axis=1)
-
+        nsample = len(wt_sp)
+        max_size = nsample // min_nblocks
+        if max_size < 10:
+            min_nblocks = max(nsample // 10, 3)
+            max_size = nsample // min_nblocks
+            if final:
+                print(f"Warning: small dataset, relaxed min_nblocks to {min_nblocks}")
+        block_sizes = np.arange(1, max_size + 1)
+        block_vars = np.zeros(max_size)
+        block_var_errs = np.zeros(max_size)
+        block_means = np.zeros(max_size)
+        if final:
+            print(f"nsample = {nsample}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
+            print(f"{'B':>4s}  {'NB':>4s}  {'NS':>4s}  {'Energy':>12s}  {'Error':>8s}  {'dError':>8s}")
+        for i, block_size in enumerate(block_sizes):
+            n_blocks = nsample // block_size
+            sl = slice(0, n_blocks * block_size)
+            wt = (wt_sp[sl]).reshape(n_blocks, block_size)
+            wt_num = (wt_sp[sl] * num_sp[sl]).reshape(n_blocks, block_size)
+            wt_den = (wt_sp[sl] * den_sp[sl]).reshape(n_blocks, block_size)
+            block_weight = np.sum(wt, axis=1)
+            block_num = np.sum(wt_num, axis=1) / block_weight
+            block_den = np.sum(wt_den, axis=1) / block_weight
             block_energy = (block_num / block_den).real
             block_mean = np.mean(block_energy)
-            block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
-            print(f"{block_size:6d}  {n_blocks:6d}  {block_size*n_blocks:6d}  {block_mean:10.6f}  {block_error:10.6f}")
-            # print(f' {block_size}  {n_blocks}  {block_size*n_blocks}  {block_mean:.6f}  {block_error:.6f}')
-            err[i] = block_error
-        return err
-    
-    def filter_outliers(self, weights, num, den, zeta=5):
+            block_var = np.var(block_energy, ddof=1) / n_blocks  # variance of the mean
+            block_error = np.sqrt(block_var)
+            var_of_var = block_var * np.sqrt(2.0 / (n_blocks - 1))
+            err_of_err = block_error / np.sqrt(2.0 * (n_blocks - 1))
+            block_means[i] = block_mean
+            block_vars[i] = block_var
+            block_var_errs[i] = var_of_var
+            if final:
+                print(f'{block_size:4d}  {n_blocks:4d}  {block_size*n_blocks:4d}  '
+                      f'{block_mean:12.6f}  {block_error:8.6f}  {err_of_err:8.6f}')
+        
+        if final:
+            from scipy.optimize import curve_fit
+            def model(x, a, b, tau):
+                return a - b * np.exp(-x / tau)
+            p0 = [block_vars.max(), block_vars.max() - block_vars[0], 5.0]
+            try:
+                popt, pcov = curve_fit(model, block_sizes, block_vars,
+                                    sigma=block_var_errs, absolute_sigma=True,
+                                    p0=p0, maxfev=10000)
+                plateau_var = popt[0]
+                plateau_var_unc = np.sqrt(pcov[0, 0])
+                plateau_value = np.sqrt(plateau_var)
+                plateau_uncertainty = plateau_var_unc / (2.0 * plateau_value)
+                tau = popt[2]
+                ratio = 0.01 * popt[0] / popt[1]
+                if ratio > 0:
+                    plateau_block_size = int(np.ceil(-popt[2] * np.log(ratio)))
+                else:
+                    plateau_block_size = 1
+                print(f"Fit (variance): plateau_var = {plateau_var:.3e} ± {plateau_var_unc:.3e}")
+                print(f"Fit (error):    plateau = {plateau_value:.6f} ± {plateau_uncertainty:.6f}")
+                print(f"     autocorrelation length ~ {tau:.1f} blocks")
+                print(f"     plateau reached at block size ~ {plateau_block_size}")
+                if plateau_block_size > max_size:
+                    print(f"     !!!Failed to reach plateau in blocking")
+                    print(f"     Return max block error")
+                    plateau_value = np.sqrt(block_vars.max())
+            except RuntimeError as e:
+                print(f"\nFit failed: {e}")
+                plateau_value = np.sqrt(block_vars.max())
+                print(f"Fallback max error: {plateau_value:.6f}")
+        
+        else: 
+            plateau_value = np.sqrt(block_vars.max())
+        
+        return plateau_value
 
-        weights_mean = weights.mean()
-        sigma = np.std(weights)
-        lower_bound = weights_mean - zeta*sigma
-        upper_bound = weights_mean + zeta*sigma
-        mask = (weights >= lower_bound) & (weights <= upper_bound)
+        #     # wt_truncated = wt_sp[:n_blocks * block_size]
+        #     # num_truncated = num_sp[:n_blocks * block_size]
+        #     # den_truncated = den_sp[:n_blocks * block_size]
+
+        #     # wt_num = wt_truncated * num_truncated
+        #     # wt_den = wt_truncated * den_truncated
+
+        #     # wt_num = wt_num.reshape(n_blocks, block_size)
+        #     # wt_den = wt_den.reshape(n_blocks, block_size)
+
+        #     # block_num = np.sum(wt_num, axis=1)
+        #     # block_den = np.sum(wt_den, axis=1)
+
+        #     # block_energy = (block_num / block_den).real
+        #     # block_mean = np.mean(block_energy)
+        #     # block_error = np.std(block_energy, ddof=1) / np.sqrt(n_blocks)
+        #     # print(f"{block_size:6d}  {n_blocks:6d}  {block_size*n_blocks:6d}  {block_mean:10.6f}  {block_error:10.6f}")
+        #     # print(f' {block_size}  {n_blocks}  {block_size*n_blocks}  {block_mean:.6f}  {block_error:.6f}')
+        #     # err[i] = block_error
+        # return err
+    
+    # def filter_outliers(self, weights, num, den, zeta=5):
+
+    #     weights_mean = weights.mean()
+    #     sigma = np.std(weights)
+    #     lower_bound = weights_mean - zeta*sigma
+    #     upper_bound = weights_mean + zeta*sigma
+    #     mask = (weights >= lower_bound) & (weights <= upper_bound)
         
-        w_filtered = weights[mask]
-        n_filtered = num[mask]
-        d_filtered = den[mask]
+    #     w_filtered = weights[mask]
+    #     n_filtered = num[mask]
+    #     d_filtered = den[mask]
         
-        n_removed = len(weights) - len(w_filtered)
-        print(f"Removed {n_removed} outliers")
-        print(f"Weight bounds: [{lower_bound:.4e}, {upper_bound:.4e}]")
+    #     n_removed = len(weights) - len(w_filtered)
+    #     print(f"Removed {n_removed} outliers")
+    #     print(f"Weight bounds: [{lower_bound:.4e}, {upper_bound:.4e}]")
         
-        return w_filtered, n_filtered, d_filtered
+    #     return w_filtered, n_filtered, d_filtered
 
 
     def __hash__(self) -> int:

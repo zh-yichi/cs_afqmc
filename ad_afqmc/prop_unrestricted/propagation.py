@@ -330,6 +330,7 @@ class propagator_restricted(propagator):
 
 @dataclass
 class propagator_unrestricted(propagator_restricted):
+    
     def init_prop_data(
         self,
         trial: wave_function,

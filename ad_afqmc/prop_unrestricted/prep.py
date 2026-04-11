@@ -1,3 +1,6 @@
+import os
+os.environ.setdefault("XLA_PYTHON_CLIENT_ALLOCATOR", "platform")
+
 import pickle
 from typing import Optional, Union
 import h5py

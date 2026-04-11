@@ -204,7 +204,7 @@ class ustoccsd2(uhf):
         xtaus_up = oe.contract("wsg,gia->wsia", fieldx, wave_data['tau'][0], backend='jax')
         xtaus_dn = oe.contract("wsg,gia->wsia", fieldx, wave_data['tau'][1], backend='jax')
 
-        return [xtaus_up, xtaus_dn]
+        return [xtaus_up, xtaus_dn], prop_data
 
     @partial(jit, static_argnums=(0))
     def _green(

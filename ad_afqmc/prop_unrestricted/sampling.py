@@ -6,8 +6,7 @@ import jax.numpy as jnp
 from jax import jit, lax, random, vmap
 from ad_afqmc.hamiltonian import hamiltonian
 from ad_afqmc.prop_unrestricted.propagation import propagator
-# from ad_afqmc.prop_unrestricted.wavefunctions import wave_function
-from ad_afqmc import sr, linalg_utils
+from ad_afqmc import linalg_utils
 
 @dataclass
 class sampler:
@@ -72,13 +71,7 @@ class sampler:
 
         return prop_data, (block_weight, block_energy)
     
-    def blocking_analysis(
-            self,
-            wt_sp, 
-            en_sp, 
-            min_nblocks=20,
-            final=False,
-            ):
+    def blocking_analysis(self, wt_sp, en_sp, min_nblocks=20, final=False,):
         import numpy as np
         
         nsample = len(wt_sp)
@@ -150,53 +143,18 @@ class sampler:
             plateau_value = np.sqrt(block_vars.max())
         
         return plateau_value
-    # @partial(jit, static_argnums=(0, 3, 4))
-    # def _sr_block_scan(
-    #     self,
-    #     prop_data: dict,
-    #     ham_data: dict,
-    #     prop: propagator,
-    #     trial,
-    #     wave_data: dict,
-    # ) -> Tuple[dict, Tuple[jax.Array, jax.Array]]:
-
-    #     def _block_scan_wrapper(x,_):
-    #         return self._block_scan(x,ham_data,prop,trial,wave_data)
-
-    #     prop_data, (block_energy, block_weight) = lax.scan(
-    #         _block_scan_wrapper, prop_data, None, length=self.n_ene_blocks
-    #     )
-
-    #     prop_data = prop.stochastic_reconfiguration_local(prop_data)
-    #     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    #     return prop_data, (block_energy, block_weight)
-
-    # @partial(jit, static_argnums=(0, 3, 4))
-    # def propagate_phaseless(
-    #     self,
-    #     prop_data: dict,
-    #     # ham: hamiltonian,
-    #     ham_data: dict,
-    #     prop: propagator,
-    #     trial,
-    #     wave_data: dict,
-    # ) -> Tuple[jax.Array, dict]:
-    #     def _sr_block_scan_wrapper(x,_):
-    #         return self._sr_block_scan(x, ham_data, prop, trial, wave_data)
-
-    #     prop_data["overlaps"] = trial.calc_overlap(prop_data["walkers"], wave_data)
-    #     prop_data["n_killed_walkers"] = 0
-    #     prop_data["pop_control_ene_shift"] = prop_data["e_estimate"]
-    #     prop_data, (block_energy, block_weight) = lax.scan(
-    #         _sr_block_scan_wrapper, prop_data, None, length=self.n_sr_blocks
-    #     )
-    #     prop_data["n_killed_walkers"] /= (
-    #         self.n_sr_blocks * self.n_ene_blocks * prop.n_walkers
-    #     )
-    #     # return jnp.sum(block_energy * block_weight) / jnp.sum(block_weight), prop_data
-    #     weight = jnp.sum(block_weight)
-    #     energy = jnp.sum(block_energy * block_weight) / weight
-    #     return prop_data, (weight, energy)
+    
+    def filter_outliers(self, samples, zeta=20):
+        
+        import numpy as np
+        median = np.median(samples)
+        mad = 1.4826 * np.median(np.abs(samples - median))
+        bound = zeta * mad
+        mask = np.abs(samples - median) < bound
+        print(f"Remove samples outside Zeta > {zeta}")
+        print(f"Outlier bound [{median-bound:.6f}, {median+bound:.6f}]")
+        
+        return mask
 
     def __hash__(self) -> int:
         return hash(tuple(self.__dict__.values()))

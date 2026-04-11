@@ -41,20 +41,20 @@ class wave_function_unrestricted(ABC):
     nelec: Tuple[int, int]
     n_batch: int = 1
 
-    @singledispatchmethod
-    def calc_overlap(self, walkers, wave_data: dict) -> jax.Array:
-        """Calculate the overlap < psi_t | walker > for a batch of walkers.
+    # @singledispatchmethod
+    # def calc_overlap(self, walkers, wave_data: dict) -> jax.Array:
+    #     """Calculate the overlap < psi_t | walker > for a batch of walkers.
 
-        Args:
-            walkers : list or jax.Array
-                The batched walkers.
-            wave_data : dict
-                The trial wave function data.
+    #     Args:
+    #         walkers : list or jax.Array
+    #             The batched walkers.
+    #         wave_data : dict
+    #             The trial wave function data.
 
-        Returns:
-            jax.Array: The overlap of the walkers with the trial wave function.
-        """
-        raise NotImplementedError("Walker type not supported")
+    #     Returns:
+    #         jax.Array: The overlap of the walkers with the trial wave function.
+    #     """
+    #     raise NotImplementedError("Walker type not supported")
 
     def calc_overlap(self, walkers: list, wave_data: dict) -> jax.Array:
         n_walkers = walkers[0].shape[0]
@@ -212,7 +212,7 @@ class wave_function_unrestricted(ABC):
         assert t2ab.shape == (nocca, nvira, noccb, nvirb)
         assert t2bb.shape == (noccb, nvirb, noccb, nvirb)
 
-        print('# Decomposing Unrestricted T2 amplitudes')
+        print('Decomposing Unrestricted T2 amplitudes')
 
         t2aa = t2aa.reshape(nex_a, nex_a)
         t2ab = t2ab.reshape(nex_a, nex_b)
@@ -239,9 +239,9 @@ class wave_function_unrestricted(ABC):
         tau = e_vec_trunc @ jnp.diag(np.sqrt(e_val_trunc + 0.0j))
         err = jnp.linalg.norm(t2full - tau @ tau.T)
         assert err < 10 * thresh
-        print(f'# Throw {len(e_val)-len(e_val_trunc)} vectors in T2 deomposition')
-        print(f'# SVD cutoff = {thresh:.2e} | error = {err:.2e}')
-        print(f'# number of T2 decomposition vectors {len(e_val_trunc)}')
+        print(f'Throw {len(e_val)-len(e_val_trunc)} vectors in T2 deomposition')
+        print(f'SVD cutoff = {thresh:.2e} | error = {err:.2e}')
+        print(f'number of T2 decomposition vectors {len(e_val_trunc)}')
 
         # alpha/beta operators for HS
         # Summation on the left to have a list of operators

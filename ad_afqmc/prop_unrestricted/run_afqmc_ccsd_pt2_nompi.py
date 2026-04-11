@@ -173,7 +173,7 @@ t2 = np.mean(wt_sp * t2_sp) / weight
 e0 = np.mean(wt_sp * e0_sp) / weight
 e1 = np.mean(wt_sp * e1_sp) / weight
 
-eg_err = sampler.blocking_analysis(wt_sp[:n+1], eg_sp[:n+1], min_nblocks=20, final=False)
+eg_err = sampler.blocking_analysis(wt_sp, eg_sp, min_nblocks=20, final=False)
 
 ept = (h0 + 1/t1 * e0 + 1/t1 * e1 - 1/t1**2 * t2 * e0).real
 # dE = (pE/pt1,pE/pt2,pE/pe0,pE/pe1)
