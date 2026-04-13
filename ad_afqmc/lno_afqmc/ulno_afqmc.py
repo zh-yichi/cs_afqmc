@@ -185,7 +185,7 @@ def prjmo(prj,s1e,mo):
     mo_rec = prj @ prj.T @ s1e @ mo
     return mo_rec
 
-def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
+def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10, print_ao=False, ao_thresh=1e-2):
     print("Constracting cLAS that span both Alpha and Beta active space")
     # time0 = time.perf_counter()
     s1e = mf.get_ovlp()
@@ -216,8 +216,22 @@ def common_las(mf, lno_coeff, ncas, ncore, torr=1e-10):
     print('True Common LAS Shape: ', clas_coeff.shape)
     a2c = clas_coeff.T @ s1e @ lno_acta # <C|A>
     b2c = clas_coeff.T @ s1e @ lno_actb # <C|B>
-    # time1 = time.perf_counter()
-    # print(f"# Build Common LAS time: {time1 - time0:.6f} s")
+
+    # identify the component of the LAS
+    if print_ao:
+        proj = (s1e @ clas_coeff)**2
+        proj = proj / np.sum(proj, axis=0, keepdims=True)
+        proj = np.sum(proj, axis=1)
+        ao_labels = mf.mol.ao_labels()
+
+        above = np.where(proj > ao_thresh)[0]
+        # sort them by contribution descending
+        print(f"Find {len(above)} AOs in cLAS with amplitude > {ao_thresh}")
+        above = above[np.argsort(proj[above])[::-1]]
+        print(f"{'AO Label':>16s}  {'Amp':>6s}")
+        for idx in above:
+            print(f"{ao_labels[idx]:>16s}  {proj[idx]:8.4f}")
+
     return clas_coeff, a2c, b2c
 
 
@@ -319,7 +333,8 @@ def prep_afqmc(mf_cc,
                mo_coeff,
                t1,
                t2,
-               frozen,prjlo,
+               frozen,
+               prjlo,
                options,
                chol_cut=1e-5,
                use_df=False,
@@ -392,9 +407,8 @@ def prep_afqmc(mf_cc,
         # chol_df = chol_df.reshape((-1, nao, nao))
         # print(f'# DF Tensor shape: {chol_df.shape}')
         if not use_df:
-            # from pyscf.ao2mo import _ao2mo
             time2 = time.perf_counter()
-            clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore, torr=1e-9)
+            clas_coeff, a2c, b2c = common_las(mf, mo_coeff, ncas, ncore, torr=1e-9, print_ao=True)
             # clas_coeff = jnp.array(clas_coeff)
             # a2c = jnp.array(a2c)
             # b2c = jnp.array(b2c)
@@ -846,15 +860,12 @@ def run_afqmc(mf,
     if lno_norb is None:
         lno_norb = [[None,None]] * nfrag
     mf = mlno._scf
+    mol = mf.mol
 
     if eris is None: eris = mlno.ao2mo()
 
     seeds = random.randint(random.PRNGKey(options["seed"]), shape=(nfrag,), minval=0, maxval=100*nfrag)
     options["max_error"] = options["max_error"]/np.sqrt(nfrag)
-
-    # nelec_list = [None] * nfrag
-    # norb_list = [None] * nfrag
-    # eorb_mp2_cc = [None] * nfrag
 
     # Loop over fragment
     for ifrag, loidx in enumerate(frag_lolist):
@@ -888,12 +899,38 @@ def run_afqmc(mf,
 
         lno_coeff, frozen, uocc_loc, _ = mlno.make_las(eris, orbloc, lno_type, lno_param)
 
+        # identify the center electron type
         if uocc_loc[0].size > 0 and uocc_loc[1].size == 0:
             lno_elec_type = 'alpha'
+            spin_idx = 0
         elif uocc_loc[0].size == 0 and uocc_loc[1].size > 0:
             lno_elec_type = 'beta'
+            spin_idx = 1
         else: lno_elec_type = 'How could it be???'
-        print(f'LNO-Electron Type: {lno_elec_type}')
+        print(f'LNO-Electron Type = {lno_elec_type} | spin index = {spin_idx}')
+
+        # identify the center LO's AO component
+        print(f'Locating local orbital {loidx[spin_idx]}')
+        # print(orbloc[0].shape, orbloc[1].shape)
+        S = mol.intor('int1e_ovlp')
+        proj = (S @ orbloc[spin_idx])**2
+        proj = proj / np.sum(proj, axis=0)
+        proj = np.sum(proj, axis=1)
+        # print(proj.shape)
+        ao_labels = mol.ao_labels()
+        ao_threshold = 1e-3
+        above = np.where(proj > ao_threshold)[0]
+        # sort them by contribution descending
+        above = above[np.argsort(proj[above])[::-1]]
+        ao_lines = []
+        print(f"AOs with contribution > {ao_threshold}")
+        ao_lines.append(f"AOs with contribution > {ao_threshold}")
+        print(f"{'AO Label':>16s}  {'Amp':>6s}")
+        ao_lines.append(f"{'AO Label':>16s}  {'Amp':>6s}")
+        for idx in above:
+            print(f"{ao_labels[idx]:>16s}  {proj[idx]:6.4f}")
+            ao_lines.append(f"{ao_labels[idx]:>16s}  {proj[idx]:6.4f}") 
+        ao_message = "\n".join(ao_lines)
 
         mo_occ = mlno.mo_occ
         frozen, maskact = ulnoccsd.get_maskact(frozen, [mo_occ[0].size, mo_occ[1].size])
@@ -960,6 +997,8 @@ def run_afqmc(mf,
         with open(outfile, 'a') as f:
             f.write('\n')
             f.write(f'{header:=^{width}}\n')
+            f.write("\t" + ao_message + "\n")
+            f.write('-' * width + '\n')
             f.write(f'\t LNO-Active Space electrons: {nelec} | orbitals: {norb} \n')
             f.write(f'\t LNO-MP2 Orbital Energy:   {eorb_mp2:.8f} \n')
             f.write(f'\t LNO-CCSD Orbital Energy:  {eorb_ccsd:.8f} \n')
@@ -975,6 +1014,7 @@ def run_afqmc(mf,
         mmp = mp.MP2(mf, frozen=nfrozen)
         emp2_tot = mmp.kernel()[0]
 
+    ao_labels = []
     nelec = np.zeros((nfrag,2),dtype='int32')
     norb = np.zeros((nfrag,2),dtype='int32')
     eorb_mp2 = np.zeros(nfrag,dtype='float64')
@@ -987,8 +1027,11 @@ def run_afqmc(mf,
     for n, i in enumerate(run_frg_list):
         with open(f"fragment.out{i+1}", "r") as rf:
             for line in rf:
+                if "AOs with contribution" in line:
+                    next(rf)
+                    largest_ao = next(rf).rsplit(maxsplit=1)[0].strip()
+                    ao_labels.append(largest_ao)
                 if 'LNO-Active Space' in line:
-                    # nums = re.findall(r'[-\d]+', line)
                     nums = re.findall(r'\d+', line)
                     nelec[n] = np.array([int(nums[0]),int(nums[1])])
                     norb[n] = np.array([int(nums[2]),int(nums[3])])
@@ -1013,59 +1056,35 @@ def run_afqmc(mf,
     tot_ccsd_time = np.sum(ccsd_time)
     tot_qmc_time = np.sum(qmc_time)
 
-    # with open(f'lno_result.out', 'w') as out_file:
-    #     print(f"{'frag':>4s}  "
-    #           f"{'E(MP2)':>10s}  {'E(CCSD)':>10s}  "
-    #           f"{'E(AFQMC)':>10s}  {'Error':>8s}  "
-    #           f"{'nelec':>5s}  {'norb':>5s}  "
-    #           f"{'t(CCSD)':8s}  {'t(AFQMC)':8s}",
-    #           file=out_file)
-    #     for n, i in enumerate(run_frg_list):
-    #         print(f"{i+1:4d}  "
-    #               f"{eorb_mp2[n]:10.8f}  {eorb_ccsd[n]:10.8f}  "
-    #               f"{eorb_qmc[n]:.6f}  {eorb_qmc_err[n]:.6f}  "
-    #               f"{nelec[n]}  {norb[n]}  "
-    #               f"{ccsd_time[n]:.2f}  {qmc_time[n]:.2f}", 
-    #               file=out_file)
-    #     print(f'LNO Thresh: ({lno_thresh[0]:.2e},{lno_thresh[1]:.2e})',file=out_file)
-    #     print(f'LNO Average Number of Electrons: ({nelec_avg[0]:.1f},{nelec_avg[1]:.1f})',file=out_file)
-    #     print(f'LNO Average Number of Obitals: ({norb_avg[0]:.1f},{norb_avg[1]:.1f})',file=out_file)
-    #     print(f'LNO-MP2 Energy: {e_mp2:.8f}',file=out_file)
-    #     print(f'LNO-CCSD Energy: {e_ccsd:.8f}',file=out_file)
-    #     print(f'LNO-AFQMC Energy: {e_afqmc:.6f} +/- {e_afqmc_err:.6f}',file=out_file)
-    #     print(f'MP2 Correction: {emp2_tot-e_mp2:.8f}',file=out_file)
-    #     print(f"total CCSD time: {tot_ccsd_time:.2f}",file=out_file)
-    #     print(f"total AFQMC time: {tot_qmc_time:.2f}",file=out_file)
     with open(f'lno_result.out', 'w') as f:
-        w = 100
-        f.write('=' * w + '\n')
-        f.write(f'{"LNO-AFQMC Results":^{w}}\n')
-        f.write('=' * w + '\n')
-        
-        # Header
-        f.write(f'{"Frag":>4s}  {"E(MP2)":>10s}  {"E(CCSD)":>10s}  '
+        width = 110
+        f.write('=' * width + '\n')
+        f.write(f'{"LNO-AFQMC Results":^{width}}\n')
+        f.write('=' * width + '\n')
+
+        f.write(f'{"Frag":>4s}  {"AO Center":>14s}  '  
+                f'{"E(MP2)":>10s}  {"E(CCSD)":>10s}  '
                 f'{"E(AFQMC)":>10s}  {"Error":>8s}  '
                 f'{"nelec":>9s}  {"norb":>9s}  '
                 f'{"t(CCSD)":>8s}  {"t(AFQMC)":>8s}\n')
-        f.write('-' * w + '\n')
+        f.write('-' * width + '\n')
         
-        # Per-fragment rows
         for n, i in enumerate(run_frg_list):
-            f.write(f"{i+1:4d}  {eorb_mp2[n]:10.8f}  {eorb_ccsd[n]:10.8f}  "
+            f.write(f"{i+1:4d}  {ao_labels[n]:>14s}  "
+                    f"{eorb_mp2[n]:10.8f}  {eorb_ccsd[n]:10.8f}  "
                     f"{eorb_qmc[n]:10.6f}  {eorb_qmc_err[n]:8.6f}  "
                     f"{str(nelec[n]):>9s}  {str(norb[n]):>9s}  "
                     f"{ccsd_time[n]:8.2f}  {qmc_time[n]:8.2f}\n")
         
-        f.write('-' * w + '\n')
-        
-        # Totals
-        f.write(f'{"Sum":>4s}  {e_mp2:10.8f}  {e_ccsd:10.8f}  '
+        f.write('-' * width + '\n')
+
+        f.write(f'{"Sum":>4s}  {"":>16s}  '
+                f'{e_mp2:10.8f}  {e_ccsd:10.8f}  '
                 f'{e_afqmc:10.6f}  {e_afqmc_err:8.6f}  '
                 f'{"":>9s}  {"":>9s}  '
                 f'{tot_ccsd_time:8.2f}  {tot_qmc_time:8.2f}\n')
-        f.write('=' * w + '\n\n')
-        
-        # Summary
+        f.write('=' * width + '\n\n')
+
         f.write(f'LNO Threshold:          ({lno_thresh[0]:.2e}, {lno_thresh[1]:.2e})\n')
         f.write(f'Avg. Electrons:         ({nelec_avg[0]:.1f}, {nelec_avg[1]:.1f})\n')
         f.write(f'Avg. Orbitals:          ({norb_avg[0]:.1f}, {norb_avg[1]:.1f})\n')
