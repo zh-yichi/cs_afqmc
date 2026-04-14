@@ -25,15 +25,11 @@ nfrozen = nc*frozen
 mycc = cc.CCSD(mf,frozen=nfrozen)
 mycc.kernel()
 
-from mpi4py import MPI
-if not MPI.Is_finalized():
-    MPI.Finalize()
-
-options = {'n_eql': 3,
+options = {'n_eql': 160, # 1 neq time = dt*n_prop_steps
            'n_prop_steps': 50,
-            'n_ene_blocks': 1,
-            'n_sr_blocks': 5,
-            'n_blocks': 10,
+            'n_ene_blocks': 1, # doesn't do anything
+            'n_sr_blocks': 1, # doesn't do anything
+            'n_blocks': 10, # just tune this for the number of samples
             'n_walkers': 100,
             'seed': 2,
             'walker_type': 'rhf',
@@ -44,22 +40,6 @@ options = {'n_eql': 3,
             'use_gpu': True,
             }
 
-from ad_afqmc.prop_unrestricted import prop_unrestricted
-prop_unrestricted.prep_afqmc(mycc,options,chol_cut=1e-5)
-prop_unrestricted.run_afqmc(options,nproc=1)
-
-# options = {'n_eql': 3,
-#            'n_prop_steps': 50,
-#             'n_ene_blocks': 1,
-#             'n_sr_blocks': 5,
-#             'n_blocks': 10,
-#             'n_walkers': 100,
-#             'seed': 2,
-#             'walker_type': 'rhf',
-#             'trial': 'cisd_hf2',
-#             'dt':0.005,
-#             'free_projection':False,
-#             'ad_mode':None,
-#             'use_gpu': True,
-#             }
-# prop_unrestricted.run_afqmc(options,nproc=1)
+from ad_afqmc.prop_unrestricted import prep, launch_afqmc
+prep.prep_afqmc(mycc,chol_cut=1e-5)
+launch_afqmc.run_afqmc(options)
