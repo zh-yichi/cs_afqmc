@@ -87,7 +87,7 @@ class sampler:
         block_means = np.zeros(max_size)
         if final:
             print(f"nsample = {nsample}, max_block_size = {max_size}, min_nblocks = {min_nblocks}")
-            print(f"{'B':>4s}  {'NB':>4s}  {'NS':>4s}  {'Energy':>10s}  {'Error':>8s}  {'dError':>8s}")
+            print(f"{'B':>4s}  {'NB':>4s}  {'NS':>4s}  {'Observable':>10s}  {'Error':>8s}  {'dError':>8s}")
         for i, block_size in enumerate(block_sizes):
             n_blocks = nsample // block_size
             sl = slice(0, n_blocks * block_size)

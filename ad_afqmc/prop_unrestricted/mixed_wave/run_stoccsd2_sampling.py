@@ -10,7 +10,7 @@ print = partial(print, flush=True)
 
 init_time = time.time()
 
-txt_width = 120
+txt_width = 130
 print(f"{' AFQMC Sampling Started ':-^{txt_width}}")
 
 if __name__ == "__main__":
@@ -131,13 +131,16 @@ for n in range(sampler.n_blocks):
         dencr_avg = np.sum(whf_dencr) / weight
 
         # denci_avg = denci_avg.real
-        denci_err = np.sqrt(np.sum(whf_sp[:n+1] * (denci_sp[:n+1] - denci_avg)**2) / weight / n).real
+        # denci_err = np.sqrt(np.sum(whf_sp[:n+1] * (denci_sp[:n+1] - denci_avg)**2) / weight / n).real
+        denci_err = sampler.blocking_analysis(whf_sp[:n+1], (denci_sp[:n+1]).real, min_nblocks=40, final=False)
 
         dencc_avg = (denci_avg + dencr_avg).real
-        dencc_err = np.sqrt(np.sum(whf_sp[:n+1] * (denci_sp[:n+1] + dencr_sp[:n+1] - dencc_avg)**2) / weight / n).real
+        # dencc_err = np.sqrt(np.sum(whf_sp[:n+1] * (denci_sp[:n+1] + dencr_sp[:n+1] - dencc_avg)**2) / weight / n).real
+        dencc_err = sampler.blocking_analysis(whf_sp[:n+1], (denci_sp[:n+1] + dencr_sp[:n+1]).real, min_nblocks=40, final=False)
 
         ehf_avg = np.sum(whf_ehf) / weight        
-        ehf_err = np.sqrt(np.sum(whf_sp[:n+1] * (ehf_sp[:n+1]-ehf_avg)**2) / weight) / np.sqrt(n)
+        # ehf_err = np.sqrt(np.sum(whf_sp[:n+1] * (ehf_sp[:n+1]-ehf_avg)**2) / weight) / np.sqrt(n)
+        ehf_err = sampler.blocking_analysis(whf_sp[:n+1], (ehf_sp[:n+1]).real, min_nblocks=40, final=False)
 
         eci_avg = (numci_avg / denci_avg).real
         ecis = (whf_numci / whf_denci).real
@@ -177,8 +180,10 @@ denci_avg = np.sum(whf_sp * denci_sp) / whf
 numcr_avg = np.sum(whf_sp * numcr_sp) / whf
 dencr_avg = np.sum(whf_sp * dencr_sp) / whf
 
+occ_avg = (denci_avg + dencr_avg).real
 ecc_avg = ((numci_avg + numcr_avg) / (denci_avg + dencr_avg)).real
 
+occ_err = sampler.blocking_analysis(whf_sp, (denci_sp + dencr_sp).real, min_nblocks=40, final=False)
 ehf_err = sampler.blocking_analysis(whf_sp, ehf_sp, min_nblocks=40, final=False)
 ecc_err = sampler.sto_blocking_analysis(
     whf_sp, 
@@ -188,6 +193,7 @@ ecc_err = sampler.sto_blocking_analysis(
     final=False,
     )
 
+print(f"Raw O[CC/HF]:                           {occ_avg.real:.6f} ± {occ_err:.6f}")
 print(f"Raw AFQMC/HF (Guide) energy:           {ehf_avg:.6f} ± {ehf_err:.6f}")
 print(f"Raw AFQMC/stoDiffCCSD energy:          {ecc_avg:.6f} ± {ecc_err:.6f}")
 
@@ -209,8 +215,10 @@ denci_avg = np.sum(whf_sp * denci_sp) / whf
 numcr_avg = np.sum(whf_sp * numcr_sp) / whf
 dencr_avg = np.sum(whf_sp * dencr_sp) / whf
 
+occ_avg = (denci_avg + dencr_avg).real
 ecc_avg = ((numci_avg + numcr_avg) / (denci_avg + dencr_avg)).real
 
+occ_err = sampler.blocking_analysis(whf_sp, (denci_sp + dencr_sp).real, min_nblocks=40, final=True)
 ehf_err = sampler.blocking_analysis(whf_sp, ehf_sp, min_nblocks=40, final=True)
 ecc_err = sampler.sto_blocking_analysis(
     whf_sp, 
@@ -220,6 +228,7 @@ ecc_err = sampler.sto_blocking_analysis(
     final=True,
     )
 
+print(f"Final O[CC/HF]:                           {occ_avg.real:.6f} ± {occ_err:.6f}")
 print(f"Final AFQMC/HF (Guide) energy:           {ehf_avg:.6f} ± {ehf_err:.6f}")
 print(f"Final AFQMC/stoDiffCCSD energy:          {ecc_avg:.6f} ± {ecc_err:.6f}")
 
